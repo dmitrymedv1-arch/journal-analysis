@@ -26,7 +26,8 @@ import hashlib
 import difflib
 from itertools import combinations
 import colorsys
-
+import warnings
+warnings.filterwarnings("ignore")
 
 # ======================== COLOR UTILITIES FOR DYNAMIC THEMES ========================
 def hex_to_rgb(hex_color: str) -> tuple:
@@ -3055,10 +3056,11 @@ def main():
         # Language
         st.markdown(f"### {get_text('language')}")
         lang_option = st.selectbox(
-            "",
+            "Language",
             options=['en', 'ru'],
             format_func=lambda x: get_text('language_english') if x == 'en' else get_text('language_russian'),
-            index=0 if st.session_state.language == 'en' else 1
+            index=0 if st.session_state.language == 'en' else 1,
+            label_visibility="collapsed"  # Скрываем label, но не делаем его пустым
         )
         if lang_option != st.session_state.language:
             st.session_state.language = lang_option
@@ -3153,7 +3155,7 @@ def main():
         st.markdown("---")
         
         # Start button
-        if st.button(get_text('start_analysis'), type="primary", use_container_width=True):
+        if st.button(get_text('start_analysis'), type="primary", width="stretch"):
             if not issn or not period:
                 st.warning("Please fill in both ISSN and Period fields!")
             else:
@@ -3330,7 +3332,7 @@ def main():
             st.markdown(f"### {get_text('most_cited_publications')}")
             
             most_cited_df = pd.DataFrame(metrics['most_cited'])
-            st.dataframe(most_cited_df, use_container_width=True, hide_index=True)
+            st.dataframe(most_cited_df, width="stretch", hide_index=True)
         
         with tab3:
             st.markdown(f"### {get_text('author_analysis')}")
