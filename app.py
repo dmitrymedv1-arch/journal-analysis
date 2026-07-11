@@ -803,15 +803,17 @@ async def fetch_with_retry(session, url, params=None, headers=None, method='GET'
     return None
 
 async def get_journal_by_issn(issn: str, session) -> Optional[Dict]:
-    """Get journal information from OpenAlex by ISSN"""
+    """Get journal information from OpenAlex by ISSN - DIRECT APPROACH"""
     issn_clean = parse_issn(issn)
     if not issn_clean:
         return None
     
-    url = "https://api.openalex.org/sources"
+    # Прямой запрос к works для получения информации о журнале
+    url = "https://api.openalex.org/works"
     params = {
-        'filter': f'issn:{issn_clean}',
-        'per-page': 1
+        'filter': f'primary_location.source.issn:{issn_clean}',
+        'per-page': 1,
+        'select': 'primary_location.source.id,primary_location.source.display_name,primary_location.source.publisher'
     }
     
     data = await fetch_with_retry(session, url, params=params)
@@ -826,11 +828,56 @@ async def get_journal_by_issn(issn: str, session) -> Optional[Dict]:
             print(f"❌ No results for ISSN: {issn_clean}")
         return None
     
-    return results[0]
+    # Извлекаем информацию о журнале из первой публикации
+    first_work = results[0]
+    primary_location = first_work.get('primary_location', {})
+    source = primary_location.get('source', {})
+    
+    if not source:
+        if SHOW_DEBUG_LOGS:
+            print(f"❌ No source info for ISSN: {issn_clean}")
+        return None
+    
+    # Формируем структуру, аналогичную ответу от sources endpoint
+    journal_info = {
+        'id': source.get('id', ''),
+        'display_name': source.get('display_name', 'Unknown'),
+        'publisher': source.get('publisher', ''),
+        'issn': issn_clean,
+        'works_count': None,  # Будет заполнено позже
+        'cited_by_count': None,
+        'is_oa': False,
+        'created_date': '',
+        'updated_date': ''
+    }
+    
+    # Попробуем получить дополнительную информацию через sources endpoint (с таймаутом)
+    try:
+        source_url = "https://api.openalex.org/sources"
+        source_params = {
+            'filter': f'issn:{issn_clean}',
+            'per-page': 1
+        }
+        source_data = await fetch_with_retry(session, source_url, params=source_params)
+        if source_data and source_data.get('results'):
+            source_info = source_data['results'][0]
+            journal_info['works_count'] = source_info.get('works_count', 0)
+            journal_info['cited_by_count'] = source_info.get('cited_by_count', 0)
+            journal_info['is_oa'] = source_info.get('is_oa', False)
+            journal_info['created_date'] = source_info.get('created_date', '')
+            journal_info['updated_date'] = source_info.get('updated_date', '')
+    except Exception as e:
+        if SHOW_DEBUG_LOGS:
+            print(f"⚠️ Could not fetch additional source info: {e}")
+    
+    if SHOW_DEBUG_LOGS:
+        print(f"✅ Journal found: {journal_info['display_name']}")
+    
+    return journal_info
 
 async def get_journal_publications(journal_id: str, session, periods: List[Tuple[int, int]], progress_callback=None, issn: str = None) -> List[Dict]:
-    """Get all publications for a journal within specified periods with cursor support for large datasets"""
-    if not journal_id:
+    """Get all publications for a journal within specified periods - DIRECT APPROACH"""
+    if not issn:
         return []
     
     # Build year filter
@@ -850,11 +897,11 @@ async def get_journal_publications(journal_id: str, session, periods: List[Tuple
         'filter': f'primary_location.source.issn:{issn},publication_year:{year_filter}',
         'per-page': 200,
         'sort': 'publication_date:desc',
-        'cursor': '*'  # Начинаем с первого курсора
+        'cursor': '*'
     }
     
     page = 0
-    max_pages = 100  # Защита от бесконечного цикла (максимум 100 страниц = 20000 статей)
+    max_pages = 100
     
     while page < max_pages:
         page += 1
@@ -876,21 +923,17 @@ async def get_journal_publications(journal_id: str, session, periods: List[Tuple
         if progress_callback:
             progress_callback(len(all_works), total_count)
         
-        # Получаем следующий курсор
         next_cursor = meta.get('next_cursor')
         
-        # Проверяем условия завершения пагинации
         if not next_cursor or next_cursor == params.get('cursor'):
             break
         
-        # Обновляем курсор для следующего запроса
         params['cursor'] = next_cursor
         
-        # Задержка между запросами
         await asyncio.sleep(DELAY_BETWEEN_BATCHES)
     
     if SHOW_DEBUG_LOGS:
-        print(f"📊 Получено {len(all_works)} публикаций из {total_count} доступных")
+        print(f"📊 Получено {len(all_works)} публикаций из {total_count if 'total_count' in locals() else '?'} доступных")
     
     return all_works
     
@@ -3402,6 +3445,7 @@ async def analyze_journal(issn: str, periods: List[Tuple[int, int]], progress_ca
         if progress_callback:
             progress_callback('journal', 0, 100)
         
+        # Получаем информацию о журнале напрямую через works
         journal_data = await get_journal_by_issn(issn_clean, session)
         if not journal_data:
             return None, [], {}, {}
@@ -3425,6 +3469,7 @@ async def analyze_journal(issn: str, periods: List[Tuple[int, int]], progress_ca
             if progress_callback:
                 progress_callback('publications', current, total)
         
+        # Получаем публикации напрямую через works с фильтром по ISSN
         works = await get_journal_publications(journal.id, session, periods, pub_progress, issn_clean)
         
         if not works:
