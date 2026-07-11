@@ -1,34 +1,56 @@
 """
 app.py - Journal Metrics Analyzer
-Comprehensive analysis of journal publications and their citations
-Enhanced with OpenAlex API, parallel processing, and interactive HTML reports
+Advanced analytics for scientific journals using OpenAlex API
 """
 
 import streamlit as st
 import pandas as pd
 import requests
 import json
-import time
-import random
-import re
-import math
-import html
-import base64
-import os
 from datetime import datetime
 from collections import Counter, defaultdict
-from typing import Dict, List, Tuple, Optional, Set, Any
-from dataclasses import dataclass, field
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from threading import Lock
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from typing import Dict, List, Tuple, Optional, Set
 import hashlib
-import difflib
+from tenacity import retry, stop_after_attempt, wait_exponential, wait_random
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import math
+from collections import defaultdict
 from itertools import combinations
-import colorsys
+import html
+import threading
+import re
+from dataclasses import dataclass, field
+import random
+from io import StringIO
 
+# ======================== ИМПОРТ СТИЛЕЙ ========================
+from styles import (
+    BASE_CSS,
+    generate_theme_css,
+    get_theme_info,
+    get_available_themes,
+    get_theme_display_name,
+    theme_uses_primary,
+    theme_uses_secondary,
+    get_reference_color_style,
+    REFERENCE_COLORS_FULL,
+    REFERENCE_COLORS_BORDER_ONLY,
+    REFERENCE_COLORS_ICONS,
+    REFERENCE_COLORS_THEMED,
+    REFERENCE_COLORS_TEXT,
+    hex_to_rgb,
+    rgb_to_hex,
+    get_complementary_color,
+    get_contrast_color,
+    get_analogous_colors,
+    get_gradient_colors,
+    inject_color_placeholders
+)
 
 # ======================== COLOR UTILITIES FOR DYNAMIC THEMES ========================
+import colorsys
+
 def hex_to_rgb(hex_color: str) -> tuple:
     """Convert hex color to RGB tuple"""
     hex_color = hex_color.lstrip('#')
@@ -300,660 +322,9 @@ def apply_theme_css(base_color: str, accent_color: str = None):
             font-size: 12px;
             text-align: center;
         }}
-        
-        .reviewer-card {{
-            background: white;
-            border-radius: 12px;
-            padding: 16px;
-            margin-bottom: 16px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            transition: transform 0.2s, box-shadow 0.2s;
-            border-left: 4px solid var(--primary);
-        }}
-        
-        .reviewer-card:hover {{
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        }}
-        
-        .reviewer-name {{
-            font-size: 18px;
-            font-weight: 600;
-            color: var(--primary);
-            margin-bottom: 8px;
-        }}
-        
-        .reviewer-orcid {{
-            font-family: monospace;
-            font-size: 12px;
-            margin-bottom: 8px;
-        }}
-        
-        .reviewer-section {{
-            margin-top: 12px;
-            padding-top: 8px;
-            border-top: 1px solid #e0e0e0;
-        }}
-        
-        .reviewer-section-title {{
-            font-weight: 600;
-            font-size: 13px;
-            margin-bottom: 8px;
-            color: #555;
-        }}
-        
-        .external-id-link {{
-            display: inline-block;
-            background: #f0f0f0;
-            padding: 4px 10px;
-            border-radius: 15px;
-            font-size: 11px;
-            margin: 3px;
-            text-decoration: none;
-            color: #333;
-            transition: background 0.2s;
-        }}
-        
-        .external-id-link:hover {{
-            background: var(--primary);
-            color: white;
-        }}
-        
-        .reviewer-website {{
-            display: inline-block;
-            margin: 3px 6px 3px 0;
-            font-size: 12px;
-        }}
-        
-        .confidential-banner {{
-            background: linear-gradient(135deg, #fff3cd 0%, #ffe69e 100%);
-            border-left: 4px solid #dc3545;
-            padding: 12px 20px;
-            margin-bottom: 20px;
-            border-radius: 8px;
-            font-weight: 500;
-            text-align: center;
-        }}
-        
-        .publication-card {{
-            background: white;
-            border-radius: 10px;
-            padding: 15px;
-            margin-bottom: 15px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
-            border-left: 4px solid var(--primary);
-            transition: transform 0.2s, box-shadow 0.2s;
-        }}
-        
-        .publication-card:hover {{
-            transform: translateX(5px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
-        }}
-        
-        .publication-title {{
-            font-size: 16px;
-            font-weight: 600;
-            color: var(--primary);
-            margin-bottom: 8px;
-        }}
-        
-        .publication-meta {{
-            font-size: 13px;
-            color: #555;
-            margin-bottom: 5px;
-        }}
-        
-        .publication-doi {{
-            font-size: 12px;
-            color: #666;
-            font-family: monospace;
-        }}
-        
-        .citation-detail {{
-            background: #f8f9fa;
-            border-radius: 8px;
-            padding: 12px;
-            margin: 8px 0 8px 20px;
-            border-left: 3px solid #ddd;
-            transition: background 0.2s;
-        }}
-        
-        .citation-detail:hover {{
-            background: #f0f0f0;
-        }}
-        
-        .citation-title {{
-            font-weight: 500;
-            margin-bottom: 5px;
-        }}
-        
-        .cite-meta {{
-            font-size: 12px;
-            color: #666;
-            margin-top: 3px;
-        }}
-        
-        .toggle-button {{
-            display: inline-block;
-            padding: 4px 12px;
-            border: none;
-            border-radius: 4px;
-            background: var(--primary);
-            color: white;
-            cursor: pointer;
-            font-size: 12px;
-            transition: background 0.2s;
-        }}
-        
-        .toggle-button:hover {{
-            background: var(--secondary);
-        }}
-        
-        .filter-section {{
-            background: #f8f9fa;
-            border-radius: 10px;
-            padding: 15px;
-            margin-bottom: 20px;
-        }}
-        
-        .filter-row {{
-            display: flex;
-            gap: 15px;
-            flex-wrap: wrap;
-            align-items: center;
-        }}
-        
-        .filter-row label {{
-            font-weight: 500;
-            font-size: 13px;
-            margin-right: 5px;
-        }}
-        
-        .filter-row select, .filter-row input {{
-            padding: 6px 10px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            font-size: 13px;
-        }}
-        
-        .filter-row select:focus, .filter-row input:focus {{
-            border-color: var(--primary);
-            outline: none;
-            box-shadow: 0 0 0 2px var(--hover-light);
-        }}
-        
-        .citation-count {{
-            font-weight: 600;
-            color: var(--primary);
-        }}
-        
-        .word-wrap {{
-            word-wrap: break-word;
-            max-width: 300px;
-        }}
-        
-        .collapser {{
-            cursor: pointer;
-            padding: 10px 15px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            margin-bottom: 5px;
-            transition: background 0.2s;
-            border-left: 3px solid var(--primary);
-        }}
-        
-        .collapser:hover {{
-            background: #f0f0f0;
-        }}
-        
-        .doi-link {{
-            color: var(--primary);
-            text-decoration: none;
-            font-family: monospace;
-            font-size: 12px;
-        }}
-        
-        .doi-link:hover {{
-            color: var(--secondary);
-            text-decoration: underline;
-        }}
-        
-        .badge-oa-gold {{
-            background: #ffd700;
-            color: #000;
-            padding: 2px 10px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 600;
-        }}
-        
-        .badge-oa-hybrid {{
-            background: #ff8c00;
-            color: #fff;
-            padding: 2px 10px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 600;
-        }}
-        
-        .badge-oa-green {{
-            background: #2e8b57;
-            color: #fff;
-            padding: 2px 10px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 600;
-        }}
-        
-        .badge-oa-bronze {{
-            background: #cd7f32;
-            color: #fff;
-            padding: 2px 10px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 600;
-        }}
-        
-        .badge-oa-closed {{
-            background: #6c757d;
-            color: #fff;
-            padding: 2px 10px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 600;
-        }}
     </style>
     """
     st.markdown(theme_css, unsafe_allow_html=True)
-
-# ======================== ЛОКАЛИЗАЦИЯ ========================
-TEXTS = {
-    'en': {
-        # App
-        'app_title': "Journal Metrics Analyzer",
-        'app_subtitle': "Comprehensive analysis of journal publications and their citations",
-        'settings': "⚙️ Settings",
-        'language': "🌐 Language",
-        'language_english': "English",
-        'language_russian': "Russian",
-        
-        # Input
-        'issn_label': "📰 ISSN",
-        'issn_placeholder': "0028-0836",
-        'period_label': "📅 Period",
-        'period_placeholder': "2020-2023 or 2025 or 2020,2021,2022",
-        'period_help': "Single year (2025), range (2020-2023), or comma-separated (2020,2021,2022)",
-        'workers_label': "⚡ Parallel Workers",
-        'workers_help': "Number of parallel API requests (4-12 recommended)",
-        'start_analysis': "🚀 Start Analysis",
-        
-        # Progress
-        'collecting_publications': "📚 Collecting journal publications...",
-        'found_publications': "✅ Found {0} publications",
-        'collecting_citations': "🔍 Collecting citations for {0} publications...",
-        'collecting_citation_metadata': "📊 Collecting citation metadata...",
-        'analyzing_data': "📈 Analyzing data...",
-        'analysis_complete': "✅ Analysis complete!",
-        'generating_report': "📄 Generating HTML report...",
-        
-        # Overview
-        'overview': "Overview",
-        'total_publications': "Total Publications",
-        'total_citations': "Total Citations",
-        'h_index': "h-index",
-        'g_index': "g-index",
-        'i10_index': "i10-index",
-        'i100_index': "i100-index",
-        'avg_citations': "Avg Citations",
-        'open_access': "Open Access",
-        'active_years': "Active Years",
-        'unique_authors': "Unique Authors",
-        'unique_countries': "Unique Countries",
-        'total_citing_works': "Total Citing Works",
-        'unique_citing_journals': "Unique Citing Journals",
-        'avg_authors_per_paper': "Avg Authors/Paper",
-        'avg_affiliations_per_paper': "Avg Affiliations/Paper",
-        'avg_countries_per_paper': "Avg Countries/Paper",
-        'international_collaboration_rate': "International Collaboration Rate",
-        
-        # Open Access Breakdown
-        'open_access_breakdown': "Open Access Breakdown",
-        'gold': "Gold",
-        'hybrid': "Hybrid",
-        'green': "Green",
-        'bronze': "Bronze",
-        'closed': "Closed",
-        'unknown': "Unknown",
-        
-        # Most Cited
-        'most_cited_publications': "Most Cited Publications",
-        'rank': "Rank",
-        'title': "Title",
-        'year': "Year",
-        'citations': "Citations",
-        'citations_per_year': "Citations/Year",
-        'authors': "Authors",
-        'doi': "DOI",
-        
-        # Author Analysis
-        'author_analysis': "Author Analysis",
-        'top_authors': "Top Authors",
-        'orcid': "ORCID",
-        'affiliations': "Affiliations",
-        'countries': "Countries",
-        'publication_count': "Publications",
-        'citation_count': "Citations",
-        'affiliation_analysis': "Affiliation Analysis",
-        'top_affiliations': "Top Affiliations",
-        'geographic_analysis': "Geographic Analysis",
-        'geography_type_1': "Unique Countries per Publication (Collaboration Level)",
-        'geography_type_1_desc': "Each publication counted once per unique country",
-        'geography_type_2': "Authors per Country (Individual Distribution)",
-        'geography_type_2_desc': "Each author counted separately",
-        'geography_type_3': "Collaboration Patterns",
-        'geography_type_3_desc': "Distribution of single-country vs international collaborations",
-        'single_country': "Single Country",
-        'international_collab': "International Collaboration",
-        'collaboration_couples': "Collaboration Couples",
-        'collaboration_couples_desc': "Frequency of country pairs collaborating",
-        'collaboration_by_year': "Collaboration Dynamics by Year",
-        
-        # Citation Analysis
-        'citation_analysis': "Citation Analysis",
-        'citation_dynamics': "Citation Dynamics by Year",
-        'cumulative_citations': "Cumulative Citations",
-        'citation_network': "Citation Network Heatmap",
-        'publication_year': "Publication Year",
-        'citation_year': "Citation Year",
-        'citations_count': "Citations Count",
-        
-        # Citing Works
-        'citing_works_analysis': "Citing Works Analysis",
-        'total_citing_works': "Total Citing Works",
-        'unique_citing_authors': "Unique Citing Authors",
-        'unique_citing_affiliations': "Unique Citing Affiliations",
-        'unique_citing_countries': "Unique Citing Countries",
-        'unique_citing_journals': "Unique Citing Journals",
-        'unique_citing_publishers': "Unique Citing Publishers",
-        'top_citing_authors': "Top Citing Authors",
-        'top_citing_affiliations': "Top Citing Affiliations",
-        'top_citing_countries': "Top Citing Countries",
-        'top_citing_journals': "Top Citing Journals",
-        'top_citing_publishers': "Top Citing Publishers",
-        
-        # Topics Analysis
-        'topics_analysis': "Topics Analysis",
-        'topics': "Topics",
-        'fields': "Fields",
-        'subfields': "Subfields",
-        'domains': "Domains",
-        'concepts': "Concepts",
-        'analyzed_count': "Analyzed Count",
-        'citing_count': "Citing Count",
-        'analyzed_norm_count': "Analyzed Norm Count",
-        'citing_norm_count': "Citing Norm Count",
-        'total_norm_count': "Total Norm Count",
-        'first_year': "First Year",
-        'peak_year': "Peak Year",
-        'recent_5_years_count': "Recent 5 Years Count",
-        
-        # Detailed Citations
-        'detailed_citations': "Detailed Citations",
-        'show_citations': "Show Citations",
-        'citing_journal': "Citing Journal",
-        'citing_year': "Citing Year",
-        'citing_date': "Citing Date",
-        'citation_lag': "Citation Lag (years)",
-        'citing_authors': "Citing Authors",
-        'citing_countries': "Citing Countries",
-        'citing_topics': "Citing Topics",
-        
-        # All Publications
-        'all_publications': "All Publications",
-        'filter_by_year': "Filter by Year",
-        'filter_by_author': "Filter by Author",
-        'filter_by_citations': "Filter by Citations (min)",
-        'search_publications': "Search Publications",
-        'search_placeholder': "Search title or DOI...",
-        'showing_publications': "Showing {0} publications",
-        'all_years': "All Years",
-        'show_citations_short': "Citations",
-        
-        # Citation Velocity
-        'citation_velocity': "Citation Velocity",
-        'velocity_very_high': "Very High (≥10 cit/year)",
-        'velocity_high': "High (5-9 cit/year)",
-        'velocity_medium': "Medium (1-4 cit/year)",
-        'velocity_low': "Low (<1 cit/year)",
-        
-        # Export
-        'export_report': "📄 Export Report",
-        'download_html': "💾 Download HTML Report",
-        'text_export': "📋 Text Export",
-        'copy_to_clipboard': "📋 Copy to Clipboard",
-        'copied': "✅ Data copied! (use Ctrl+C)",
-        'run_analysis_first': "👈 Please run analysis first",
-        
-        # HTML Report
-        'html_generated': "Generated",
-        'html_copyright': "© Journal Metrics Analyzer / Created by daM / Chimica Techno Acta",
-        'html_footer': "Journal Metrics Analyzer v2.0",
-        'html_rank': "Rank",
-        'html_count': "Count",
-        'html_percentage': "Percentage",
-        'html_frequency': "Frequency",
-        'html_connections': "connections",
-        'html_joint_works': "joint works",
-        'html_citations_label': "citations",
-        'html_not_found': "Not found",
-        
-        # Navigation
-        'navigation': "Navigation",
-        'nav_overview': "Overview",
-        'nav_most_cited': "Most Cited",
-        'nav_authors': "Authors",
-        'nav_citation_analysis': "Citation Analysis",
-        'nav_citing_works': "Citing Works",
-        'nav_topics': "Topics",
-        'nav_detailed_citations': "Detailed Citations",
-        'nav_all_publications': "All Publications",
-    },
-    'ru': {
-        # App
-        'app_title': "Анализатор метрик журнала",
-        'app_subtitle': "Комплексный анализ публикаций журнала и их цитирований",
-        'settings': "⚙️ Настройки",
-        'language': "🌐 Язык",
-        'language_english': "Английский",
-        'language_russian': "Русский",
-        
-        # Input
-        'issn_label': "📰 ISSN",
-        'issn_placeholder': "0028-0836",
-        'period_label': "📅 Период",
-        'period_placeholder': "2020-2023 или 2025 или 2020,2021,2022",
-        'period_help': "Одиночный год (2025), диапазон (2020-2023) или список через запятую (2020,2021,2022)",
-        'workers_label': "⚡ Параллельных потоков",
-        'workers_help': "Количество параллельных API запросов (рекомендуется 4-12)",
-        'start_analysis': "🚀 Запустить анализ",
-        
-        # Progress
-        'collecting_publications': "📚 Сбор публикаций журнала...",
-        'found_publications': "✅ Найдено {0} публикаций",
-        'collecting_citations': "🔍 Сбор цитирований для {0} публикаций...",
-        'collecting_citation_metadata': "📊 Сбор метаданных цитирований...",
-        'analyzing_data': "📈 Анализ данных...",
-        'analysis_complete': "✅ Анализ завершен!",
-        'generating_report': "📄 Генерация HTML отчета...",
-        
-        # Overview
-        'overview': "Обзор",
-        'total_publications': "Всего публикаций",
-        'total_citations': "Всего цитирований",
-        'h_index': "h-индекс",
-        'g_index': "g-индекс",
-        'i10_index': "i10-индекс",
-        'i100_index': "i100-индекс",
-        'avg_citations': "Среднее цитирований",
-        'open_access': "Открытый доступ",
-        'active_years': "Активные годы",
-        'unique_authors': "Уникальных авторов",
-        'unique_countries': "Уникальных стран",
-        'total_citing_works': "Всего цитирующих работ",
-        'unique_citing_journals': "Уникальных цитирующих журналов",
-        'avg_authors_per_paper': "Среднее авторов/статья",
-        'avg_affiliations_per_paper': "Среднее аффилиаций/статья",
-        'avg_countries_per_paper': "Среднее стран/статья",
-        'international_collaboration_rate': "Доля международных коллабораций",
-        
-        # Open Access Breakdown
-        'open_access_breakdown': "Распределение по типам доступа",
-        'gold': "Золотой",
-        'hybrid': "Гибридный",
-        'green': "Зеленый",
-        'bronze': "Бронзовый",
-        'closed': "Закрытый",
-        'unknown': "Неизвестный",
-        
-        # Most Cited
-        'most_cited_publications': "Самые цитируемые публикации",
-        'rank': "Ранг",
-        'title': "Название",
-        'year': "Год",
-        'citations': "Цитирований",
-        'citations_per_year': "Цитирований/год",
-        'authors': "Авторы",
-        'doi': "DOI",
-        
-        # Author Analysis
-        'author_analysis': "Анализ авторов",
-        'top_authors': "Топ авторов",
-        'orcid': "ORCID",
-        'affiliations': "Аффилиации",
-        'countries': "Страны",
-        'publication_count': "Публикаций",
-        'citation_count': "Цитирований",
-        'affiliation_analysis': "Анализ аффилиаций",
-        'top_affiliations': "Топ аффилиаций",
-        'geographic_analysis': "Географический анализ",
-        'geography_type_1': "Уникальные страны по публикации (уровень коллаборации)",
-        'geography_type_1_desc': "Каждая публикация учитывается один раз на уникальную страну",
-        'geography_type_2': "Авторы по странам (индивидуальное распределение)",
-        'geography_type_2_desc': "Каждый автор учитывается отдельно",
-        'geography_type_3': "Паттерны коллабораций",
-        'geography_type_3_desc': "Распределение внутристрановых и международных коллабораций",
-        'single_country': "Одна страна",
-        'international_collab': "Международная коллаборация",
-        'collaboration_couples': "Пары коллабораций",
-        'collaboration_couples_desc': "Частота взаимодействия между парами стран",
-        'collaboration_by_year': "Динамика коллабораций по годам",
-        
-        # Citation Analysis
-        'citation_analysis': "Анализ цитирований",
-        'citation_dynamics': "Динамика цитирований по годам",
-        'cumulative_citations': "Кумулятивное цитирование",
-        'citation_network': "Тепловая карта сети цитирований",
-        'publication_year': "Год публикации",
-        'citation_year': "Год цитирования",
-        'citations_count': "Количество цитирований",
-        
-        # Citing Works
-        'citing_works_analysis': "Анализ цитирующих работ",
-        'total_citing_works': "Всего цитирующих работ",
-        'unique_citing_authors': "Уникальных цитирующих авторов",
-        'unique_citing_affiliations': "Уникальных цитирующих аффилиаций",
-        'unique_citing_countries': "Уникальных цитирующих стран",
-        'unique_citing_journals': "Уникальных цитирующих журналов",
-        'unique_citing_publishers': "Уникальных цитирующих издательств",
-        'top_citing_authors': "Топ цитирующих авторов",
-        'top_citing_affiliations': "Топ цитирующих аффилиаций",
-        'top_citing_countries': "Топ цитирующих стран",
-        'top_citing_journals': "Топ цитирующих журналов",
-        'top_citing_publishers': "Топ цитирующих издательств",
-        
-        # Topics Analysis
-        'topics_analysis': "Анализ тем",
-        'topics': "Темы",
-        'fields': "Области",
-        'subfields': "Подобласти",
-        'domains': "Домены",
-        'concepts': "Концепции",
-        'analyzed_count': "Кол-во в анализируемых",
-        'citing_count': "Кол-во в цитирующих",
-        'analyzed_norm_count': "Норм. кол-во в анализируемых",
-        'citing_norm_count': "Норм. кол-во в цитирующих",
-        'total_norm_count': "Общее норм. кол-во",
-        'first_year': "Первый год",
-        'peak_year': "Пиковый год",
-        'recent_5_years_count': "Кол-во за последние 5 лет",
-        
-        # Detailed Citations
-        'detailed_citations': "Детальные цитирования",
-        'show_citations': "Показать цитирования",
-        'citing_journal': "Цитирующий журнал",
-        'citing_year': "Год цитирования",
-        'citing_date': "Дата цитирования",
-        'citation_lag': "Задержка цитирования (лет)",
-        'citing_authors': "Цитирующие авторы",
-        'citing_countries': "Цитирующие страны",
-        'citing_topics': "Цитирующие темы",
-        
-        # All Publications
-        'all_publications': "Все публикации",
-        'filter_by_year': "Фильтр по году",
-        'filter_by_author': "Фильтр по автору",
-        'filter_by_citations': "Фильтр по цитированиям (мин)",
-        'search_publications': "Поиск публикаций",
-        'search_placeholder': "Поиск по названию или DOI...",
-        'showing_publications': "Показано {0} публикаций",
-        'all_years': "Все годы",
-        'show_citations_short': "Цитирования",
-        
-        # Citation Velocity
-        'citation_velocity': "Скорость цитирования",
-        'velocity_very_high': "Очень высокая (≥10 цит/год)",
-        'velocity_high': "Высокая (5-9 цит/год)",
-        'velocity_medium': "Средняя (1-4 цит/год)",
-        'velocity_low': "Низкая (<1 цит/год)",
-        
-        # Export
-        'export_report': "📄 Экспорт отчета",
-        'download_html': "💾 Скачать HTML отчет",
-        'text_export': "📋 Текстовый экспорт",
-        'copy_to_clipboard': "📋 Копировать в буфер",
-        'copied': "✅ Данные скопированы! (используйте Ctrl+C)",
-        'run_analysis_first': "👈 Сначала запустите анализ",
-        
-        # HTML Report
-        'html_generated': "Сгенерирован",
-        'html_copyright': "© Journal Metrics Analyzer / Created by daM / Chimica Techno Acta",
-        'html_footer': "Journal Metrics Analyzer v2.0",
-        'html_rank': "Ранг",
-        'html_count': "Количество",
-        'html_percentage': "Процент",
-        'html_frequency': "Частота",
-        'html_connections': "связей",
-        'html_joint_works': "совместных работ",
-        'html_citations_label': "цитирований",
-        'html_not_found': "Не найден",
-        
-        # Navigation
-        'navigation': "Навигация",
-        'nav_overview': "Обзор",
-        'nav_most_cited': "Самые цитируемые",
-        'nav_authors': "Авторы",
-        'nav_citation_analysis': "Анализ цитирований",
-        'nav_citing_works': "Цитирующие работы",
-        'nav_topics': "Темы",
-        'nav_detailed_citations': "Детальные цитирования",
-        'nav_all_publications': "Все публикации",
-    }
-}
-
-def get_text(key: str) -> str:
-    """Get localized text by key"""
-    lang = st.session_state.get('language', 'en')
-    return TEXTS[lang].get(key, TEXTS['en'].get(key, key))
 
 # ======================== DATA MODELS ========================
 
@@ -1015,427 +386,1092 @@ class JournalData:
     citations: Dict[str, List[CitingWork]] = field(default_factory=dict)
     citing_works: List[CitingWork] = field(default_factory=list)
 
-# ======================== API CLIENT ========================
+# ======================== LOCALIZATION DICTIONARY ========================
+TEXTS = {
+    'en': {
+        # App
+        'app_title': "Journal Metrics Analyzer",
+        'app_subtitle': "Advanced analytics for scientific journals using OpenAlex API",
+        
+        # Sidebar
+        'issn_label': "ISSN",
+        'issn_placeholder': "0028-0836",
+        'period_label': "Period",
+        'period_placeholder': "2020-2023 or 2025 or 2020,2021,2022",
+        'period_help': "Single year (2025), range (2020-2023), or list (2020,2021,2022)",
+        'workers_label': "Parallel workers",
+        'workers_help': "Number of parallel API requests (4-12 recommended)",
+        'language_label': "Language",
+        'language_english': "English",
+        'language_russian': "Russian",
+        'start_analysis': "🚀 Start Analysis",
+        
+        # Tabs
+        'tab_collect': "📊 Data Collection",
+        'tab_analytics': "📈 Analytics",
+        'tab_report': "📄 Export",
+        
+        # Data Collection
+        'collecting_data': "Collecting data from OpenAlex...",
+        'step_publications': "Step 1: Getting journal publications...",
+        'found_publications': "Found {0} publications",
+        'step_citations': "Step 2: Collecting citing works for {0} publications...",
+        'collecting_citations_for': "Collecting citations for publication {0}/{1}",
+        'step_citing_metadata': "Step 3: Enriching citing works metadata...",
+        'analysis_complete': "✅ Analysis complete!",
+        'total_publications_found': "Total publications: {0}",
+        'total_citations_found': "Total citations: {0}",
+        'go_to_analytics': "👈 Go to 'Analytics' tab for detailed results",
+        
+        # Overview Section
+        'overview': "Overview",
+        'total_publications': "Total Publications",
+        'total_citations': "Total Citations",
+        'h_index': "h-index",
+        'g_index': "g-index",
+        'i10_index': "i10-index",
+        'i100_index': "i100-index",
+        'avg_citations': "Avg Citations",
+        'open_access': "Open Access",
+        'active_years': "Active Years",
+        'unique_authors': "Unique Authors",
+        'unique_countries': "Unique Countries",
+        'total_citing_works': "Total Citing Works",
+        'unique_citing_journals': "Unique Citing Journals",
+        'avg_authors_per_paper': "Avg Authors per Paper",
+        'avg_affiliations_per_paper': "Avg Affiliations per Paper",
+        'avg_countries_per_paper': "Avg Countries per Paper",
+        'international_collaboration_rate': "International Collaboration Rate",
+        
+        # Open Access Breakdown
+        'open_access_breakdown': "Open Access Breakdown",
+        'gold': "Gold",
+        'hybrid': "Hybrid",
+        'green': "Green",
+        'bronze': "Bronze",
+        'closed': "Closed",
+        'unknown': "Unknown",
+        
+        # Most Cited
+        'most_cited_publications': "Most Cited Publications (Top 30)",
+        'rank': "Rank",
+        'title': "Title",
+        'year': "Year",
+        'citations': "Citations",
+        'citations_per_year': "Citations/Year",
+        'authors': "Authors",
+        'doi': "DOI",
+        'show_citations': "Show Citations",
+        'citing_journal': "Citing Journal",
+        'citing_year': "Citing Year",
+        'citing_date': "Citing Date",
+        'citation_lag': "Citation Lag (years)",
+        'countries': "Countries",
+        'topics': "Topics",
+        
+        # Author Analysis
+        'author_analysis': "Author Analysis",
+        'top_authors': "Top Authors (with ORCID)",
+        'orcid': "ORCID",
+        'affiliations': "Affiliations",
+        'publication_count': "Publications",
+        'citation_count': "Citations",
+        
+        # Geographic Analysis
+        'geographic_analysis': "Geographic Analysis",
+        'geography_type_1': "Type 1: Unique Countries per Publication",
+        'geography_type_1_desc': "Each publication counted once per unique country",
+        'geography_type_2': "Type 2: Authors per Country",
+        'geography_type_2_desc': "Each author counted separately",
+        'geography_type_3': "Type 3: Collaboration Patterns",
+        'geography_type_3_desc': "Distribution of single-country vs international collaborations",
+        'single_country': "Single country",
+        'international_collaboration': "International collaboration",
+        'collaboration_couples': "Collaboration Couples (Country Pairs)",
+        'collaboration_matrix': "Collaboration Matrix",
+        'country1': "Country 1",
+        'country2': "Country 2",
+        'count': "Count",
+        
+        # Citation Analysis
+        'citation_analysis': "Citation Analysis",
+        'yearly_citation_dynamics': "Yearly Citation Dynamics",
+        'cumulative_citation_dynamics': "Cumulative Citation Dynamics",
+        'citation_network': "Citation Network (Heatmap)",
+        'publication_year': "Publication Year",
+        'citation_year': "Citation Year",
+        'citations_count': "Citations Count",
+        
+        # Citing Works Analysis
+        'citing_works_analysis': "Citing Works Analysis",
+        'total_citing_works': "Total Citing Works",
+        'unique_citing_authors': "Unique Citing Authors",
+        'unique_citing_affiliations': "Unique Citing Affiliations",
+        'unique_citing_countries': "Unique Citing Countries",
+        'unique_citing_journals': "Unique Citing Journals",
+        'unique_citing_publishers': "Unique Citing Publishers",
+        'top_citing_authors': "Top Citing Authors",
+        'top_citing_affiliations': "Top Citing Affiliations",
+        'top_citing_countries': "Top Citing Countries",
+        'top_citing_journals': "Top Citing Journals",
+        'top_citing_publishers': "Top Citing Publishers",
+        
+        # Topics Analysis
+        'topics_analysis': "Topics Analysis",
+        'topic': "Topic",
+        'analyzed_count': "Analyzed Count",
+        'citing_count': "Citing Count",
+        'analyzed_norm_count': "Analyzed Norm Count",
+        'citing_norm_count': "Citing Norm Count",
+        'total_norm_count': "Total Norm Count",
+        'first_year': "First Year",
+        'peak_year': "Peak Year",
+        'recent_5_years_count': "Recent 5 Years Count",
+        'top_topics': "Top Topics",
+        'top_fields': "Top Fields",
+        'top_subfields': "Top Subfields",
+        'top_domains': "Top Domains",
+        'top_concepts': "Top Concepts",
+        
+        # Detailed Citations
+        'detailed_citations': "Detailed Citations",
+        'click_to_toggle': "Click to toggle citations",
+        
+        # All Publications
+        'all_publications': "All Publications",
+        'filter_by_year': "Filter by Year",
+        'filter_by_author': "Filter by Author",
+        'filter_by_citations': "Filter by Citations (min)",
+        'search_publications': "Search Publications",
+        'showing_publications': "Showing {0} publications",
+        'all_years': "All Years",
+        'author_name_placeholder': "Author name...",
+        'min_citations_placeholder': "Min citations...",
+        'search_placeholder': "Search...",
+        
+        # Export
+        'export_html_report': "📄 Export HTML Report",
+        'download_html_report': "💾 Download HTML Report",
+        'export_csv': "📋 Export CSV",
+        'download_csv': "💾 Download CSV (Full Data)",
+        'export_text': "📋 Text Export",
+        'copy_to_clipboard': "📋 Copy to clipboard",
+        'copied': "✅ Data copied!",
+        'run_analysis_first': "👈 Please run analysis in 'Data Collection' tab first",
+        
+        # HTML Report
+        'html_generated': "Generated",
+        'html_footer': "",
+        'html_copyright': "© Journal Metrics Analyzer / Created by daM",
+        'html_not_found': "Not found",
+        'html_citations_label': "citations",
+        'html_percentage': "Percentage",
+        'html_connections': "connections",
+        'html_joint_works': "joint works",
+        'html_authors_count': "authors",
+        'html_frequency': "Frequency",
+        'html_citations_count': "citations",
+        'html_works': "works",
+        'html_rank': "Rank",
+        'html_count': "Count",
+        'html_journal_label': "Journal",
+        
+        # Citation Velocity
+        'citation_velocity': "Citation Velocity",
+        'velocity': "Velocity (citations/year)",
+        'velocity_category': "Velocity Category",
+        'very_high': "Very High",
+        'high': "High",
+        'medium': "Medium",
+        'low': "Low",
+        'age': "Age (years)",
+    },
+    'ru': {
+        # App
+        'app_title': "Анализатор метрик журнала",
+        'app_subtitle': "Расширенная аналитика для научных журналов с использованием OpenAlex API",
+        
+        # Sidebar
+        'issn_label': "ISSN",
+        'issn_placeholder': "0028-0836",
+        'period_label': "Период",
+        'period_placeholder': "2020-2023 или 2025 или 2020,2021,2022",
+        'period_help': "Один год (2025), диапазон (2020-2023) или список (2020,2021,2022)",
+        'workers_label': "Параллельных потоков",
+        'workers_help': "Количество параллельных API запросов (рекомендуется 4-12)",
+        'language_label': "Язык",
+        'language_english': "Английский",
+        'language_russian': "Русский",
+        'start_analysis': "🚀 Запустить анализ",
+        
+        # Tabs
+        'tab_collect': "📊 Сбор данных",
+        'tab_analytics': "📈 Аналитика",
+        'tab_report': "📄 Экспорт",
+        
+        # Data Collection
+        'collecting_data': "Сбор данных из OpenAlex...",
+        'step_publications': "Шаг 1: Получение публикаций журнала...",
+        'found_publications': "Найдено {0} публикаций",
+        'step_citations': "Шаг 2: Сбор цитирующих работ для {0} публикаций...",
+        'collecting_citations_for': "Сбор цитирований для публикации {0}/{1}",
+        'step_citing_metadata': "Шаг 3: Обогащение метаданных цитирующих работ...",
+        'analysis_complete': "✅ Анализ завершен!",
+        'total_publications_found': "Всего публикаций: {0}",
+        'total_citations_found': "Всего цитирований: {0}",
+        'go_to_analytics': "👈 Перейдите на вкладку 'Аналитика' для просмотра результатов",
+        
+        # Overview Section
+        'overview': "Обзор",
+        'total_publications': "Всего публикаций",
+        'total_citations': "Всего цитирований",
+        'h_index': "h-индекс",
+        'g_index': "g-индекс",
+        'i10_index': "i10-индекс",
+        'i100_index': "i100-индекс",
+        'avg_citations': "Среднее цитирований",
+        'open_access': "Открытый доступ",
+        'active_years': "Активные годы",
+        'unique_authors': "Уникальных авторов",
+        'unique_countries': "Уникальных стран",
+        'total_citing_works': "Всего цитирующих работ",
+        'unique_citing_journals': "Уникальных цитирующих журналов",
+        'avg_authors_per_paper': "Среднее авторов на статью",
+        'avg_affiliations_per_paper': "Среднее аффилиаций на статью",
+        'avg_countries_per_paper': "Среднее стран на статью",
+        'international_collaboration_rate': "Доля международных коллабораций",
+        
+        # Open Access Breakdown
+        'open_access_breakdown': "Распределение по типам доступа",
+        'gold': "Gold",
+        'hybrid': "Hybrid",
+        'green': "Green",
+        'bronze': "Bronze",
+        'closed': "Закрытый",
+        'unknown': "Неизвестно",
+        
+        # Most Cited
+        'most_cited_publications': "Самые цитируемые публикации (Топ-30)",
+        'rank': "Ранг",
+        'title': "Название",
+        'year': "Год",
+        'citations': "Цитирований",
+        'citations_per_year': "Цитирований/год",
+        'authors': "Авторы",
+        'doi': "DOI",
+        'show_citations': "Показать цитирования",
+        'citing_journal': "Цитирующий журнал",
+        'citing_year': "Год цитирования",
+        'citing_date': "Дата цитирования",
+        'citation_lag': "Задержка цитирования (лет)",
+        'countries': "Страны",
+        'topics': "Темы",
+        
+        # Author Analysis
+        'author_analysis': "Анализ авторов",
+        'top_authors': "Топ авторов (с ORCID)",
+        'orcid': "ORCID",
+        'affiliations': "Аффилиации",
+        'publication_count': "Публикаций",
+        'citation_count': "Цитирований",
+        
+        # Geographic Analysis
+        'geographic_analysis': "Географический анализ",
+        'geography_type_1': "Тип 1: Уникальные страны по публикации",
+        'geography_type_1_desc': "Каждая публикация учитывается один раз на уникальную страну",
+        'geography_type_2': "Тип 2: Авторы по странам",
+        'geography_type_2_desc': "Каждый автор учитывается отдельно",
+        'geography_type_3': "Тип 3: Паттерны коллабораций",
+        'geography_type_3_desc': "Распределение внутристрановых и международных коллабораций",
+        'single_country': "Одна страна",
+        'international_collaboration': "Международная коллаборация",
+        'collaboration_couples': "Пары стран (частота взаимодействия)",
+        'collaboration_matrix': "Матрица коллабораций",
+        'country1': "Страна 1",
+        'country2': "Страна 2",
+        'count': "Количество",
+        
+        # Citation Analysis
+        'citation_analysis': "Анализ цитирований",
+        'yearly_citation_dynamics': "Динамика цитирования по годам",
+        'cumulative_citation_dynamics': "Кумулятивная динамика цитирования",
+        'citation_network': "Сеть цитирования (тепловая карта)",
+        'publication_year': "Год публикации",
+        'citation_year': "Год цитирования",
+        'citations_count': "Количество цитирований",
+        
+        # Citing Works Analysis
+        'citing_works_analysis': "Анализ цитирующих работ",
+        'total_citing_works': "Всего цитирующих работ",
+        'unique_citing_authors': "Уникальных цитирующих авторов",
+        'unique_citing_affiliations': "Уникальных цитирующих аффилиаций",
+        'unique_citing_countries': "Уникальных цитирующих стран",
+        'unique_citing_journals': "Уникальных цитирующих журналов",
+        'unique_citing_publishers': "Уникальных цитирующих издательств",
+        'top_citing_authors': "Топ цитирующих авторов",
+        'top_citing_affiliations': "Топ цитирующих аффилиаций",
+        'top_citing_countries': "Топ цитирующих стран",
+        'top_citing_journals': "Топ цитирующих журналов",
+        'top_citing_publishers': "Топ цитирующих издательств",
+        
+        # Topics Analysis
+        'topics_analysis': "Анализ тем",
+        'topic': "Тема",
+        'analyzed_count': "Анализируемых",
+        'citing_count': "Цитирующих",
+        'analyzed_norm_count': "Норм. анализируемых",
+        'citing_norm_count': "Норм. цитирующих",
+        'total_norm_count': "Всего норм.",
+        'first_year': "Первый год",
+        'peak_year': "Пиковый год",
+        'recent_5_years_count': "Последние 5 лет",
+        'top_topics': "Топ тем",
+        'top_fields': "Топ полей",
+        'top_subfields': "Топ подполей",
+        'top_domains': "Топ доменов",
+        'top_concepts': "Топ концепций",
+        
+        # Detailed Citations
+        'detailed_citations': "Детальные цитирования",
+        'click_to_toggle': "Нажмите для показа цитирований",
+        
+        # All Publications
+        'all_publications': "Все публикации",
+        'filter_by_year': "Фильтр по году",
+        'filter_by_author': "Фильтр по автору",
+        'filter_by_citations': "Фильтр по цитированиям (мин)",
+        'search_publications': "Поиск публикаций",
+        'showing_publications': "Показано {0} публикаций",
+        'all_years': "Все годы",
+        'author_name_placeholder': "Имя автора...",
+        'min_citations_placeholder': "Мин. цитирований...",
+        'search_placeholder': "Поиск...",
+        
+        # Export
+        'export_html_report': "📄 Экспорт HTML отчета",
+        'download_html_report': "💾 Скачать HTML отчет",
+        'export_csv': "📋 Экспорт CSV",
+        'download_csv': "💾 Скачать CSV (полные данные)",
+        'export_text': "📋 Текстовый экспорт",
+        'copy_to_clipboard': "📋 Копировать в буфер",
+        'copied': "✅ Данные скопированы!",
+        'run_analysis_first': "👈 Сначала запустите анализ на вкладке 'Сбор данных'",
+        
+        # HTML Report
+        'html_generated': "Сгенерирован",
+        'html_footer': "",
+        'html_copyright': "© Journal Metrics Analyzer / Created by daM",
+        'html_not_found': "Не найден",
+        'html_citations_label': "цитирований",
+        'html_percentage': "Процент",
+        'html_connections': "связей",
+        'html_joint_works': "совместных работ",
+        'html_authors_count': "авторов",
+        'html_frequency': "Частота",
+        'html_citations_count': "цитирований",
+        'html_works': "работ",
+        'html_rank': "Ранг",
+        'html_count': "Количество",
+        'html_journal_label': "Журнал",
+        
+        # Citation Velocity
+        'citation_velocity': "Скорость цитирования",
+        'velocity': "Скорость (цитирований/год)",
+        'velocity_category': "Категория скорости",
+        'very_high': "Очень высокая",
+        'high': "Высокая",
+        'medium': "Средняя",
+        'low': "Низкая",
+        'age': "Возраст (лет)",
+    }
+}
 
-class OpenAlexClient:
-    """OpenAlex API client with parallel processing and rate limiting"""
+def get_text(key: str) -> str:
+    """Get localized text by key"""
+    lang = st.session_state.get('language', 'en')
+    return TEXTS[lang].get(key, TEXTS['en'].get(key, key))
+
+# ======================== PAGE CONFIGURATION ========================
+st.set_page_config(
+    page_title="Journal Metrics Analyzer",
+    page_icon="📚",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Initialize session state
+if 'language' not in st.session_state:
+    st.session_state.language = 'en'
+if 'primary_color' not in st.session_state:
+    st.session_state.primary_color = '#667eea'
+if 'secondary_color' not in st.session_state:
+    st.session_state.secondary_color = get_complementary_color('#667eea')
+if 'journal_data' not in st.session_state:
+    st.session_state.journal_data = None
+if 'metrics' not in st.session_state:
+    st.session_state.metrics = None
+if 'analysis_complete' not in st.session_state:
+    st.session_state.analysis_complete = False
+
+# ======================== CSS STYLES ========================
+st.markdown("""
+<style>
+    .stApp {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    }
     
-    def __init__(self, max_workers: int = 8):
-        self.max_workers = max_workers
-        self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'JournalMetricsAnalyzer/2.0 (mailto:analyzer@example.com)',
-            'Accept': 'application/json'
-        })
-        self.lock = Lock()
-        self.base_delay = 0.35
-        self.max_retries = 4
+    .metric-card {
+        background: white;
+        border-radius: 15px;
+        padding: 20px;
+        text-align: center;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        transition: transform 0.3s;
+        margin-bottom: 15px;
+    }
+    .metric-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+    }
+    .metric-number {
+        font-size: 36px;
+        font-weight: bold;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+    .metric-label {
+        color: #666;
+        font-size: 14px;
+        margin-top: 8px;
+    }
     
-    def _normalize_issn(self, issn_str: str) -> str:
-        """Normalize ISSN to OpenAlex format"""
-        cleaned = re.sub(r'[^0-9Xx]', '', str(issn_str).strip())
-        if len(cleaned) == 8:
-            return f"{cleaned[:4]}-{cleaned[4:]}".upper()
-        return cleaned.upper()
+    .rank-item {
+        background: white;
+        border-radius: 10px;
+        padding: 12px;
+        margin-bottom: 8px;
+        transition: all 0.3s;
+        border-left: 3px solid #667eea;
+    }
+    .rank-item:hover {
+        transform: translateX(5px);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .rank-number {
+        font-weight: bold;
+        color: #667eea;
+        font-size: 18px;
+        display: inline-block;
+        width: 40px;
+    }
+    .rank-name {
+        display: inline-block;
+        width: 200px;
+        font-weight: 500;
+    }
+    .rank-count {
+        float: right;
+        color: #666;
+    }
+    .progress-bar-custom {
+        background: #e0e0e0;
+        border-radius: 10px;
+        height: 8px;
+        margin-top: 8px;
+        overflow: hidden;
+    }
+    .progress-fill {
+        background: linear-gradient(90deg, #667eea, #764ba2);
+        height: 100%;
+        border-radius: 10px;
+        transition: width 0.5s;
+    }
     
-    @retry(stop=stop_after_attempt(4), wait=wait_exponential(multiplier=1, min=1, max=10), retry=retry_if_exception_type(Exception))
-    def _smart_get(self, url: str, params: Dict) -> Optional[Dict]:
-        """Smart GET with rate limiting and retry logic"""
-        for attempt in range(self.max_retries):
-            try:
-                with self.lock:
-                    time.sleep(random.uniform(0.1, self.base_delay))
-                
-                response = self.session.get(url, params=params, timeout=25)
-                
-                if response.status_code == 429:
-                    wait = int(response.headers.get("Retry-After", 2 ** attempt + 1))
-                    time.sleep(wait + random.uniform(0.5, 1.5))
-                    continue
-                
-                if response.status_code == 200:
-                    return response.json()
-                
-                if response.status_code >= 500:
-                    time.sleep(1 * (2 ** attempt))
-                    continue
-                
-                return None
-                
-            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
-                time.sleep(1.5 * (2 ** attempt))
+    .badge-success {
+        background: #d4edda;
+        color: #155724;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        display: inline-block;
+    }
+    .badge-warning {
+        background: #fff3cd;
+        color: #856404;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    .badge-info {
+        background: #d1ecf1;
+        color: #0c5460;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    
+    .section-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 12px 20px;
+        border-radius: 10px;
+        margin: 20px 0 15px 0;
+        font-weight: 600;
+    }
+    
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+    
+    .custom-tab {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        margin-top: 20px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .custom-tab-button {
+        background: linear-gradient(135deg, #f5f7fa 0%, #e9ecef 100%);
+        border: none;
+        border-radius: 12px;
+        padding: 15px 10px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s;
+        margin: 5px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .custom-tab-button:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+    }
+    .custom-tab-button.active {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+    .custom-tab-icon {
+        font-size: 28px;
+        margin-bottom: 8px;
+    }
+    .custom-tab-title {
+        font-weight: 600;
+        font-size: 14px;
+    }
+    .custom-tab-subtitle {
+        font-size: 11px;
+        opacity: 0.8;
+        margin-top: 4px;
+    }
+    
+    .clickable-link {
+        color: #667eea;
+        text-decoration: none;
+        transition: all 0.3s;
+    }
+    .clickable-link:hover {
+        color: #764ba2;
+        text-decoration: underline;
+    }
+    
+    .footer {
+        text-align: center;
+        padding: 20px;
+        color: #666;
+        font-size: 12px;
+        margin-top: 40px;
+    }
+    
+    .colored-progress-container {
+        width: 100%;
+        background-color: #f0f0f0;
+        border-radius: 20px;
+        overflow: hidden;
+        box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);
+        margin: 10px 0;
+    }
+    
+    .colored-progress-bar {
+        height: 28px;
+        border-radius: 20px;
+        transition: width 0.5s ease-in-out;
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: bold;
+        font-size: 12px;
+        text-shadow: 0 0 2px rgba(0,0,0,0.5);
+    }
+    
+    .colored-progress-bar::after {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        white-space: nowrap;
+    }
+    
+    .progress-stats {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: #666;
+        margin-top: 5px;
+    }
+    
+    .filter-section {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+    }
+    .filter-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 15px;
+        align-items: center;
+    }
+    .filter-row > div {
+        flex: 1;
+        min-width: 150px;
+    }
+    .filter-row label {
+        display: block;
+        font-size: 12px;
+        color: #666;
+        margin-bottom: 4px;
+    }
+    .filter-row select, .filter-row input {
+        width: 100%;
+        padding: 6px 10px;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        font-size: 13px;
+    }
+    .filter-row select:focus, .filter-row input:focus {
+        outline: none;
+        border-color: #667eea;
+        box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+    }
+    
+    .collapser {
+        background: #f8f9fa;
+        padding: 12px 15px;
+        border-radius: 8px;
+        cursor: pointer;
+        margin-bottom: 8px;
+        transition: background 0.2s;
+        border-left: 3px solid #667eea;
+    }
+    .collapser:hover {
+        background: #e9ecef;
+    }
+    .collapser .citation-count {
+        background: #667eea;
+        color: white;
+        padding: 2px 10px;
+        border-radius: 12px;
+        font-size: 11px;
+        margin-left: 10px;
+    }
+    
+    .citation-detail {
+        background: white;
+        padding: 12px 15px;
+        margin: 5px 0 5px 20px;
+        border-radius: 6px;
+        border-left: 2px solid #ddd;
+        font-size: 13px;
+    }
+    .citation-detail .cite-meta {
+        font-size: 12px;
+        color: #666;
+        margin-top: 4px;
+    }
+    .citation-detail .doi-link {
+        color: #667eea;
+        text-decoration: none;
+        font-size: 12px;
+    }
+    .citation-detail .doi-link:hover {
+        text-decoration: underline;
+    }
+    
+    .word-wrap {
+        word-break: break-word;
+        max-width: 300px;
+    }
+    
+    .dataframe-container {
+        background: white;
+        border-radius: 10px;
+        padding: 15px;
+        overflow-x: auto;
+    }
+    
+    .footer-text {
+        text-align: center;
+        padding: 20px;
+        color: #666;
+        font-size: 12px;
+        margin-top: 40px;
+        border-top: 1px solid #e0e0e0;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# ======================== OPENALEX API CLIENT ========================
+
+def normalize_issn(issn_str: str) -> str:
+    """Normalize ISSN to format XXXX-XXXX"""
+    cleaned = re.sub(r'[^0-9Xx]', '', str(issn_str).strip())
+    if len(cleaned) == 8:
+        return f"{cleaned[:4]}-{cleaned[4:]}".upper()
+    return cleaned.upper()
+
+@retry(stop=stop_after_attempt(4), wait=wait_exponential(multiplier=1, min=1, max=10))
+def smart_get(url: str, params: Dict, retries: int = 4) -> Optional[Dict]:
+    """
+    Smart GET request with rate limiting and retry logic
+    """
+    for attempt in range(retries):
+        try:
+            time.sleep(random.uniform(0.1, 0.35))
+            
+            resp = requests.get(url, params=params, timeout=25)
+            
+            if resp.status_code == 429:
+                wait = int(resp.headers.get("Retry-After", 2 ** attempt + 1))
+                time.sleep(wait + random.uniform(0.5, 1.5))
                 continue
-            except Exception:
-                time.sleep(1.5 * (2 ** attempt))
-                continue
-        
-        return None
+                
+            if resp.status_code == 200:
+                return resp.json()
+            
+            time.sleep(1 * (2 ** attempt))
+            
+        except Exception:
+            time.sleep(1.5 * (2 ** attempt))
     
-    def get_publications(self, issn: str, years, progress_callback=None) -> List[Publication]:
-        """
-        Get all publications from a journal for given years
+    return None
+
+def get_journal_publications(issn: str, years, progress_callback=None) -> List[Publication]:
+    """
+    Get all publications from a journal for the specified period
+    """
+    normalized = normalize_issn(issn)
+    publications = []
+    
+    base_url = "https://api.openalex.org/works"
+    
+    if isinstance(years, list):
+        year_filter = "|".join(f"publication_year:{y}" for y in years)
+    elif isinstance(years, tuple):
+        year_filter = f"publication_year:{years[0]}-{years[1]}"
+    else:
+        year_filter = f"publication_year:{years}"
+    
+    cursor = "*"
+    
+    while True:
+        params = {
+            "filter": f"primary_location.source.issn:{normalized},{year_filter}",
+            "per_page": 200,
+            "select": "id,doi,publication_year,cited_by_count,title,authorships,primary_location,open_access,topics,concepts,type",
+            "cursor": cursor
+        }
         
-        Args:
-            issn: ISSN of the journal
-            years: int (single year), list (multiple years), tuple (range)
-            progress_callback: function to update progress
+        data = smart_get(base_url, params)
+        if not data or not data.get("results"):
+            break
         
-        Returns:
-            List of Publication objects
-        """
-        normalized = self._normalize_issn(issn)
+        for w in data["results"]:
+            # Extract authors
+            authors = []
+            for authorship in w.get("authorships", []):
+                author_data = authorship.get("author", {})
+                author = Author(
+                    display_name=author_data.get("display_name", ""),
+                    orcid=author_data.get("orcid", ""),
+                    affiliations=[inst.get("display_name", "") for inst in authorship.get("institutions", [])],
+                    countries=[inst.get("country_code", "") for inst in authorship.get("institutions", []) if inst.get("country_code")],
+                    raw_data=authorship
+                )
+                authors.append(author)
+            
+            # Extract topics
+            topics = []
+            for topic_data in w.get("topics", []):
+                topic = Topic(
+                    display_name=topic_data.get("display_name", ""),
+                    score=topic_data.get("score", 0.0),
+                    id=topic_data.get("id", ""),
+                    type="topic"
+                )
+                topics.append(topic)
+            
+            # Extract concepts
+            concepts = []
+            for concept_data in w.get("concepts", []):
+                concept = Topic(
+                    display_name=concept_data.get("display_name", ""),
+                    score=concept_data.get("score", 0.0),
+                    id=concept_data.get("id", ""),
+                    type="concept"
+                )
+                concepts.append(concept)
+            
+            # Extract journal and publisher
+            journal_name = ""
+            publisher = ""
+            primary_location = w.get("primary_location", {})
+            if primary_location:
+                source = primary_location.get("source", {})
+                journal_name = source.get("display_name", "")
+                publisher = source.get("publisher", "")
+            
+            # Extract open access
+            open_access_data = w.get("open_access", {})
+            is_open_access = open_access_data.get("is_open_access", False)
+            open_access_status = open_access_data.get("oa_status", "")
+            
+            # Create publication
+            doi = w.get("doi", "")
+            if doi:
+                doi = doi.replace("https://doi.org/", "")
+            
+            pub = Publication(
+                id=w.get("id", ""),
+                doi=doi,
+                title=w.get("title", ""),
+                publication_year=w.get("publication_year", 0),
+                cited_by_count=w.get("cited_by_count", 0),
+                citations_per_year=0.0,
+                authors=authors,
+                journal_name=journal_name,
+                publisher=publisher,
+                open_access_status=open_access_status,
+                is_open_access=is_open_access,
+                topics=topics,
+                concepts=concepts,
+                raw_data=w
+            )
+            
+            publications.append(pub)
         
-        # Parse years filter
-        if isinstance(years, list):
-            year_filter = "|".join(f"publication_year:{y}" for y in years)
-        elif isinstance(years, tuple) and len(years) == 2:
-            year_filter = f"publication_year:{years[0]}-{years[1]}"
+        if progress_callback:
+            progress_callback(len(data["results"]))
+        
+        cursor = data.get("meta", {}).get("next_cursor")
+        if not cursor:
+            break
+    
+    # Calculate citations per year
+    current_year = datetime.now().year
+    for pub in publications:
+        age = current_year - pub.publication_year
+        if age > 0:
+            pub.citations_per_year = pub.cited_by_count / age
         else:
-            year_filter = f"publication_year:{years}"
-        
-        publications = []
-        cursor = "*"
-        base_url = "https://api.openalex.org/works"
-        
-        while True:
-            data = self._smart_get(base_url, {
-                "filter": f"primary_location.source.issn:{normalized},{year_filter}",
-                "per_page": 200,
-                "select": "id,doi,title,publication_year,cited_by_count,authorships,primary_location,open_access,topics,concepts",
-                "cursor": cursor
-            })
-            
-            if not data or not data.get("results"):
-                break
-            
-            for work in data["results"]:
-                pub = self._parse_publication(work)
-                publications.append(pub)
-            
-            if progress_callback:
-                progress_callback(len(publications))
-            
-            cursor = data.get("meta", {}).get("next_cursor")
-            if not cursor:
-                break
-        
-        return publications
+            pub.citations_per_year = pub.cited_by_count
     
-    def _parse_publication(self, work: Dict) -> Publication:
-        """Parse OpenAlex work data into Publication object"""
-        # Extract DOI
-        doi = work.get("doi", "")
-        if doi:
-            doi = doi.replace("https://doi.org/", "")
+    return publications
+
+def get_citing_works_for_publication(pub_id: str, progress_callback=None) -> List[CitingWork]:
+    """
+    Get ALL citing works for a publication (no limit)
+    """
+    citing_works = []
+    base_url = "https://api.openalex.org/works"
+    cursor = "*"
+    
+    while True:
+        params = {
+            "filter": f"cites:{pub_id}",
+            "per_page": 200,
+            "cursor": cursor
+        }
         
-        # Extract title
-        title = work.get("title", "")
+        data = smart_get(base_url, params)
+        if not data or not data.get("results"):
+            break
         
-        # Extract year
-        year = work.get("publication_year")
-        
-        # Extract citations
-        cited_by_count = work.get("cited_by_count", 0)
-        
-        # Extract authors
-        authors = []
-        for authorship in work.get("authorships", []):
-            author_data = authorship.get("author", {})
-            author_name = author_data.get("display_name", "")
-            if not author_name:
-                continue
+        for w in data["results"]:
+            # Extract authors
+            authors = []
+            for authorship in w.get("authorships", []):
+                author_data = authorship.get("author", {})
+                author = Author(
+                    display_name=author_data.get("display_name", ""),
+                    orcid=author_data.get("orcid", ""),
+                    affiliations=[inst.get("display_name", "") for inst in authorship.get("institutions", [])],
+                    countries=[inst.get("country_code", "") for inst in authorship.get("institutions", []) if inst.get("country_code")],
+                    raw_data=authorship
+                )
+                authors.append(author)
             
-            orcid = author_data.get("orcid", "")
+            # Extract countries
+            countries = set()
+            for authorship in w.get("authorships", []):
+                for inst in authorship.get("institutions", []):
+                    if inst.get("country_code"):
+                        countries.add(inst.get("country_code"))
             
-            # Extract affiliations and countries
-            affiliations = []
-            countries = []
-            for inst in authorship.get("institutions", []):
-                aff_name = inst.get("display_name", "")
-                if aff_name:
-                    affiliations.append(aff_name)
-                
-                country_code = inst.get("country_code", "")
-                if country_code and country_code != "XX":
-                    country_names = {
-                        'US': 'USA', 'GB': 'UK', 'CN': 'China', 'DE': 'Germany',
-                        'FR': 'France', 'JP': 'Japan', 'CA': 'Canada', 'AU': 'Australia',
-                        'RU': 'Russia', 'IN': 'India', 'BR': 'Brazil', 'IT': 'Italy',
-                        'ES': 'Spain', 'KR': 'South Korea', 'NL': 'Netherlands',
-                        'CH': 'Switzerland', 'SE': 'Sweden', 'BE': 'Belgium',
-                        'NO': 'Norway', 'DK': 'Denmark', 'FI': 'Finland', 'PL': 'Poland',
-                        'PT': 'Portugal', 'GR': 'Greece', 'TR': 'Turkey', 'IL': 'Israel',
-                        'SG': 'Singapore', 'TW': 'Taiwan', 'HK': 'Hong Kong',
-                        'MX': 'Mexico', 'AR': 'Argentina', 'BR': 'Brazil', 'CL': 'Chile',
-                        'CO': 'Colombia', 'UA': 'Ukraine', 'CZ': 'Czech Republic',
-                        'HU': 'Hungary', 'RO': 'Romania', 'BG': 'Bulgaria', 'RS': 'Serbia',
-                        'HR': 'Croatia', 'SK': 'Slovakia', 'SI': 'Slovenia', 'LT': 'Lithuania',
-                        'LV': 'Latvia', 'EE': 'Estonia', 'IE': 'Ireland', 'NZ': 'New Zealand',
-                        'ZA': 'South Africa', 'EG': 'Egypt', 'SA': 'Saudi Arabia',
-                        'AE': 'United Arab Emirates', 'QA': 'Qatar', 'IR': 'Iran',
-                        'PK': 'Pakistan', 'BD': 'Bangladesh', 'VN': 'Vietnam',
-                        'TH': 'Thailand', 'MY': 'Malaysia', 'ID': 'Indonesia',
-                        'PH': 'Philippines', 'KZ': 'Kazakhstan', 'BY': 'Belarus',
-                        'UZ': 'Uzbekistan', 'AZ': 'Azerbaijan', 'GE': 'Georgia',
-                        'AM': 'Armenia', 'MD': 'Moldova', 'KG': 'Kyrgyzstan',
-                        'TJ': 'Tajikistan', 'TM': 'Turkmenistan', 'MN': 'Mongolia'
-                    }
-                    country = country_names.get(country_code, country_code)
-                    if country:
-                        countries.append(country)
+            # Extract affiliations
+            affiliations = set()
+            for authorship in w.get("authorships", []):
+                for inst in authorship.get("institutions", []):
+                    if inst.get("display_name"):
+                        affiliations.add(inst.get("display_name"))
             
-            author = Author(
-                display_name=author_name,
-                orcid=orcid,
-                affiliations=affiliations,
-                countries=countries,
-                raw_data=authorship
-            )
-            authors.append(author)
-        
-        # Extract journal name
-        journal_name = ""
-        primary_location = work.get("primary_location", {})
-        if primary_location:
-            source = primary_location.get("source", {})
-            if source:
+            # Extract topics
+            topics = []
+            for topic_data in w.get("topics", []):
+                topic = Topic(
+                    display_name=topic_data.get("display_name", ""),
+                    score=topic_data.get("score", 0.0),
+                    id=topic_data.get("id", ""),
+                    type="topic"
+                )
+                topics.append(topic)
+            
+            # Extract journal and publisher
+            journal_name = ""
+            publisher = ""
+            primary_location = w.get("primary_location", {})
+            if primary_location:
+                source = primary_location.get("source", {})
                 journal_name = source.get("display_name", "")
-        
-        # Extract publisher
-        publisher = ""
-        if primary_location:
-            source = primary_location.get("source", {})
-            if source:
                 publisher = source.get("publisher", "")
-        
-        # Extract open access status
-        open_access = work.get("open_access", {})
-        open_access_status = open_access.get("oa_status", "")
-        is_open_access = open_access.get("is_oa", False)
-        
-        # Extract topics
-        topics = []
-        for topic_data in work.get("topics", []):
-            topic = Topic(
-                display_name=topic_data.get("display_name", ""),
-                score=topic_data.get("score", 0.0),
-                id=topic_data.get("id", ""),
-                type="topic"
+            
+            # Extract open access
+            open_access_data = w.get("open_access", {})
+            open_access_status = open_access_data.get("oa_status", "")
+            
+            # Extract date
+            publication_date = w.get("publication_date", "")
+            citing_year = w.get("publication_year", 0)
+            
+            citing = CitingWork(
+                citing_title=w.get("title", ""),
+                citing_year=citing_year,
+                citing_date=publication_date,
+                citing_journal=journal_name,
+                citing_publisher=publisher,
+                citing_doi=w.get("doi", "").replace("https://doi.org/", ""),
+                citing_authors=authors,
+                citing_countries=list(countries),
+                citing_affiliations=list(affiliations),
+                citing_topics=topics,
+                citing_open_access_status=open_access_status,
+                citation_lag=0  # Will be calculated later
             )
-            topics.append(topic)
+            
+            citing_works.append(citing)
         
-        # Extract concepts
-        concepts = []
-        for concept_data in work.get("concepts", []):
-            concept = Topic(
-                display_name=concept_data.get("display_name", ""),
-                score=concept_data.get("score", 0.0),
-                id=concept_data.get("id", ""),
-                type="concept"
-            )
-            concepts.append(concept)
+        if progress_callback:
+            progress_callback(len(data["results"]))
         
-        # Calculate citations per year
-        citations_per_year = 0
-        if year and cited_by_count > 0:
-            age = datetime.now().year - year
-            if age > 0:
-                citations_per_year = cited_by_count / age
-            else:
-                citations_per_year = cited_by_count
-        
-        return Publication(
-            id=work.get("id", ""),
-            doi=doi,
-            title=title,
-            publication_year=year or 0,
-            cited_by_count=cited_by_count,
-            citations_per_year=citations_per_year,
-            authors=authors,
-            journal_name=journal_name,
-            publisher=publisher,
-            open_access_status=open_access_status,
-            is_open_access=is_open_access,
-            topics=topics,
-            concepts=concepts,
-            raw_data=work
-        )
+        cursor = data.get("meta", {}).get("next_cursor")
+        if not cursor:
+            break
     
-    def get_citing_works(self, publication: Publication, progress_callback=None) -> List[CitingWork]:
-        """
-        Get all citing works for a publication
+    return citing_works
+
+def collect_all_data(issn: str, years, max_workers: int = 8, progress_callback=None) -> JournalData:
+    """
+    Main method to collect all data with parallel processing
+    """
+    if progress_callback:
+        progress_callback(get_text('step_publications'), 0)
+    
+    # Step 1: Get publications
+    publications = get_journal_publications(issn, years)
+    
+    if progress_callback:
+        progress_callback(get_text('found_publications').format(len(publications)), 10)
+    
+    if not publications:
+        return JournalData()
+    
+    # Step 2: Get citing works for each publication (parallel)
+    citations = {}
+    citing_works_set = set()
+    
+    if progress_callback:
+        progress_callback(get_text('step_citations').format(len(publications)), 20)
+    
+    total_pubs = len(publications)
+    completed = 0
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {}
+        for pub in publications:
+            if pub.id:
+                future = executor.submit(get_citing_works_for_publication, pub.id)
+                futures[future] = pub.id
         
-        Args:
-            publication: Publication object
-            progress_callback: function to update progress
-        
-        Returns:
-            List of CitingWork objects
-        """
-        citing_works = []
-        cursor = "*"
-        base_url = "https://api.openalex.org/works"
-        
-        # Get OpenAlex ID
-        oa_id = publication.id
-        if not oa_id:
-            return citing_works
-        
-        while True:
-            data = self._smart_get(base_url, {
-                "filter": f"cites:{oa_id}",
-                "per_page": 200,
-                "select": "id,doi,title,publication_year,publication_date,authorships,primary_location,open_access,topics,concepts",
-                "cursor": cursor
-            })
+        for future in as_completed(futures):
+            pub_id = futures[future]
+            try:
+                citing_works = future.result()
+                citations[pub_id] = citing_works
+                for citing in citing_works:
+                    citing_works_set.add(citing.citing_doi)
+            except Exception:
+                citations[pub_id] = []
             
-            if not data or not data.get("results"):
-                break
-            
-            for work in data["results"]:
-                citing = self._parse_citing_work(work, publication)
-                citing_works.append(citing)
-            
+            completed += 1
             if progress_callback:
-                progress_callback(len(citing_works))
-            
-            cursor = data.get("meta", {}).get("next_cursor")
-            if not cursor:
-                break
-        
-        return citing_works
+                progress_callback(
+                    get_text('collecting_citations_for').format(completed, total_pubs),
+                    20 + int((completed / total_pubs) * 50)
+                )
     
-    def _parse_citing_work(self, work: Dict, original_pub: Publication) -> CitingWork:
-        """Parse OpenAlex work data into CitingWork object"""
-        # Extract DOI
-        doi = work.get("doi", "")
-        if doi:
-            doi = doi.replace("https://doi.org/", "")
-        
-        # Extract title
-        title = work.get("title", "")
-        
-        # Extract year
-        year = work.get("publication_year", 0)
-        
-        # Extract date
-        date = work.get("publication_date", "")
-        
-        # Extract authors
-        authors = []
-        countries = []
-        affiliations = []
-        
-        for authorship in work.get("authorships", []):
-            author_data = authorship.get("author", {})
-            author_name = author_data.get("display_name", "")
-            if not author_name:
-                continue
-            
-            orcid = author_data.get("orcid", "")
-            
-            # Extract affiliations and countries
-            affs = []
-            cnts = []
-            for inst in authorship.get("institutions", []):
-                aff_name = inst.get("display_name", "")
-                if aff_name:
-                    affs.append(aff_name)
-                    affiliations.append(aff_name)
-                
-                country_code = inst.get("country_code", "")
-                if country_code and country_code != "XX":
-                    country_names = {
-                        'US': 'USA', 'GB': 'UK', 'CN': 'China', 'DE': 'Germany',
-                        'FR': 'France', 'JP': 'Japan', 'CA': 'Canada', 'AU': 'Australia',
-                        'RU': 'Russia', 'IN': 'India', 'BR': 'Brazil', 'IT': 'Italy',
-                        'ES': 'Spain', 'KR': 'South Korea', 'NL': 'Netherlands',
-                        'CH': 'Switzerland', 'SE': 'Sweden', 'BE': 'Belgium',
-                        'NO': 'Norway', 'DK': 'Denmark', 'FI': 'Finland', 'PL': 'Poland',
-                        'PT': 'Portugal', 'GR': 'Greece', 'TR': 'Turkey', 'IL': 'Israel',
-                        'SG': 'Singapore', 'TW': 'Taiwan', 'HK': 'Hong Kong',
-                        'MX': 'Mexico', 'AR': 'Argentina', 'BR': 'Brazil', 'CL': 'Chile',
-                        'CO': 'Colombia', 'UA': 'Ukraine', 'CZ': 'Czech Republic',
-                        'HU': 'Hungary', 'RO': 'Romania', 'BG': 'Bulgaria', 'RS': 'Serbia',
-                        'HR': 'Croatia', 'SK': 'Slovakia', 'SI': 'Slovenia', 'LT': 'Lithuania',
-                        'LV': 'Latvia', 'EE': 'Estonia', 'IE': 'Ireland', 'NZ': 'New Zealand',
-                        'ZA': 'South Africa', 'EG': 'Egypt', 'SA': 'Saudi Arabia',
-                        'AE': 'United Arab Emirates', 'QA': 'Qatar', 'IR': 'Iran',
-                        'PK': 'Pakistan', 'BD': 'Bangladesh', 'VN': 'Vietnam',
-                        'TH': 'Thailand', 'MY': 'Malaysia', 'ID': 'Indonesia',
-                        'PH': 'Philippines', 'KZ': 'Kazakhstan', 'BY': 'Belarus',
-                        'UZ': 'Uzbekistan', 'AZ': 'Azerbaijan', 'GE': 'Georgia',
-                        'AM': 'Armenia', 'MD': 'Moldova', 'KG': 'Kyrgyzstan',
-                        'TJ': 'Tajikistan', 'TM': 'Turkmenistan', 'MN': 'Mongolia'
-                    }
-                    country = country_names.get(country_code, country_code)
-                    if country:
-                        cnts.append(country)
-                        countries.append(country)
-            
-            author = Author(
-                display_name=author_name,
-                orcid=orcid,
-                affiliations=affs,
-                countries=cnts,
-                raw_data=authorship
-            )
-            authors.append(author)
-        
-        # Extract journal name
-        journal_name = ""
-        primary_location = work.get("primary_location", {})
-        if primary_location:
-            source = primary_location.get("source", {})
-            if source:
-                journal_name = source.get("display_name", "")
-        
-        # Extract publisher
-        publisher = ""
-        if primary_location:
-            source = primary_location.get("source", {})
-            if source:
-                publisher = source.get("publisher", "")
-        
-        # Extract open access status
-        open_access = work.get("open_access", {})
-        open_access_status = open_access.get("oa_status", "")
-        
-        # Extract topics
-        topics = []
-        for topic_data in work.get("topics", []):
-            topic = Topic(
-                display_name=topic_data.get("display_name", ""),
-                score=topic_data.get("score", 0.0),
-                id=topic_data.get("id", ""),
-                type="topic"
-            )
-            topics.append(topic)
-        
-        # Calculate citation lag
-        citation_lag = 0
-        if year and original_pub.publication_year:
-            citation_lag = year - original_pub.publication_year
-        
-        return CitingWork(
-            citing_title=title,
-            citing_year=year,
-            citing_date=date,
-            citing_journal=journal_name,
-            citing_publisher=publisher,
-            citing_doi=doi,
-            citing_authors=authors,
-            citing_countries=list(set(countries)),
-            citing_affiliations=list(set(affiliations)),
-            citing_topics=topics,
-            citing_open_access_status=open_access_status,
-            citation_lag=citation_lag
-        )
+    # Step 3: Calculate citation lag
+    pub_years = {pub.id: pub.publication_year for pub in publications}
+    for pub_id, citing_list in citations.items():
+        pub_year = pub_years.get(pub_id, 0)
+        for citing in citing_list:
+            citing.citation_lag = citing.citing_year - pub_year if pub_year > 0 else 0
+    
+    if progress_callback:
+        progress_callback(get_text('step_citing_metadata'), 90)
+    
+    # Step 4: Collect unique citing works
+    citing_works_list = []
+    for citing_list in citations.values():
+        for citing in citing_list:
+            if citing.citing_doi not in citing_works_set:
+                citing_works_set.add(citing.citing_doi)
+                citing_works_list.append(citing)
+    
+    data = JournalData(
+        publications=publications,
+        citations=citations,
+        citing_works=citing_works_list
+    )
+    
+    if progress_callback:
+        progress_callback(get_text('analysis_complete'), 100)
+    
+    return data
 
 # ======================== METRICS ENGINE ========================
 
 class MetricsEngine:
-    """Calculate all metrics for journal analysis"""
+    """Calculate all metrics from journal data"""
     
     def __init__(self, data: JournalData):
         self.data = data
@@ -1448,7 +1484,7 @@ class MetricsEngine:
         total_pubs = len(self.publications)
         total_cites = sum(p.cited_by_count for p in self.publications)
         
-        # Calculate h-index
+        # h-index
         citations_sorted = sorted([p.cited_by_count for p in self.publications], reverse=True)
         h_index = 0
         for i, c in enumerate(citations_sorted, 1):
@@ -1457,7 +1493,7 @@ class MetricsEngine:
             else:
                 break
         
-        # Calculate g-index
+        # g-index
         g_index = 0
         total = 0
         for i, c in enumerate(citations_sorted, 1):
@@ -1465,7 +1501,7 @@ class MetricsEngine:
             if total >= i * i:
                 g_index = i
         
-        # Calculate i10 and i100 indices
+        # i10 and i100 indices
         i10_index = sum(1 for p in self.publications if p.cited_by_count >= 10)
         i100_index = sum(1 for p in self.publications if p.cited_by_count >= 100)
         
@@ -1476,42 +1512,37 @@ class MetricsEngine:
         open_access_count = sum(1 for p in self.publications if p.is_open_access)
         open_access_percent = (open_access_count / total_pubs * 100) if total_pubs > 0 else 0
         
-        # Open access breakdown
-        oa_breakdown = defaultdict(int)
-        for pub in self.publications:
-            status = pub.open_access_status.lower() if pub.open_access_status else "unknown"
-            oa_breakdown[status] += 1
-        
         # Active years
-        years = set(p.publication_year for p in self.publications if p.publication_year > 0)
-        active_years = len(years)
+        active_years = len(set(p.publication_year for p in self.publications if p.publication_year > 0))
         
         # Unique authors
-        unique_authors = set()
+        authors_set = set()
         for pub in self.publications:
             for author in pub.authors:
                 if author.display_name:
-                    unique_authors.add(author.display_name)
+                    authors_set.add(author.display_name)
         
         # Unique countries
-        unique_countries = set()
+        countries_set = set()
         for pub in self.publications:
             for author in pub.authors:
-                unique_countries.update(author.countries)
+                for country in author.countries:
+                    if country:
+                        countries_set.add(country)
         
-        # Citing works statistics
+        # Citing works
         total_citing_works = len(self.citing_works)
         
         # Unique citing journals
-        unique_citing_journals = set()
-        for cite in self.citing_works:
-            if cite.citing_journal:
-                unique_citing_journals.add(cite.citing_journal)
+        citing_journals_set = set()
+        for citing in self.citing_works:
+            if citing.citing_journal:
+                citing_journals_set.add(citing.citing_journal)
         
-        # Collaboration metrics
+        # Authors per paper stats
         total_authors = 0
         total_affiliations = 0
-        total_countries_per_pub = 0
+        total_countries = 0
         international_count = 0
         
         for pub in self.publications:
@@ -1522,38 +1553,40 @@ class MetricsEngine:
             for author in pub.authors:
                 if author.display_name:
                     pub_authors.add(author.display_name)
-                pub_affiliations.update(author.affiliations)
-                pub_countries.update(author.countries)
+                for aff in author.affiliations:
+                    if aff:
+                        pub_affiliations.add(aff)
+                for country in author.countries:
+                    if country:
+                        pub_countries.add(country)
             
             total_authors += len(pub_authors)
             total_affiliations += len(pub_affiliations)
-            total_countries_per_pub += len(pub_countries)
+            total_countries += len(pub_countries)
             
             if len(pub_countries) > 1:
                 international_count += 1
         
         avg_authors = total_authors / total_pubs if total_pubs > 0 else 0
         avg_affiliations = total_affiliations / total_pubs if total_pubs > 0 else 0
-        avg_countries = total_countries_per_pub / total_pubs if total_pubs > 0 else 0
+        avg_countries = total_countries / total_pubs if total_pubs > 0 else 0
         international_rate = (international_count / total_pubs * 100) if total_pubs > 0 else 0
         
-        # Collaboration by year
-        collab_by_year = defaultdict(lambda: {'papers': 0, 'authors': 0, 'countries': 0, 'international': 0})
+        # Open access breakdown
+        oa_breakdown = {
+            'gold': 0,
+            'hybrid': 0,
+            'green': 0,
+            'bronze': 0,
+            'closed': 0,
+            'unknown': 0
+        }
         for pub in self.publications:
-            year = pub.publication_year
-            if year > 0:
-                pub_authors = set()
-                pub_countries = set()
-                for author in pub.authors:
-                    if author.display_name:
-                        pub_authors.add(author.display_name)
-                    pub_countries.update(author.countries)
-                
-                collab_by_year[year]['papers'] += 1
-                collab_by_year[year]['authors'] += len(pub_authors)
-                collab_by_year[year]['countries'] += len(pub_countries)
-                if len(pub_countries) > 1:
-                    collab_by_year[year]['international'] += 1
+            status = pub.open_access_status.lower() if pub.open_access_status else 'unknown'
+            if status in oa_breakdown:
+                oa_breakdown[status] += 1
+            else:
+                oa_breakdown['unknown'] += 1
         
         return {
             'total_publications': total_pubs,
@@ -1565,39 +1598,42 @@ class MetricsEngine:
             'avg_citations': avg_citations,
             'open_access_count': open_access_count,
             'open_access_percent': open_access_percent,
-            'open_access_breakdown': dict(oa_breakdown),
+            'open_access_breakdown': oa_breakdown,
             'active_years': active_years,
-            'unique_authors': len(unique_authors),
-            'unique_countries': len(unique_countries),
+            'unique_authors': len(authors_set),
+            'unique_countries': len(countries_set),
             'total_citing_works': total_citing_works,
-            'unique_citing_journals': len(unique_citing_journals),
+            'unique_citing_journals': len(citing_journals_set),
             'avg_authors_per_paper': avg_authors,
             'avg_affiliations_per_paper': avg_affiliations,
             'avg_countries_per_paper': avg_countries,
-            'international_collaboration_rate': international_rate,
-            'collaboration_by_year': dict(collab_by_year)
+            'international_collaboration_rate': international_rate
         }
     
     def get_most_cited_publications(self, top_n: int = 30) -> List[Dict]:
         """Get most cited publications"""
         sorted_pubs = sorted(self.publications, key=lambda x: x.cited_by_count, reverse=True)
-        
         result = []
+        
         for i, pub in enumerate(sorted_pubs[:top_n], 1):
+            author_names = [a.display_name for a in pub.authors if a.display_name]
             result.append({
                 'rank': i,
                 'title': pub.title,
                 'year': pub.publication_year,
                 'citations': pub.cited_by_count,
                 'citations_per_year': pub.citations_per_year,
-                'authors': [a.display_name for a in pub.authors],
-                'doi': pub.doi
+                'authors': ', '.join(author_names[:5]),
+                'authors_full': author_names,
+                'doi': pub.doi,
+                'id': pub.id,
+                'journal': pub.journal_name
             })
         
         return result
     
     def analyze_authors(self) -> Dict:
-        """Analyze authors with ORCID, affiliations, and countries"""
+        """Analyze authors with ORCID and affiliations"""
         author_stats = defaultdict(lambda: {
             'display_name': '',
             'orcid': '',
@@ -1610,317 +1646,279 @@ class MetricsEngine:
         
         for pub in self.publications:
             for author in pub.authors:
-                key = author.display_name
-                if not key:
+                if not author.display_name:
                     continue
                 
+                key = author.display_name
                 stats = author_stats[key]
-                stats['display_name'] = author.display_name
-                if author.orcid and not stats['orcid']:
+                
+                if not stats['display_name']:
+                    stats['display_name'] = author.display_name
+                if not stats['orcid'] and author.orcid:
                     stats['orcid'] = author.orcid
+                
                 stats['affiliations'].update(author.affiliations)
                 stats['countries'].update(author.countries)
                 stats['publication_count'] += 1
                 stats['citation_count'] += pub.cited_by_count
                 stats['papers'].append(pub.doi)
         
-        # Sort by publication count
-        sorted_authors = sorted(
-            [{
-                'display_name': v['display_name'],
-                'orcid': v['orcid'],
-                'affiliations': list(v['affiliations'])[:10],
-                'countries': list(v['countries']),
-                'publication_count': v['publication_count'],
-                'citation_count': v['citation_count'],
-                'papers': v['papers']
-            } for v in author_stats.values()],
-            key=lambda x: x['publication_count'],
-            reverse=True
-        )
+        # Convert to list and sort
+        author_list = []
+        for key, stats in author_stats.items():
+            author_list.append({
+                'display_name': stats['display_name'],
+                'orcid': stats['orcid'],
+                'affiliations': sorted(list(stats['affiliations'])),
+                'countries': sorted(list(stats['countries'])),
+                'publication_count': stats['publication_count'],
+                'citation_count': stats['citation_count'],
+                'papers': stats['papers']
+            })
+        
+        author_list.sort(key=lambda x: x['publication_count'], reverse=True)
         
         return {
-            'top_authors': sorted_authors[:30],
-            'total_authors': len(author_stats)
-        }
-    
-    def analyze_affiliations(self) -> Dict:
-        """Analyze affiliations frequency"""
-        aff_counter = Counter()
-        
-        for pub in self.publications:
-            for author in pub.authors:
-                for aff in author.affiliations:
-                    if aff:
-                        aff_counter[aff] += 1
-        
-        return {
-            'top_affiliations': aff_counter.most_common(30),
-            'unique_affiliations': len(aff_counter)
+            'top_authors': author_list[:30],
+            'total_authors': len(author_list)
         }
     
     def analyze_geography(self) -> Dict:
-        """Analyze geographic distribution (3 types)"""
+        """Three types of geographic analysis"""
         # Type 1: Unique countries per publication
-        country_per_pub = Counter()
+        country_publication_counter = Counter()
         # Type 2: Authors per country
-        authors_per_country = Counter()
+        country_author_counter = Counter()
         # Type 3: Collaboration patterns
-        collab_patterns = Counter()
+        collaboration_patterns = Counter()
         # Collaboration couples
-        collab_couples = Counter()
+        country_pair_counter = Counter()
         
         for pub in self.publications:
             pub_countries = set()
+            pub_authors_count = 0
             
             for author in pub.authors:
-                for country in author.countries:
-                    if country:
-                        pub_countries.add(country)
-                        authors_per_country[country] += 1
+                if author.countries:
+                    pub_authors_count += 1
+                    for country in author.countries:
+                        if country:
+                            pub_countries.add(country)
+                            country_author_counter[country] += 1
             
-            # Type 1: Count each publication once per unique country
             for country in pub_countries:
-                country_per_pub[country] += 1
+                country_publication_counter[country] += 1
             
-            # Type 3: Collaboration patterns
-            sorted_countries = sorted(pub_countries)
-            if len(sorted_countries) == 1:
-                collab_patterns[sorted_countries[0]] += 1
-            elif len(sorted_countries) > 1:
-                pattern = ' + '.join(sorted_countries)
-                collab_patterns[pattern] += 1
+            if len(pub_countries) == 1:
+                collaboration_patterns['single'] += 1
+            elif len(pub_countries) > 1:
+                collaboration_patterns['international'] += 1
                 
-                # Collaboration couples (all pairs)
+                # Country pairs
+                sorted_countries = sorted(pub_countries)
                 for i in range(len(sorted_countries)):
                     for j in range(i + 1, len(sorted_countries)):
                         pair = tuple(sorted([sorted_countries[i], sorted_countries[j]]))
-                        collab_couples[pair] += 1
+                        country_pair_counter[pair] += 1
         
-        # Collaboration by year
-        collab_by_year = defaultdict(lambda: {'single': 0, 'international': 0})
-        for pub in self.publications:
-            year = pub.publication_year
-            if year > 0:
-                pub_countries = set()
-                for author in pub.authors:
-                    pub_countries.update(author.countries)
-                
-                if len(pub_countries) <= 1:
-                    collab_by_year[year]['single'] += 1
-                else:
-                    collab_by_year[year]['international'] += 1
+        # Prepare collaboration couples
+        collaboration_couples = []
+        for (c1, c2), count in country_pair_counter.most_common(20):
+            collaboration_couples.append({
+                'country1': c1,
+                'country2': c2,
+                'count': count
+            })
         
         return {
-            'type1_unique_countries_per_pub': dict(country_per_pub.most_common()),
-            'type2_authors_per_country': dict(authors_per_country.most_common()),
-            'type3_collaboration_patterns': dict(collab_patterns.most_common()),
-            'collaboration_couples': dict(collab_couples.most_common(30)),
-            'collaboration_by_year': dict(collab_by_year),
-            'single_country_count': sum(1 for p in collab_patterns.values() if len(str(p).split(' + ')) == 1),
-            'international_count': sum(1 for p in collab_patterns.values() if len(str(p).split(' + ')) > 1),
-            'total_pubs_with_country': len([p for p in self.publications if any(a.countries for a in p.authors)])
+            'type1_unique_countries_per_publication': dict(country_publication_counter.most_common()),
+            'type2_authors_per_country': dict(country_author_counter.most_common()),
+            'type3_collaboration_patterns': dict(collaboration_patterns),
+            'collaboration_couples': collaboration_couples,
+            'single_country_count': collaboration_patterns.get('single', 0),
+            'international_count': collaboration_patterns.get('international', 0)
         }
     
     def analyze_citation_dynamics(self) -> Dict:
-        """Analyze citation dynamics"""
-        # Yearly dynamics: {publication_year: {citation_year: count}}
-        yearly_matrix = defaultdict(lambda: defaultdict(int))
+        """Citation dynamics: yearly, cumulative, network"""
+        # Yearly dynamics
+        yearly_citations = defaultdict(lambda: defaultdict(int))
+        # For cumulative
+        pub_years = {pub.id: pub.publication_year for pub in self.publications}
         
-        for pub in self.publications:
-            pub_year = pub.publication_year
-            if pub_year > 0 and pub.id in self.citations:
-                for cite in self.citations[pub.id]:
-                    cite_year = cite.citing_year
-                    if cite_year > 0:
-                        yearly_matrix[pub_year][cite_year] += 1
+        for pub_id, citing_list in self.citations.items():
+            pub_year = pub_years.get(pub_id, 0)
+            for citing in citing_list:
+                citing_year = citing.citing_year
+                if citing_year > 0 and pub_year > 0:
+                    yearly_citations[pub_year][citing_year] += 1
         
-        # Cumulative citations
-        all_years = sorted(set(pub.publication_year for pub in self.publications if pub.publication_year > 0))
+        # Prepare network data for heatmap
+        network_data = []
+        pub_years_set = sorted(set(pub_years.values()))
+        all_citation_years = set()
+        
+        for pub_year, cites in yearly_citations.items():
+            for citing_year, count in cites.items():
+                all_citation_years.add(citing_year)
+                network_data.append({
+                    'publication_year': pub_year,
+                    'citation_year': citing_year,
+                    'citations_count': count
+                })
+        
+        all_years = sorted(pub_years_set | all_citation_years)
+        
+        # Cumulative dynamics
         cumulative = {}
         running_total = 0
-        
         for year in all_years:
-            year_total = sum(yearly_matrix.get(year, {}).values())
+            year_total = sum(yearly_citations.get(y, {}).get(year, 0) for y in pub_years_set)
             running_total += year_total
             cumulative[year] = running_total
         
-        # Prepare heatmap data
-        heatmap_data = []
-        for pub_year in sorted(yearly_matrix.keys()):
-            for cite_year in sorted(yearly_matrix[pub_year].keys()):
-                heatmap_data.append({
-                    'publication_year': pub_year,
-                    'citation_year': cite_year,
-                    'citations_count': yearly_matrix[pub_year][cite_year]
-                })
-        
         return {
-            'yearly_matrix': dict(yearly_matrix),
-            'cumulative': cumulative,
-            'heatmap_data': heatmap_data,
-            'total_citations_by_year': {
-                year: sum(yearly_matrix.get(year, {}).values())
-                for year in yearly_matrix.keys()
-            }
+            'yearly_citations': yearly_citations,
+            'cumulative_citations': cumulative,
+            'network_data': network_data,
+            'all_years': all_years
         }
     
     def analyze_citing_works(self) -> Dict:
         """Analyze citing works"""
-        if not self.citing_works:
-            return {
-                'total_citing_works': 0,
-                'unique_authors': 0,
-                'unique_affiliations': 0,
-                'unique_countries': 0,
-                'unique_journals': 0,
-                'unique_publishers': 0,
-                'top_authors': [],
-                'top_affiliations': [],
-                'top_countries': [],
-                'top_journals': [],
-                'top_publishers': []
-            }
+        # Collect stats
+        authors = Counter()
+        affiliations = Counter()
+        countries = Counter()
+        journals = Counter()
+        publishers = Counter()
         
-        # Counters
-        author_counter = Counter()
-        aff_counter = Counter()
-        country_counter = Counter()
-        journal_counter = Counter()
-        publisher_counter = Counter()
-        
-        for cite in self.citing_works:
-            # Authors
-            for author in cite.citing_authors:
+        for citing in self.citing_works:
+            for author in citing.citing_authors:
                 if author.display_name:
-                    author_counter[author.display_name] += 1
+                    authors[author.display_name] += 1
             
-            # Affiliations
-            for aff in cite.citing_affiliations:
+            for aff in citing.citing_affiliations:
                 if aff:
-                    aff_counter[aff] += 1
+                    affiliations[aff] += 1
             
-            # Countries
-            for country in cite.citing_countries:
+            for country in citing.citing_countries:
                 if country:
-                    country_counter[country] += 1
+                    countries[country] += 1
             
-            # Journals
-            if cite.citing_journal:
-                journal_counter[cite.citing_journal] += 1
+            if citing.citing_journal:
+                journals[citing.citing_journal] += 1
             
-            # Publishers
-            if cite.citing_publisher:
-                publisher_counter[cite.citing_publisher] += 1
+            if citing.citing_publisher:
+                publishers[citing.citing_publisher] += 1
         
         return {
             'total_citing_works': len(self.citing_works),
-            'unique_authors': len(author_counter),
-            'unique_affiliations': len(aff_counter),
-            'unique_countries': len(country_counter),
-            'unique_journals': len(journal_counter),
-            'unique_publishers': len(publisher_counter),
-            'top_authors': author_counter.most_common(30),
-            'top_affiliations': aff_counter.most_common(30),
-            'top_countries': country_counter.most_common(30),
-            'top_journals': journal_counter.most_common(30),
-            'top_publishers': publisher_counter.most_common(30)
+            'unique_citing_authors': len(authors),
+            'unique_citing_affiliations': len(affiliations),
+            'unique_citing_countries': len(countries),
+            'unique_citing_journals': len(journals),
+            'unique_citing_publishers': len(publishers),
+            'top_authors': [{'name': k, 'count': v} for k, v in authors.most_common(30)],
+            'top_affiliations': [{'name': k, 'count': v} for k, v in affiliations.most_common(30)],
+            'top_countries': [{'name': k, 'count': v} for k, v in countries.most_common(30)],
+            'top_journals': [{'name': k, 'count': v} for k, v in journals.most_common(30)],
+            'top_publishers': [{'name': k, 'count': v} for k, v in publishers.most_common(30)]
         }
     
     def analyze_topics(self) -> Dict:
         """Analyze topics, fields, subfields, domains, concepts"""
-        # Extract topics from publications and citing works
-        pub_topics = defaultdict(lambda: {'count': 0, 'years': [], 'scores': []})
-        cite_topics = defaultdict(lambda: {'count': 0, 'years': [], 'scores': []})
+        # For analyzed publications
+        analyzed_topics = defaultdict(lambda: {
+            'count': 0,
+            'first_year': float('inf'),
+            'peak_year': 0,
+            'peak_count': 0,
+            'recent_5_count': 0,
+            'years': []
+        })
         
-        # Also track fields, subfields, domains
-        pub_fields = defaultdict(lambda: {'count': 0, 'years': []})
-        cite_fields = defaultdict(lambda: {'count': 0, 'years': []})
-        pub_subfields = defaultdict(lambda: {'count': 0, 'years': []})
-        cite_subfields = defaultdict(lambda: {'count': 0, 'years': []})
-        pub_domains = defaultdict(lambda: {'count': 0, 'years': []})
-        cite_domains = defaultdict(lambda: {'count': 0, 'years': []})
-        pub_concepts = defaultdict(lambda: {'count': 0, 'years': [], 'scores': []})
-        cite_concepts = defaultdict(lambda: {'count': 0, 'years': [], 'scores': []})
+        current_year = datetime.now().year
+        recent_5_years = set(range(current_year - 4, current_year + 1))
         
-        # Process publications
+        # Process analyzed publications
         for pub in self.publications:
             year = pub.publication_year
-            
-            # Topics
             for topic in pub.topics:
                 if topic.display_name:
-                    pub_topics[topic.display_name]['count'] += 1
-                    pub_topics[topic.display_name]['years'].append(year)
-                    pub_topics[topic.display_name]['scores'].append(topic.score)
-            
-            # Concepts
-            for concept in pub.concepts:
-                if concept.display_name:
-                    pub_concepts[concept.display_name]['count'] += 1
-                    pub_concepts[concept.display_name]['years'].append(year)
-                    pub_concepts[concept.display_name]['scores'].append(concept.score)
+                    stats = analyzed_topics[topic.display_name]
+                    stats['count'] += 1
+                    if year < stats['first_year']:
+                        stats['first_year'] = year
+                    stats['years'].append(year)
+                    if year in recent_5_years:
+                        stats['recent_5_count'] += 1
         
         # Process citing works
-        for cite in self.citing_works:
-            year = cite.citing_year
-            
-            # Topics
-            for topic in cite.citing_topics:
+        citing_topics = defaultdict(lambda: {
+            'count': 0,
+            'first_year': float('inf'),
+            'peak_year': 0,
+            'peak_count': 0,
+            'recent_5_count': 0,
+            'years': []
+        })
+        
+        for citing in self.citing_works:
+            year = citing.citing_year
+            for topic in citing.citing_topics:
                 if topic.display_name:
-                    cite_topics[topic.display_name]['count'] += 1
-                    cite_topics[topic.display_name]['years'].append(year)
-                    cite_topics[topic.display_name]['scores'].append(topic.score)
+                    stats = citing_topics[topic.display_name]
+                    stats['count'] += 1
+                    if year < stats['first_year']:
+                        stats['first_year'] = year
+                    stats['years'].append(year)
+                    if year in recent_5_years:
+                        stats['recent_5_count'] += 1
         
-        # Combine and calculate metrics
-        combined_topics = {}
-        all_topics = set(pub_topics.keys()) | set(cite_topics.keys())
+        # Combine and calculate peak years
+        all_topics = set(analyzed_topics.keys()) | set(citing_topics.keys())
+        combined_stats = []
         
-        for topic in all_topics:
-            pub_count = pub_topics.get(topic, {}).get('count', 0)
-            cite_count = cite_topics.get(topic, {}).get('count', 0)
-            pub_years = pub_topics.get(topic, {}).get('years', [])
-            cite_years = cite_topics.get(topic, {}).get('years', [])
-            pub_scores = pub_topics.get(topic, {}).get('scores', [])
-            cite_scores = cite_topics.get(topic, {}).get('scores', [])
+        for topic_name in all_topics:
+            a_stats = analyzed_topics.get(topic_name, {'count': 0, 'first_year': float('inf'), 'years': []})
+            c_stats = citing_topics.get(topic_name, {'count': 0, 'first_year': float('inf'), 'years': []})
             
-            # Normalized counts (by total publications/citations)
-            pub_norm = pub_count / len(self.publications) if self.publications else 0
-            cite_norm = cite_count / len(self.citing_works) if self.citing_works else 0
-            total_norm = (pub_count + cite_count) / (len(self.publications) + len(self.citing_works)) if (self.publications or self.citing_works) else 0
+            # Calculate peak year
+            all_years = a_stats.get('years', []) + c_stats.get('years', [])
+            if all_years:
+                year_counts = Counter(all_years)
+                peak_year, peak_count = year_counts.most_common(1)[0]
+            else:
+                peak_year = 0
+                peak_count = 0
             
-            # First year and peak year
-            all_years = pub_years + cite_years
-            first_year = min(all_years) if all_years else 0
-            peak_year = max(set(all_years), key=all_years.count) if all_years else 0
+            # Calculate total norm count (normalized by total publications/citing works)
+            total_pubs = len(self.publications) or 1
+            total_citing = len(self.citing_works) or 1
             
-            # Recent 5 years
-            current_year = datetime.now().year
-            recent_5_years = sum(1 for y in all_years if y >= current_year - 5)
-            
-            combined_topics[topic] = {
-                'analyzed_count': pub_count,
-                'citing_count': cite_count,
-                'analyzed_norm_count': pub_norm,
-                'citing_norm_count': cite_norm,
-                'total_norm_count': total_norm,
-                'first_year': first_year,
+            combined_stats.append({
+                'topic': topic_name,
+                'analyzed_count': a_stats['count'],
+                'citing_count': c_stats['count'],
+                'analyzed_norm_count': a_stats['count'] / total_pubs,
+                'citing_norm_count': c_stats['count'] / total_citing,
+                'total_norm_count': (a_stats['count'] + c_stats['count']) / (total_pubs + total_citing),
+                'first_year': a_stats['first_year'] if a_stats['first_year'] != float('inf') else 0,
                 'peak_year': peak_year,
-                'recent_5_years_count': recent_5_years
-            }
+                'recent_5_years_count': a_stats.get('recent_5_count', 0) + c_stats.get('recent_5_count', 0)
+            })
         
         # Sort by total norm count
-        sorted_topics = sorted(
-            [{'topic': k, **v} for k, v in combined_topics.items()],
-            key=lambda x: x['total_norm_count'],
-            reverse=True
-        )
+        combined_stats.sort(key=lambda x: x['total_norm_count'], reverse=True)
+        
+        # Separate by type
+        topics = [s for s in combined_stats[:20]]
         
         return {
-            'topics': sorted_topics[:20],
-            'total_topics': len(combined_topics),
-            'pub_topics_count': len(pub_topics),
-            'cite_topics_count': len(cite_topics)
+            'top_topics': topics,
+            'total_analyzed_topics': len(analyzed_topics),
+            'total_citing_topics': len(citing_topics)
         }
     
     def get_detailed_citations(self) -> Dict:
@@ -1944,24 +1942,27 @@ class MetricsEngine:
                         'citation_lag': cite.citation_lag,
                         'citing_authors': [a.display_name for a in cite.citing_authors],
                         'citing_countries': cite.citing_countries,
-                        'citing_topics': [t.display_name for t in cite.citing_topics],
-                        'citing_open_access_status': cite.citing_open_access_status
+                        'citing_topics': [t.display_name for t in cite.citing_topics]
                     })
                 
+                author_names = [a.display_name for a in pub.authors if a.display_name]
                 detailed[pub.id] = {
                     'title': pub.title,
                     'year': pub.publication_year,
                     'doi': pub.doi,
                     'total_citations': len(citations_list),
-                    'citations': citations_list
+                    'citations': citations_list,
+                    'authors': author_names,
+                    'journal': pub.journal_name
                 }
         
         return detailed
     
     def get_all_publications(self) -> List[Dict]:
-        """Get all publications with metadata for filtering"""
+        """Get all publications for filtering"""
         result = []
         for pub in self.publications:
+            author_names = [a.display_name for a in pub.authors if a.display_name]
             result.append({
                 'id': pub.id,
                 'title': pub.title,
@@ -1970,11 +1971,10 @@ class MetricsEngine:
                 'citations_per_year': pub.citations_per_year,
                 'journal': pub.journal_name,
                 'doi': pub.doi,
-                'authors': [a.display_name for a in pub.authors],
-                'countries': [c for a in pub.authors for c in a.countries],
-                'affiliations': [a for author in pub.authors for a in author.affiliations],
-                'open_access_status': pub.open_access_status,
-                'is_open_access': pub.is_open_access
+                'authors': author_names,
+                'authors_str': ', '.join(author_names),
+                'countries': list(set(c for a in pub.authors for c in a.countries if c)),
+                'open_access': pub.is_open_access
             })
         
         return sorted(result, key=lambda x: x['year'], reverse=True)
@@ -1985,820 +1985,755 @@ class MetricsEngine:
         current_year = datetime.now().year
         
         for pub in self.publications:
-            if pub.cited_by_count > 0 and pub.publication_year > 0:
-                age = current_year - pub.publication_year
-                if age > 0:
-                    velocity = pub.cited_by_count / age
-                else:
-                    velocity = pub.cited_by_count
-                
-                # Categorize velocity
-                if velocity >= 10:
-                    category = "Very High"
-                elif velocity >= 5:
-                    category = "High"
-                elif velocity >= 1:
-                    category = "Medium"
-                else:
-                    category = "Low"
-                
-                velocities[pub.id] = {
-                    'velocity': velocity,
-                    'category': category,
-                    'age': age,
-                    'citations': pub.cited_by_count,
-                    'title': pub.title,
-                    'year': pub.publication_year,
-                    'doi': pub.doi
-                }
+            age = current_year - pub.publication_year
+            if age > 0:
+                velocity = pub.cited_by_count / age
+            else:
+                velocity = pub.cited_by_count  # Current year
+            
+            # Categories
+            if velocity >= 10:
+                category = get_text('very_high')
+            elif velocity >= 5:
+                category = get_text('high')
+            elif velocity >= 1:
+                category = get_text('medium')
+            else:
+                category = get_text('low')
+            
+            velocities[pub.id] = {
+                'title': pub.title,
+                'year': pub.publication_year,
+                'citations': pub.cited_by_count,
+                'velocity': velocity,
+                'category': category,
+                'age': age
+            }
         
         return velocities
 
-# ======================== DATA COLLECTOR ========================
-
-def collect_journal_data(issn: str, years, max_workers: int = 8, progress_callback=None) -> JournalData:
-    """
-    Collect all data for journal analysis
-    
-    Args:
-        issn: ISSN of the journal
-        years: int, list, or tuple of years
-        max_workers: number of parallel workers
-        progress_callback: function to update progress
-    
-    Returns:
-        JournalData object with all collected data
-    """
-    client = OpenAlexClient(max_workers=max_workers)
-    
-    # Step 1: Get publications
-    if progress_callback:
-        progress_callback("publications", 0)
-    
-    publications = client.get_publications(issn, years)
-    
-    if progress_callback:
-        progress_callback("publications", len(publications))
-    
-    # Step 2: Get citations for each publication
-    citations = {}
-    all_citing_works = []
-    
-    if progress_callback:
-        progress_callback("citations_start", len(publications))
-    
-    total_processed = 0
-    
-    # Use ThreadPoolExecutor for parallel citation collection
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {}
-        for pub in publications:
-            if pub.cited_by_count > 0:
-                future = executor.submit(client.get_citing_works, pub)
-                futures[future] = pub.id
-        
-        for future in as_completed(futures):
-            pub_id = futures[future]
-            try:
-                citing_works = future.result()
-                citations[pub_id] = citing_works
-                all_citing_works.extend(citing_works)
-            except Exception:
-                citations[pub_id] = []
-            
-            total_processed += 1
-            if progress_callback:
-                progress_callback("citations_progress", total_processed)
-    
-    # Step 3: Create JournalData object
-    data = JournalData(
-        publications=publications,
-        citations=citations,
-        citing_works=all_citing_works
-    )
-    
-    return data
-
-def generate_theme_css(theme_name: str, primary_color: str, secondary_color: str) -> str:
-    """Generate theme CSS based on colors"""
-    css_vars = generate_css_variables(primary_color, secondary_color)
-    return f"""
-        :root {{
-            --primary: {css_vars['--primary-color']};
-            --secondary: {css_vars['--secondary-color']};
-            --primary-light: {css_vars['--primary-light']};
-            --secondary-light: {css_vars['--secondary-light']};
-            --primary-contrast: {css_vars['--primary-contrast']};
-            --secondary-contrast: {css_vars['--secondary-contrast']};
-            --gradient-start: {css_vars['--gradient-start']};
-            --gradient-end: {css_vars['--gradient-end']};
-            --accent-1: {css_vars['--accent-1']};
-            --accent-2: {css_vars['--accent-2']};
-            --hover-light: {css_vars['--hover-light']};
-        }}
-    """
-
-def get_reference_color_style(mode: str) -> str:
-    """Generate reference color styles"""
-    return """
-        .badge-oa-gold { background: #ffd700; color: #000; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
-        .badge-oa-hybrid { background: #ff8c00; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
-        .badge-oa-green { background: #2e8b57; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
-        .badge-oa-bronze { background: #cd7f32; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
-        .badge-oa-closed { background: #6c757d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
-    """
 # ======================== HTML REPORT GENERATOR ========================
 
 def generate_html_report(data: JournalData, metrics: Dict, lang: str = 'en', primary_color: str = '#667eea', secondary_color: str = '#f39c12') -> str:
-    """Generate comprehensive HTML report"""
-    
-    # Добавьте эти строки
-    BASE_CSS = """
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f5f7fa; color: #333; line-height: 1.6; }
-        .main-content { max-width: 1400px; margin: 0 auto; padding: 20px; }
+    """
+    Generate comprehensive HTML report with all sections
     """
     
-    import base64
+    def get_text_local(key: str) -> str:
+        """Get localized text for HTML report"""
+        if lang == 'ru' and key in TEXTS['ru']:
+            return TEXTS['ru'][key]
+        elif key in TEXTS['en']:
+            return TEXTS['en'][key]
+        else:
+            return key
     
-    # Load logo
-    logo_base64 = ""
-    try:
-        with open("logo.png", "rb") as img_file:
-            logo_base64 = base64.b64encode(img_file.read()).decode()
-    except FileNotFoundError:
-        pass
-    
-    # Get localized text
-    def t(key: str) -> str:
-        lang_dict = TEXTS.get(lang, TEXTS['en'])
-        return lang_dict.get(key, TEXTS['en'].get(key, key))
-    
-    # Generate CSS variables for theme
-    css_vars = generate_css_variables(primary_color, secondary_color)
-    
-    # Prepare data for template
+    # Prepare data
     overview = metrics['overview']
     most_cited = metrics['most_cited']
-    authors = metrics['authors']
-    affiliations = metrics['affiliations']
+    authors_data = metrics['authors']
     geography = metrics['geography']
     citation_dynamics = metrics['citation_dynamics']
     citing_works = metrics['citing_works']
-    topics = metrics['topics']
+    topics_data = metrics['topics']
     detailed_citations = metrics['detailed_citations']
     all_publications = metrics['all_publications']
-    citation_velocity = metrics['citation_velocity']
+    citation_velocity = metrics.get('citation_velocity', {})
     
-    # Build HTML sections
+    # Current date
+    current_date = datetime.now().strftime('%d.%m.%Y')
     
-    # 1. Overview section
-    overview_html = f"""
-    <div id="overview" class="section">
-        <div class="section-title"><span class="icon">📊</span> {t('overview')}</div>
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-number">{overview['total_publications']}</div>
-                <div class="stat-label">{t('total_publications')}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">{overview['total_citations']}</div>
-                <div class="stat-label">{t('total_citations')}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">{overview['h_index']}</div>
-                <div class="stat-label">{t('h_index')}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">{overview['g_index']}</div>
-                <div class="stat-label">{t('g_index')}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">{overview['i10_index']}</div>
-                <div class="stat-label">{t('i10_index')}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">{overview['i100_index']}</div>
-                <div class="stat-label">{t('i100_index')}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">{overview['avg_citations']:.1f}</div>
-                <div class="stat-label">{t('avg_citations')}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">{overview['open_access_percent']:.1f}%</div>
-                <div class="stat-label">{t('open_access')}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">{overview['active_years']}</div>
-                <div class="stat-label">{t('active_years')}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">{overview['unique_authors']}</div>
-                <div class="stat-label">{t('unique_authors')}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">{overview['unique_countries']}</div>
-                <div class="stat-label">{t('unique_countries')}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">{overview['total_citing_works']}</div>
-                <div class="stat-label">{t('total_citing_works')}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">{overview['unique_citing_journals']}</div>
-                <div class="stat-label">{t('unique_citing_journals')}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">{overview['avg_authors_per_paper']:.1f}</div>
-                <div class="stat-label">{t('avg_authors_per_paper')}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">{overview['avg_affiliations_per_paper']:.1f}</div>
-                <div class="stat-label">{t('avg_affiliations_per_paper')}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">{overview['avg_countries_per_paper']:.1f}</div>
-                <div class="stat-label">{t('avg_countries_per_paper')}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">{overview['international_collaboration_rate']:.1f}%</div>
-                <div class="stat-label">{t('international_collaboration_rate')}</div>
-            </div>
-        </div>
-    </div>
-    """
-    
-    # Open Access Breakdown
-    oa_breakdown = overview.get('open_access_breakdown', {})
-    oa_html = f"""
-    <div style="margin-top: 20px;">
-        <h4>{t('open_access_breakdown')}</h4>
-        <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));">
-            <div class="stat-card"><span class="badge-oa-gold">Gold</span><div class="stat-number">{oa_breakdown.get('gold', 0)}</div></div>
-            <div class="stat-card"><span class="badge-oa-hybrid">Hybrid</span><div class="stat-number">{oa_breakdown.get('hybrid', 0)}</div></div>
-            <div class="stat-card"><span class="badge-oa-green">Green</span><div class="stat-number">{oa_breakdown.get('green', 0)}</div></div>
-            <div class="stat-card"><span class="badge-oa-bronze">Bronze</span><div class="stat-number">{oa_breakdown.get('bronze', 0)}</div></div>
-            <div class="stat-card"><span class="badge-oa-closed">Closed</span><div class="stat-number">{oa_breakdown.get('closed', 0)}</div></div>
-            <div class="stat-card"><span class="badge-oa-closed">Unknown</span><div class="stat-number">{oa_breakdown.get('unknown', 0)}</div></div>
-        </div>
-    </div>
-    """
-    overview_html += oa_html
-    
-    # 2. Most Cited Publications
-    most_cited_html = f"""
-    <div id="most_cited" class="section">
-        <div class="section-title"><span class="icon">🏆</span> {t('most_cited_publications')}</div>
-        <div style="overflow-x: auto;">
-            <table>
-                <thead>
-                    <tr>
-                        <th>{t('rank')}</th>
-                        <th>{t('title')}</th>
-                        <th>{t('year')}</th>
-                        <th>{t('citations')}</th>
-                        <th>{t('citations_per_year')}</th>
-                        <th>{t('authors')}</th>
-                        <th>{t('doi')}</th>
-                    </tr>
-                </thead>
-                <tbody>
-    """
-    for pub in most_cited[:30]:
-        authors_str = ', '.join(pub['authors'][:3])
-        if len(pub['authors']) > 3:
-            authors_str += f" +{len(pub['authors']) - 3} more"
-        most_cited_html += f"""
-                    <tr>
-                        <td>{pub['rank']}</td>
-                        <td class="word-wrap">{html.escape(pub['title'])}</td>
-                        <td>{pub['year']}</td>
-                        <td><span class="citation-count">{pub['citations']}</span></td>
-                        <td>{pub['citations_per_year']:.1f}</td>
-                        <td>{html.escape(authors_str)}</td>
-                        <td><a href="https://doi.org/{pub['doi']}" target="_blank" class="doi-link">{pub['doi']}</a></td>
-                    </tr>
-        """
-    most_cited_html += """
-                </tbody>
-            </table>
-        </div>
-    </div>
-    """
-    
-    # 3. Author Analysis
-    authors_html = f"""
-    <div id="authors" class="section">
-        <div class="section-title"><span class="icon">👨‍🎓</span> {t('author_analysis')}</div>
-        <h4>{t('top_authors')}</h4>
-        <div style="overflow-x: auto;">
-            <table>
-                <thead>
-                    <tr>
-                        <th>{t('rank')}</th>
-                        <th>{t('authors')}</th>
-                        <th>{t('orcid')}</th>
-                        <th>{t('affiliations')}</th>
-                        <th>{t('countries')}</th>
-                        <th>{t('publication_count')}</th>
-                        <th>{t('citation_count')}</th>
-                    </tr>
-                </thead>
-                <tbody>
-    """
-    for i, author in enumerate(authors['top_authors'][:30], 1):
-        orcid_display = f'<a href="{author["orcid"]}" target="_blank" class="doi-link">{author["orcid"][:20]}...</a>' if author['orcid'] else '-'
-        aff_str = ', '.join(author['affiliations'][:2])
-        if len(author['affiliations']) > 2:
-            aff_str += f" +{len(author['affiliations']) - 2} more"
-        country_str = ', '.join(author['countries'][:3])
-        if len(author['countries']) > 3:
-            country_str += f" +{len(author['countries']) - 3} more"
-        authors_html += f"""
-                    <tr>
-                        <td>{i}</td>
-                        <td>{html.escape(author['display_name'])}</td>
-                        <td>{orcid_display}</td>
-                        <td>{html.escape(aff_str)}</td>
-                        <td>{html.escape(country_str)}</td>
-                        <td>{author['publication_count']}</td>
-                        <td>{author['citation_count']}</td>
-                    </tr>
-        """
-    authors_html += """
-                </tbody>
-            </table>
-        </div>
-    """
-    
-    # Affiliations analysis
-    aff_html = f"""
-        <h4 style="margin-top: 25px;">{t('top_affiliations')}</h4>
-        <div>
-    """
-    for aff, count in affiliations['top_affiliations'][:20]:
-        aff_html += f"""
-            <div class="rank-item">
-                <span class="rank-name">{html.escape(aff)}</span>
-                <span class="rank-count">{count} {t('html_frequency')}</span>
-                <div class="progress-bar">
-                    <div class="progress-fill" style="width: {count / affiliations['top_affiliations'][0][1] * 100 if affiliations['top_affiliations'] else 0}%;"></div>
-                </div>
-            </div>
-        """
-    aff_html += f"""
-        </div>
-        <div style="margin-top: 15px;">
-            <span class="badge badge-info">{t('unique_affiliations')}: {affiliations['unique_affiliations']}</span>
-        </div>
-    </div>
-    """
-    authors_html += aff_html
-    
-    # 4. Geographic Analysis
-    geo_html = f"""
-    <div style="margin-top: 25px;">
-        <h4>{t('geographic_analysis')}</h4>
+    # Build CSS with theme
+    theme_css = f"""
+    <style>
+        :root {{
+            --primary: {primary_color};
+            --secondary: {secondary_color};
+            --primary-light: {get_gradient_colors(primary_color, 1)[0]};
+            --secondary-light: {get_gradient_colors(secondary_color, 1)[0]};
+        }}
         
-        <h5>{t('geography_type_1')}</h5>
-        <p style="font-size: 12px; color: #666; margin-bottom: 10px;">{t('geography_type_1_desc')}</p>
-        <div>
-    """
-    for country, count in list(geography['type1_unique_countries_per_pub'].items())[:15]:
-        max_count = max(geography['type1_unique_countries_per_pub'].values()) if geography['type1_unique_countries_per_pub'] else 1
-        geo_html += f"""
-            <div class="rank-item">
-                <span class="rank-name">{html.escape(country)}</span>
-                <span class="rank-count">{count} {t('html_citations_label')}</span>
-                <div class="progress-bar">
-                    <div class="progress-fill" style="width: {count / max_count * 100}%;"></div>
-                </div>
-            </div>
-        """
-    geo_html += f"""
-        </div>
+        body {{
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #f5f7fa;
+            color: #333;
+        }}
         
-        <h5 style="margin-top: 20px;">{t('geography_type_2')}</h5>
-        <p style="font-size: 12px; color: #666; margin-bottom: 10px;">{t('geography_type_2_desc')}</p>
-        <div>
-    """
-    for country, count in list(geography['type2_authors_per_country'].items())[:15]:
-        max_count = max(geography['type2_authors_per_country'].values()) if geography['type2_authors_per_country'] else 1
-        geo_html += f"""
-            <div class="rank-item">
-                <span class="rank-name">{html.escape(country)}</span>
-                <span class="rank-count">{count} {t('html_authors_count')}</span>
-                <div class="progress-bar">
-                    <div class="progress-fill" style="width: {count / max_count * 100}%;"></div>
-                </div>
-            </div>
-        """
-    geo_html += f"""
-        </div>
+        .main-content {{
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }}
         
-        <h5 style="margin-top: 20px;">{t('geography_type_3')}</h5>
-        <p style="font-size: 12px; color: #666; margin-bottom: 10px;">{t('geography_type_3_desc')}</p>
-        <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));">
-            <div class="stat-card">
-                <div class="stat-number">{geography['single_country_count']}</div>
-                <div class="stat-label">{t('single_country')}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">{geography['international_count']}</div>
-                <div class="stat-label">{t('international_collab')}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">{geography['total_pubs_with_country']}</div>
-                <div class="stat-label">{t('total_publications')}</div>
-            </div>
-        </div>
+        .section {{
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }}
         
-        <h5 style="margin-top: 20px;">{t('collaboration_couples')}</h5>
-        <p style="font-size: 12px; color: #666; margin-bottom: 10px;">{t('collaboration_couples_desc')}</p>
-        <div>
-    """
-    for (c1, c2), count in list(geography['collaboration_couples'].items())[:15]:
-        max_couple = max(geography['collaboration_couples'].values()) if geography['collaboration_couples'] else 1
-        geo_html += f"""
-            <div class="rank-item">
-                <span class="rank-name">{html.escape(c1)} + {html.escape(c2)}</span>
-                <span class="rank-count">{count} {t('html_joint_works')}</span>
-                <div class="progress-bar">
-                    <div class="progress-fill" style="width: {count / max_couple * 100}%;"></div>
-                </div>
-            </div>
-        """
-    geo_html += f"""
-        </div>
-    </div>
-    """
-    authors_html += geo_html
-    
-    # 5. Citation Analysis
-    citation_html = f"""
-    <div id="citation_analysis" class="section">
-        <div class="section-title"><span class="icon">📈</span> {t('citation_analysis')}</div>
+        .section-title {{
+            font-size: 24px;
+            font-weight: 600;
+            color: var(--primary);
+            border-bottom: 3px solid var(--primary);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }}
         
-        <h4>{t('citation_dynamics')}</h4>
-        <div style="overflow-x: auto;">
-            <table>
-                <thead>
-                    <tr>
-                        <th>{t('publication_year')}</th>
-                        <th>{t('citation_year')}</th>
-                        <th>{t('citations_count')}</th>
-                    </tr>
-                </thead>
-                <tbody>
-    """
-    for item in citation_dynamics['heatmap_data'][:50]:
-        citation_html += f"""
-                    <tr>
-                        <td>{item['publication_year']}</td>
-                        <td>{item['citation_year']}</td>
-                        <td>{item['citations_count']}</td>
-                    </tr>
-        """
-    citation_html += f"""
-                </tbody>
-            </table>
-        </div>
+        .section-title .icon {{
+            font-size: 28px;
+        }}
         
-        <h4 style="margin-top: 25px;">{t('cumulative_citations')}</h4>
-        <div>
-    """
-    for year, total in citation_dynamics['cumulative'].items():
-        max_cum = max(citation_dynamics['cumulative'].values()) if citation_dynamics['cumulative'] else 1
-        citation_html += f"""
-            <div class="rank-item">
-                <span class="rank-name">{year}</span>
-                <span class="rank-count">{total} {t('html_citations_label')}</span>
-                <div class="progress-bar">
-                    <div class="progress-fill" style="width: {total / max_cum * 100}%;"></div>
-                </div>
-            </div>
-        """
-    citation_html += f"""
-        </div>
+        .stats-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }}
         
-        <h4 style="margin-top: 25px;">{t('citation_network')}</h4>
-        <div style="overflow-x: auto; max-height: 400px; overflow-y: auto;">
-            <table>
-                <thead>
-                    <tr>
-                        <th>{t('publication_year')} \\ {t('citation_year')}</th>
-    """
-    # Get all citation years
-    all_cite_years = sorted(set(item['citation_year'] for item in citation_dynamics['heatmap_data']))
-    for year in all_cite_years[:20]:
-        citation_html += f"<th>{year}</th>"
-    citation_html += f"""
-                    </tr>
-                </thead>
-                <tbody>
-    """
-    # Build heatmap matrix
-    heatmap_dict = {}
-    for item in citation_dynamics['heatmap_data']:
-        key = (item['publication_year'], item['citation_year'])
-        heatmap_dict[key] = item['citations_count']
-    
-    pub_years = sorted(set(item['publication_year'] for item in citation_dynamics['heatmap_data']))
-    for pub_year in pub_years[:20]:
-        citation_html += f"<tr><td><strong>{pub_year}</strong></td>"
-        for cite_year in all_cite_years[:20]:
-            count = heatmap_dict.get((pub_year, cite_year), 0)
-            if count > 0:
-                citation_html += f"<td style='background: rgba(102, 126, 234, {min(count / 10, 0.8)}); color: white;'>{count}</td>"
-            else:
-                citation_html += f"<td style='background: #f8f9fa;'>-</td>"
-        citation_html += "</tr>"
-    citation_html += f"""
-                </tbody>
-            </table>
-        </div>
-    </div>
-    """
-    
-    # 6. Citing Works Analysis
-    citing_html = f"""
-    <div id="citing_works" class="section">
-        <div class="section-title"><span class="icon">🔗</span> {t('citing_works_analysis')}</div>
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-number">{citing_works['total_citing_works']}</div>
-                <div class="stat-label">{t('total_citing_works')}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">{citing_works['unique_authors']}</div>
-                <div class="stat-label">{t('unique_citing_authors')}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">{citing_works['unique_affiliations']}</div>
-                <div class="stat-label">{t('unique_citing_affiliations')}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">{citing_works['unique_countries']}</div>
-                <div class="stat-label">{t('unique_citing_countries')}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">{citing_works['unique_journals']}</div>
-                <div class="stat-label">{t('unique_citing_journals')}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">{citing_works['unique_publishers']}</div>
-                <div class="stat-label">{t('unique_citing_publishers')}</div>
-            </div>
-        </div>
-    """
-    
-    # Top citing authors
-    if citing_works['top_authors']:
-        citing_html += f"""
-        <h4>{t('top_citing_authors')}</h4>
-        <div>
-        """
-        for author, count in citing_works['top_authors'][:20]:
-            max_author = citing_works['top_authors'][0][1] if citing_works['top_authors'] else 1
-            citing_html += f"""
-            <div class="rank-item">
-                <span class="rank-name">{html.escape(author)}</span>
-                <span class="rank-count">{count} {t('html_frequency')}</span>
-                <div class="progress-bar">
-                    <div class="progress-fill" style="width: {count / max_author * 100}%;"></div>
-                </div>
-            </div>
-            """
-        citing_html += "</div>"
-    
-    # Top citing journals
-    if citing_works['top_journals']:
-        citing_html += f"""
-        <h4 style="margin-top: 25px;">{t('top_citing_journals')}</h4>
-        <div>
-        """
-        for journal, count in citing_works['top_journals'][:20]:
-            max_journal = citing_works['top_journals'][0][1] if citing_works['top_journals'] else 1
-            citing_html += f"""
-            <div class="rank-item">
-                <span class="rank-name">{html.escape(journal)}</span>
-                <span class="rank-count">{count} {t('html_frequency')}</span>
-                <div class="progress-bar">
-                    <div class="progress-fill" style="width: {count / max_journal * 100}%;"></div>
-                </div>
-            </div>
-            """
-        citing_html += "</div>"
-    
-    # Top citing countries
-    if citing_works['top_countries']:
-        citing_html += f"""
-        <h4 style="margin-top: 25px;">{t('top_citing_countries')}</h4>
-        <div>
-        """
-        for country, count in citing_works['top_countries'][:20]:
-            max_country = citing_works['top_countries'][0][1] if citing_works['top_countries'] else 1
-            citing_html += f"""
-            <div class="rank-item">
-                <span class="rank-name">{html.escape(country)}</span>
-                <span class="rank-count">{count} {t('html_frequency')}</span>
-                <div class="progress-bar">
-                    <div class="progress-fill" style="width: {count / max_country * 100}%;"></div>
-                </div>
-            </div>
-            """
-        citing_html += "</div>"
-    
-    citing_html += "</div>"
-    
-    # 7. Topics Analysis
-    topics_html = f"""
-    <div id="topics" class="section">
-        <div class="section-title"><span class="icon">🧠</span> {t('topics_analysis')}</div>
-        <div style="overflow-x: auto;">
-            <table>
-                <thead>
-                    <tr>
-                        <th>{t('topics')}</th>
-                        <th>{t('analyzed_count')}</th>
-                        <th>{t('citing_count')}</th>
-                        <th>{t('analyzed_norm_count')}</th>
-                        <th>{t('citing_norm_count')}</th>
-                        <th>{t('total_norm_count')}</th>
-                        <th>{t('first_year')}</th>
-                        <th>{t('peak_year')}</th>
-                        <th>{t('recent_5_years_count')}</th>
-                    </tr>
-                </thead>
-                <tbody>
-    """
-    for item in topics['topics'][:20]:
-        topics_html += f"""
-                    <tr>
-                        <td>{html.escape(item['topic'])}</td>
-                        <td>{item['analyzed_count']}</td>
-                        <td>{item['citing_count']}</td>
-                        <td>{item['analyzed_norm_count']:.3f}</td>
-                        <td>{item['citing_norm_count']:.3f}</td>
-                        <td>{item['total_norm_count']:.3f}</td>
-                        <td>{item['first_year']}</td>
-                        <td>{item['peak_year']}</td>
-                        <td>{item['recent_5_years_count']}</td>
-                    </tr>
-        """
-    topics_html += f"""
-                </tbody>
-            </table>
-        </div>
-        <div style="margin-top: 15px;">
-            <span class="badge badge-info">{t('total_topics')}: {topics['total_topics']}</span>
-            <span class="badge badge-info">{t('analyzed_count')}: {topics['pub_topics_count']}</span>
-            <span class="badge badge-info">{t('citing_count')}: {topics['cite_topics_count']}</span>
-        </div>
-    </div>
-    """
-    
-    # 8. Detailed Citations
-    detailed_html = f"""
-    <div id="detailed_citations" class="section">
-        <div class="section-title"><span class="icon">📋</span> {t('detailed_citations')}</div>
-    """
-    
-    if detailed_citations:
-        for pub_id, data in detailed_citations.items():
-            safe_id = pub_id.replace('https://openalex.org/', '').replace('/', '_')
-            detailed_html += f"""
-            <div class="collapser" onclick="toggleCitations('{safe_id}')">
-                <strong>{html.escape(data['title'])}</strong>
-                <span class="badge badge-info">{data['year']}</span>
-                <span class="citation-count">{data['total_citations']} {t('citations')}</span>
-                <span style="font-size: 12px; color: #666; margin-left: 10px;">DOI: {data['doi']}</span>
-                <span style="float: right; font-size: 12px; color: #666;">{t('show_citations')}</span>
-            </div>
-            <div id="citations_{safe_id}" style="display: none;">
-            """
-            for cite in data['citations']:
-                authors_str = ', '.join(cite['citing_authors'][:3])
-                if len(cite['citing_authors']) > 3:
-                    authors_str += f" +{len(cite['citing_authors']) - 3} more"
-                countries_str = ', '.join(cite['citing_countries'][:3])
-                if len(cite['citing_countries']) > 3:
-                    countries_str += f" +{len(cite['citing_countries']) - 3} more"
-                topics_str = ', '.join(cite['citing_topics'][:3])
-                if len(cite['citing_topics']) > 3:
-                    topics_str += f" +{len(cite['citing_topics']) - 3} more"
-                
-                detailed_html += f"""
-                <div class="citation-detail">
-                    <div class="citation-title"><strong>{html.escape(cite['citing_title'] or '')}</strong></div>
-                    <div class="cite-meta">
-                        <strong>{t('citing_journal')}:</strong> {html.escape(cite['citing_journal']) or ''} | 
-                        <strong>{t('citing_year')}:</strong> {cite['citing_year'] or ''} | 
-                        <strong>{t('citing_date')}:</strong> {cite['citing_date'] or ''} |
-                        <strong>{t('citation_lag')}:</strong> {cite['citation_lag'] or ''} years
-                    </div>
-                    <div class="cite-meta">
-                        <strong>{t('authors')}:</strong> {html.escape(authors_str) or ''} |
-                        <strong>{t('countries')}:</strong> {html.escape(countries_str) or ''} |
-                        <strong>{t('topics')}:</strong> {html.escape(topics_str)}
-                    </div>
-                    <div class="cite-meta">
-                        <a href="https://doi.org/{cite['citing_doi']}" target="_blank" class="doi-link">DOI: {cite['citing_doi']}</a>
-                    </div>
-                </div>
-                """
-            detailed_html += """
-            </div>
-            """
-    else:
-        detailed_html += f"<p>{t('html_not_found')}</p>"
-    
-    detailed_html += "</div>"
-    
-    # 9. All Publications with filters
-    pub_html = f"""
-    <div id="all_publications" class="section">
-        <div class="section-title"><span class="icon">📚</span> {t('all_publications')}</div>
+        .stat-card {{
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+            border: 1px solid #e9ecef;
+        }}
         
-        <div class="filter-section">
-            <div class="filter-row">
-                <div>
-                    <label for="yearFilter">{t('filter_by_year')}:</label>
-                    <select id="yearFilter" onchange="filterPublications()">
-                        <option value="">{t('all_years')}</option>
-    """
-    years = sorted(set(p['year'] for p in all_publications if p['year'] > 0), reverse=True)
-    for year in years:
-        pub_html += f'<option value="{year}">{year}</option>'
-    pub_html += f"""
-                    </select>
-                </div>
-                <div>
-                    <label for="authorFilter">{t('filter_by_author')}:</label>
-                    <input type="text" id="authorFilter" placeholder="{t('filter_by_author')}" onkeyup="filterPublications()">
-                </div>
-                <div>
-                    <label for="citationFilter">{t('filter_by_citations')}:</label>
-                    <input type="number" id="citationFilter" placeholder="{t('filter_by_citations')}" min="0" onchange="filterPublications()">
-                </div>
-                <div>
-                    <label for="searchInput">{t('search_publications')}:</label>
-                    <input type="text" id="searchInput" placeholder="{t('search_placeholder')}" onkeyup="filterPublications()">
-                </div>
-                <div>
-                    <span id="visibleCount" style="font-weight: 500;">{t('showing_publications').format(len(all_publications))}</span>
-                </div>
-            </div>
-        </div>
+        .stat-number {{
+            font-size: 32px;
+            font-weight: bold;
+            color: var(--primary);
+        }}
         
-        <div style="overflow-x: auto; max-height: 800px; overflow-y: auto;">
-            <table id="publicationsTable">
-                <thead>
-                    <tr>
-                        <th onclick="sortTable(0)" style="cursor: pointer;">#</th>
-                        <th onclick="sortTable(1)" style="cursor: pointer;">{t('title')}</th>
-                        <th onclick="sortTable(2)" style="cursor: pointer;">{t('year')}</th>
-                        <th onclick="sortTable(3)" style="cursor: pointer;">{t('citations')}</th>
-                        <th onclick="sortTable(4)" style="cursor: pointer;">{t('citations_per_year')}</th>
-                        <th onclick="sortTable(5)" style="cursor: pointer;">{t('journal')}</th>
-                        <th>{t('doi')}</th>
-                        <th>{t('show_citations_short')}</th>
-                    </tr>
-                </thead>
-                <tbody>
+        .stat-percent {{
+            font-size: 14px;
+            color: #666;
+        }}
+        
+        .stat-label {{
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }}
+        
+        .rank-item {{
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 12px 15px;
+            margin-bottom: 8px;
+            border-left: 3px solid var(--primary);
+        }}
+        
+        .rank-number {{
+            font-weight: bold;
+            color: var(--primary);
+            margin-right: 10px;
+        }}
+        
+        .rank-name {{
+            font-weight: 500;
+        }}
+        
+        .rank-count {{
+            float: right;
+            color: #666;
+            font-size: 13px;
+        }}
+        
+        .progress-bar {{
+            background: #e9ecef;
+            border-radius: 6px;
+            height: 6px;
+            margin-top: 6px;
+            overflow: hidden;
+        }}
+        
+        .progress-fill {{
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            height: 100%;
+            border-radius: 6px;
+            transition: width 0.5s;
+        }}
+        
+        .badge {{
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            margin: 2px;
+        }}
+        
+        .badge-success {{
+            background: #d4edda;
+            color: #155724;
+        }}
+        
+        .badge-warning {{
+            background: #fff3cd;
+            color: #856404;
+        }}
+        
+        .badge-info {{
+            background: #d1ecf1;
+            color: #0c5460;
+        }}
+        
+        .badge-primary {{
+            background: var(--primary);
+            color: white;
+        }}
+        
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }}
+        
+        thead {{
+            background: var(--primary);
+            color: white;
+        }}
+        
+        th {{
+            padding: 10px 12px;
+            text-align: left;
+            cursor: pointer;
+            user-select: none;
+        }}
+        
+        th:hover {{
+            opacity: 0.8;
+        }}
+        
+        td {{
+            padding: 8px 12px;
+            border-bottom: 1px solid #e9ecef;
+        }}
+        
+        tr:hover {{
+            background: #f8f9fa;
+        }}
+        
+        .clickable-link {{
+            color: var(--primary);
+            text-decoration: none;
+        }}
+        
+        .clickable-link:hover {{
+            text-decoration: underline;
+        }}
+        
+        .doi-link {{
+            color: var(--primary);
+            text-decoration: none;
+            font-size: 12px;
+        }}
+        
+        .doi-link:hover {{
+            text-decoration: underline;
+        }}
+        
+        .citation-count {{
+            background: var(--primary);
+            color: white;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            margin-left: 8px;
+        }}
+        
+        .collapser {{
+            background: #f8f9fa;
+            padding: 12px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-bottom: 8px;
+            transition: background 0.2s;
+            border-left: 3px solid var(--primary);
+        }}
+        
+        .collapser:hover {{
+            background: #e9ecef;
+        }}
+        
+        .citation-detail {{
+            background: white;
+            padding: 12px 15px;
+            margin: 5px 0 5px 20px;
+            border-radius: 6px;
+            border-left: 2px solid #ddd;
+            font-size: 13px;
+        }}
+        
+        .citation-detail .cite-meta {{
+            font-size: 12px;
+            color: #666;
+            margin-top: 4px;
+        }}
+        
+        .filter-section {{
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }}
+        
+        .filter-row {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: center;
+        }}
+        
+        .filter-row > div {{
+            flex: 1;
+            min-width: 150px;
+        }}
+        
+        .filter-row label {{
+            display: block;
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 4px;
+        }}
+        
+        .filter-row select, .filter-row input {{
+            width: 100%;
+            padding: 6px 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 13px;
+        }}
+        
+        .filter-row select:focus, .filter-row input:focus {{
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+        }}
+        
+        .footer-text {{
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            font-size: 12px;
+            margin-top: 40px;
+            border-top: 1px solid #e0e0e0;
+        }}
+        
+        .word-wrap {{
+            word-break: break-word;
+            max-width: 300px;
+        }}
+        
+        .table-container {{
+            overflow-x: auto;
+            max-height: 800px;
+            overflow-y: auto;
+        }}
+        
+        .concepts-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 10px;
+        }}
+        
+        .concept-card {{
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+            border: 1px solid #e9ecef;
+        }}
+        
+        .concept-name {{
+            font-weight: 600;
+            color: var(--primary);
+        }}
+        
+        .concept-score {{
+            font-size: 12px;
+            color: #666;
+            margin-top: 4px;
+        }}
+        
+        .header {{
+            text-align: center;
+            padding: 20px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            border-radius: 12px;
+            margin-bottom: 30px;
+        }}
+        
+        .header h1 {{
+            margin: 0;
+            font-size: 28px;
+        }}
+        
+        .header .subtitle {{
+            font-size: 16px;
+            opacity: 0.9;
+        }}
+        
+        .header .meta {{
+            font-size: 13px;
+            opacity: 0.8;
+            margin-top: 10px;
+        }}
+        
+        .date {{
+            font-size: 13px;
+            color: #666;
+            text-align: right;
+            margin-top: 10px;
+        }}
+        
+        .confidential-banner {{
+            background: linear-gradient(135deg, #fff3cd 0%, #ffe69e 100%);
+            border-left: 4px solid #dc3545;
+            padding: 12px 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            font-weight: 500;
+            text-align: center;
+        }}
+        
+        .reviewer-card {{
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border-left: 4px solid var(--primary);
+        }}
+        
+        .reviewer-name {{
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--primary);
+        }}
+        
+        .reviewer-orcid {{
+            font-family: monospace;
+            font-size: 12px;
+        }}
+        
+        .external-id-link {{
+            display: inline-block;
+            background: #f0f0f0;
+            padding: 4px 10px;
+            border-radius: 15px;
+            font-size: 11px;
+            margin: 3px;
+            text-decoration: none;
+            color: #333;
+            transition: background 0.2s;
+        }}
+        
+        .external-id-link:hover {{
+            background: var(--primary);
+            color: white;
+        }}
+        
+        .reviewer-website {{
+            display: inline-block;
+            margin: 3px 6px 3px 0;
+            font-size: 12px;
+        }}
+        
+        @media print {{
+            .section {{
+                box-shadow: none;
+                border: 1px solid #ddd;
+            }}
+            .header {{
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }}
+            .progress-fill {{
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }}
+        }}
+    </style>
     """
+    
+    # Build filter HTML
+    year_options = sorted(set(p['year'] for p in all_publications if p['year']), reverse=True)
+    year_filter_html = ''.join([f'<option value="{y}">{y}</option>' for y in year_options])
+    
+    # Build all publications table
+    publications_table = ''
     for i, pub in enumerate(all_publications, 1):
-        authors_str = ', '.join(pub['authors'][:3])
-        if len(pub['authors']) > 3:
-            authors_str += f" +{len(pub['authors']) - 3} more"
-        
-        safe_id = pub['id'].replace('https://openalex.org/', '').replace('/', '_')
-        pub_html += f"""
-                    <tr data-year="{pub['year']}" data-authors="{', '.join(pub['authors']).lower()}" data-citations="{pub['citations']}" data-title="{pub['title'].lower()}" data-doi="{pub['doi'].lower()}">
-                        <td>{i}</td>
-                        <td class="word-wrap">{html.escape(pub['title'])}</td>
-                        <td>{pub['year']}</td>
-                        <td><span class="citation-count">{pub['citations']}</span></td>
-                        <td>{pub['citations_per_year']:.1f}</td>
-                        <td>{html.escape(pub['journal'])}</td>
-                        <td><a href="https://doi.org/{pub['doi']}" target="_blank" class="doi-link">{pub['doi']}</a></td>
-                        <td>
-                            <button onclick="toggleCitations('{safe_id}')" class="toggle-button">{t('show_citations')}</button>
-                        </td>
-                    </tr>
+        pub_id_escaped = pub['id'].replace('https://openalex.org/', '')
+        publications_table += f"""
+        <tr data-year="{pub['year']}" data-authors="{pub['authors_str'].lower()}" data-citations="{pub['citations']}" data-title="{pub['title'].lower()}" data-doi="{pub['doi'].lower()}">
+            <td>{i}</td>
+            <td class="word-wrap">{html.escape(pub['title'][:200])}</td>
+            <td>{pub['year']}</td>
+            <td><span class="citation-count">{pub['citations']}</span></td>
+            <td>{pub['citations_per_year']:.1f}</td>
+            <td>{html.escape(pub['journal'])}</td>
+            <td><a href="https://doi.org/{pub['doi']}" target="_blank" class="doi-link">{pub['doi']}</a></td>
+            <td>
+                <button onclick="toggleCitations('{pub_id_escaped}')" style="padding: 3px 8px; border: none; border-radius: 4px; background: {primary_color}; color: white; cursor: pointer; font-size: 11px;">
+                    {get_text_local('show_citations')}
+                </button>
+            </td>
+        </tr>
         """
-    pub_html += f"""
-                </tbody>
-            </table>
-        </div>
-    </div>
-    """
     
-    # JavaScript for interactivity
-    js_code = """
+    # Build detailed citations
+    detailed_citations_html = ''
+    for pub_id, data in detailed_citations.items():
+        pub_id_escaped = pub_id.replace('https://openalex.org/', '')
+        author_names = ', '.join(data.get('authors', []))
+        
+        citations_content = ''
+        for cite in data.get('citations', []):
+            author_list = ', '.join(cite.get('citing_authors', []))
+            country_list = ', '.join(cite.get('citing_countries', []))
+            topic_list = ', '.join(cite.get('citing_topics', [])[:3])
+            
+            citations_content += f"""
+            <div class="citation-detail">
+                <div><strong>{html.escape(cite.get('citing_title', 'Unknown title'))}</strong></div>
+                <div class="cite-meta">
+                    <strong>{get_text_local('citing_journal')}:</strong> {html.escape(cite.get('citing_journal', 'Unknown'))} | 
+                    <strong>{get_text_local('citing_year')}:</strong> {cite.get('citing_year', 'N/A')} | 
+                    <strong>{get_text_local('citing_date')}:</strong> {cite.get('citing_date', 'N/A')} |
+                    <strong>{get_text_local('citation_lag')}:</strong> {cite.get('citation_lag', 0)} years
+                </div>
+                <div class="cite-meta">
+                    <strong>{get_text_local('authors')}:</strong> {author_list} |
+                    <strong>{get_text_local('countries')}:</strong> {country_list} |
+                    <strong>{get_text_local('topics')}:</strong> {topic_list}
+                </div>
+                <div class="cite-meta">
+                    <a href="https://doi.org/{cite.get('citing_doi', '')}" target="_blank" class="doi-link">DOI: {cite.get('citing_doi', '')}</a>
+                </div>
+            </div>
+            """
+        
+        if data.get('total_citations', 0) > 0:
+            detailed_citations_html += f"""
+            <div class="collapser" onclick="toggleCitations('{pub_id_escaped}')">
+                <strong>{html.escape(data.get('title', 'Unknown title'))}</strong>
+                <span class="badge badge-info">{data.get('year', 'N/A')}</span>
+                <span class="citation-count">{data.get('total_citations', 0)} {get_text_local('citations')}</span>
+                <span style="font-size: 12px; color: #666; margin-left: 10px;">{get_text_local('authors')}: {author_names[:100]}</span>
+                <span style="float: right; font-size: 12px; color: #666;">{get_text_local('click_to_toggle')}</span>
+            </div>
+            <div id="citations_{pub_id_escaped}" style="display: none;">
+                {citations_content}
+            </div>
+            """
+    
+    # Build most cited table
+    most_cited_table = ''
+    for pub in most_cited:
+        most_cited_table += f"""
+        <tr>
+            <td>{pub['rank']}</td>
+            <td class="word-wrap">{html.escape(pub['title'][:200])}</td>
+            <td>{pub['year']}</td>
+            <td><span class="citation-count">{pub['citations']}</span></td>
+            <td>{pub['citations_per_year']:.1f}</td>
+            <td>{html.escape(pub['authors'])}</td>
+            <td><a href="https://doi.org/{pub['doi']}" target="_blank" class="doi-link">{pub['doi']}</a></td>
+        </tr>
+        """
+    
+    # Build author table
+    author_table = ''
+    for i, author in enumerate(authors_data['top_authors'][:30], 1):
+        orcid_link = f'<a href="{author["orcid"]}" target="_blank" class="clickable-link">ORCID</a>' if author['orcid'] else ''
+        aff_str = ', '.join(author['affiliations'][:3])
+        if len(author['affiliations']) > 3:
+            aff_str += f' +{len(author["affiliations"])-3} more'
+        
+        author_table += f"""
+        <tr>
+            <td>{i}</td>
+            <td><strong>{html.escape(author['display_name'])}</strong> {orcid_link}</td>
+            <td>{html.escape(aff_str)}</td>
+            <td>{author['publication_count']}</td>
+            <td>{author['citation_count']}</td>
+        </tr>
+        """
+    
+    # Build geography sections
+    geo_type1 = ''
+    for country, count in list(geography['type1_unique_countries_per_publication'].items())[:15]:
+        geo_type1 += f"""
+        <div class="rank-item">
+            <span class="rank-name">{html.escape(country)}</span>
+            <span class="rank-count">{count} {get_text_local('publications')}</span>
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: {count / max(geography['type1_unique_countries_per_publication'].values()) * 100 if geography['type1_unique_countries_per_publication'] else 0}%;"></div>
+            </div>
+        </div>
+        """
+    
+    geo_type2 = ''
+    for country, count in list(geography['type2_authors_per_country'].items())[:15]:
+        geo_type2 += f"""
+        <div class="rank-item">
+            <span class="rank-name">{html.escape(country)}</span>
+            <span class="rank-count">{count} {get_text_local('authors')}</span>
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: {count / max(geography['type2_authors_per_country'].values()) * 100 if geography['type2_authors_per_country'] else 0}%;"></div>
+            </div>
+        </div>
+        """
+    
+    geo_couples = ''
+    for couple in geography['collaboration_couples'][:15]:
+        geo_couples += f"""
+        <div class="rank-item">
+            <span class="rank-name">{html.escape(couple['country1'])} + {html.escape(couple['country2'])}</span>
+            <span class="rank-count">{couple['count']} {get_text_local('works')}</span>
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: {couple['count'] / max([c['count'] for c in geography['collaboration_couples']]) * 100 if geography['collaboration_couples'] else 0}%;"></div>
+            </div>
+        </div>
+        """
+    
+    # Build citation network heatmap
+    network_heatmap = ''
+    all_years = citation_dynamics['all_years']
+    if all_years:
+        network_heatmap = '<table style="font-size: 11px; border-collapse: collapse;">'
+        network_heatmap += '<thead><tr><th style="padding: 4px 8px;">Pub Year</th>'
+        for cyear in all_years:
+            network_heatmap += f'<th style="padding: 4px 8px;">{cyear}</th>'
+        network_heatmap += '</tr></thead><tbody>'
+        
+        yearly_cites = citation_dynamics['yearly_citations']
+        max_count = 0
+        for pub_year, cites in yearly_cites.items():
+            for count in cites.values():
+                if count > max_count:
+                    max_count = count
+        
+        for pyear in sorted(yearly_cites.keys()):
+            network_heatmap += f'<tr><td style="padding: 4px 8px; font-weight: bold;">{pyear}</td>'
+            for cyear in all_years:
+                count = yearly_cites.get(pyear, {}).get(cyear, 0)
+                if count > 0:
+                    intensity = min(255, int(100 + (count / max_count) * 155)) if max_count > 0 else 100
+                    network_heatmap += f'<td style="padding: 4px 8px; text-align: center; background: rgba({int(intensity*0.6)}, {int(intensity*0.4)}, 255, 0.6);">{count}</td>'
+                else:
+                    network_heatmap += '<td style="padding: 4px 8px; text-align: center; color: #ccc;">0</td>'
+            network_heatmap += '</tr>'
+        network_heatmap += '</tbody></table>'
+    
+    # Build citing works tables
+    citing_authors_table = ''
+    for i, item in enumerate(citing_works['top_authors'][:30], 1):
+        citing_authors_table += f"""
+        <tr><td>{i}</td><td>{html.escape(item['name'])}</td><td>{item['count']}</td></tr>
+        """
+    
+    citing_affiliations_table = ''
+    for i, item in enumerate(citing_works['top_affiliations'][:30], 1):
+        citing_affiliations_table += f"""
+        <tr><td>{i}</td><td>{html.escape(item['name'])}</td><td>{item['count']}</td></tr>
+        """
+    
+    citing_countries_table = ''
+    for i, item in enumerate(citing_works['top_countries'][:30], 1):
+        citing_countries_table += f"""
+        <tr><td>{i}</td><td>{html.escape(item['name'])}</td><td>{item['count']}</td></tr>
+        """
+    
+    citing_journals_table = ''
+    for i, item in enumerate(citing_works['top_journals'][:30], 1):
+        citing_journals_table += f"""
+        <tr><td>{i}</td><td>{html.escape(item['name'])}</td><td>{item['count']}</td></tr>
+        """
+    
+    citing_publishers_table = ''
+    for i, item in enumerate(citing_works['top_publishers'][:30], 1):
+        citing_publishers_table += f"""
+        <tr><td>{i}</td><td>{html.escape(item['name'])}</td><td>{item['count']}</td></tr>
+        """
+    
+    # Build topics tables
+    topics_table = ''
+    for i, item in enumerate(topics_data['top_topics'][:20], 1):
+        topics_table += f"""
+        <tr>
+            <td>{i}</td>
+            <td>{html.escape(item['topic'])}</td>
+            <td>{item['analyzed_count']}</td>
+            <td>{item['citing_count']}</td>
+            <td>{item['analyzed_norm_count']:.3f}</td>
+            <td>{item['citing_norm_count']:.3f}</td>
+            <td>{item['total_norm_count']:.3f}</td>
+            <td>{item['first_year']}</td>
+            <td>{item['peak_year']}</td>
+            <td>{item['recent_5_years_count']}</td>
+        </tr>
+        """
+    
+    # Build citation velocity section
+    velocity_table = ''
+    sorted_velocity = sorted(citation_velocity.values(), key=lambda x: x['velocity'], reverse=True)
+    for i, item in enumerate(sorted_velocity[:30], 1):
+        velocity_table += f"""
+        <tr>
+            <td>{i}</td>
+            <td class="word-wrap">{html.escape(item['title'][:150])}</td>
+            <td>{item['year']}</td>
+            <td>{item['citations']}</td>
+            <td>{item['velocity']:.1f}</td>
+            <td><span class="badge badge-{('success' if item['category'] == get_text_local('very_high') else 'warning' if item['category'] == get_text_local('high') else 'info' if item['category'] == get_text_local('medium') else '')}">{item['category']}</span></td>
+            <td>{item['age']}</td>
+        </tr>
+        """
+    
+    # Build OA breakdown
+    oa = overview['open_access_breakdown']
+    oa_html = ''
+    for oa_type, count in oa.items():
+        if oa_type != 'unknown' or count > 0:
+            label = get_text_local(oa_type)
+            oa_html += f"""
+            <div class="rank-item">
+                <span class="rank-name">{label}</span>
+                <span class="rank-count">{count} ({count/overview['total_publications']*100 if overview['total_publications'] > 0 else 0:.1f}%)</span>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: {count/overview['total_publications']*100 if overview['total_publications'] > 0 else 0}%;"></div>
+                </div>
+            </div>
+            """
+    
+    # Build full HTML
+    html_content = f"""<!DOCTYPE html>
+<html lang="{lang}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{get_text_local('app_title')}</title>
+    {theme_css}
     <script>
-        function filterPublications() {
+        function toggleCitations(id) {{
+            const element = document.getElementById('citations_' + id);
+            if (element) {{
+                element.style.display = element.style.display === 'none' ? 'block' : 'none';
+            }}
+        }}
+        
+        function filterPublications() {{
             const year = document.getElementById('yearFilter').value;
             const author = document.getElementById('authorFilter').value.toLowerCase();
             const minCitations = parseInt(document.getElementById('citationFilter').value) || 0;
@@ -2807,7 +2742,7 @@ def generate_html_report(data: JournalData, metrics: Dict, lang: str = 'en', pri
             const rows = document.querySelectorAll('#publicationsTable tbody tr');
             let visible = 0;
             
-            rows.forEach(row => {
+            rows.forEach(row => {{
                 let show = true;
                 const rowYear = row.dataset.year;
                 const rowAuthors = row.dataset.authors;
@@ -2822,238 +2757,451 @@ def generate_html_report(data: JournalData, metrics: Dict, lang: str = 'en', pri
                 
                 row.style.display = show ? '' : 'none';
                 if (show) visible++;
-            });
+            }});
             
-            document.getElementById('visibleCount').textContent = 'Showing ' + visible + ' publications';
-        }
+            document.getElementById('visibleCount').textContent = '{get_text_local("showing_publications").replace("{0}", "")}' + visible + ' publications';
+        }}
         
-        function toggleCitations(pubId) {
-            const element = document.getElementById('citations_' + pubId);
-            if (element) {
-                if (element.style.display === 'none') {
-                    element.style.display = 'block';
-                } else {
-                    element.style.display = 'none';
-                }
-            }
-        }
-        
-        function sortTable(column) {
+        function sortTable(column) {{
             const table = document.getElementById('publicationsTable');
             const tbody = table.querySelector('tbody');
             const rows = Array.from(tbody.querySelectorAll('tr'));
             
-            let sorted;
-            if (column === 0) {
-                sorted = rows.sort((a, b) => {
-                    const aVal = parseInt(a.cells[0].textContent);
-                    const bVal = parseInt(b.cells[0].textContent);
-                    return aVal - bVal;
-                });
-            } else if (column === 2) {
-                sorted = rows.sort((a, b) => {
-                    const aVal = parseInt(a.cells[2].textContent);
-                    const bVal = parseInt(b.cells[2].textContent);
-                    return bVal - aVal;
-                });
-            } else if (column === 3) {
-                sorted = rows.sort((a, b) => {
-                    const aVal = parseInt(a.cells[3].textContent);
-                    const bVal = parseInt(b.cells[3].textContent);
-                    return bVal - aVal;
-                });
-            } else if (column === 4) {
-                sorted = rows.sort((a, b) => {
-                    const aVal = parseFloat(a.cells[4].textContent);
-                    const bVal = parseFloat(b.cells[4].textContent);
-                    return bVal - aVal;
-                });
-            } else {
-                sorted = rows.sort((a, b) => {
-                    const aVal = a.cells[column].textContent.toLowerCase();
-                    const bVal = b.cells[column].textContent.toLowerCase();
-                    return aVal.localeCompare(bVal);
-                });
-            }
+            const isNumeric = column === 2 || column === 3 || column === 4;
             
-            tbody.innerHTML = '';
-            sorted.forEach(row => tbody.appendChild(row));
-        }
-    </script>
-    """
-    
-    # Navigation sidebar
-    sidebar_html = f"""
-    <div class="sidebar">
-        <h3>{t('navigation')}</h3>
-        <a href="#overview">📊 {t('nav_overview')}</a>
-        <a href="#most_cited">🏆 {t('nav_most_cited')}</a>
-        <a href="#authors">👨‍🎓 {t('nav_authors')}</a>
-        <a href="#citation_analysis">📈 {t('nav_citation_analysis')}</a>
-        <a href="#citing_works">🔗 {t('nav_citing_works')}</a>
-        <a href="#topics">🧠 {t('nav_topics')}</a>
-        <a href="#detailed_citations">📋 {t('nav_detailed_citations')}</a>
-        <a href="#all_publications">📚 {t('nav_all_publications')}</a>
-    </div>
-    """
-    
-    # Header with logo and date
-    header_html = f"""
-    <div class="header">
-        <div style="display: flex; justify-content: center; margin-bottom: 15px;">
-            <img src="data:image/png;base64,{logo_base64}" style="height: 150px; width: auto;" alt="Logo">
-        </div>
-        <div class="date">{t('html_generated')}: {datetime.now().strftime('%d.%m.%Y %H:%M')}</div>
-    </div>
-    """
-    
-    # Footer
-    footer_html = f"""
-    <div class="footer">
-        {t('html_footer')}<br>
-        {t('html_copyright')}
-    </div>
-    """
-    
-    # Combine all sections
-    full_html = f"""<!DOCTYPE html>
-<html lang="{lang}">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{t('app_title')}</title>
-    <style>
-        {BASE_CSS}
-        {generate_theme_css('default', primary_color, secondary_color)}
-        {get_reference_color_style('full')}
-        
-        .badge-oa-gold {{ background: #ffd700; color: #000; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }}
-        .badge-oa-hybrid {{ background: #ff8c00; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }}
-        .badge-oa-green {{ background: #2e8b57; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }}
-        .badge-oa-bronze {{ background: #cd7f32; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }}
-        .badge-oa-closed {{ background: #6c757d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }}
-        
-        .filter-section {{ background: #f8f9fa; border-radius: 10px; padding: 15px; margin-bottom: 20px; }}
-        .filter-row {{ display: flex; gap: 15px; flex-wrap: wrap; align-items: center; }}
-        .filter-row label {{ font-weight: 500; font-size: 13px; margin-right: 5px; }}
-        .filter-row select, .filter-row input {{ padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; }}
-        .filter-row select:focus, .filter-row input:focus {{ border-color: var(--primary); outline: none; box-shadow: 0 0 0 2px var(--hover-light); }}
-        
-        .collapser {{ cursor: pointer; padding: 10px 15px; background: #f8f9fa; border-radius: 8px; margin-bottom: 5px; transition: background 0.2s; border-left: 3px solid var(--primary); }}
-        .collapser:hover {{ background: #f0f0f0; }}
-        .citation-detail {{ background: #f8f9fa; border-radius: 8px; padding: 12px; margin: 8px 0 8px 20px; border-left: 3px solid #ddd; transition: background 0.2s; }}
-        .citation-detail:hover {{ background: #f0f0f0; }}
-        .citation-title {{ font-weight: 500; margin-bottom: 5px; }}
-        .cite-meta {{ font-size: 12px; color: #666; margin-top: 3px; }}
-        .toggle-button {{ display: inline-block; padding: 4px 12px; border: none; border-radius: 4px; background: var(--primary); color: white; cursor: pointer; font-size: 12px; transition: background 0.2s; }}
-        .toggle-button:hover {{ background: var(--secondary); }}
-        
-        .word-wrap {{ word-wrap: break-word; max-width: 300px; }}
-        .citation-count {{ font-weight: 600; color: var(--primary); }}
-        .doi-link {{ color: var(--primary); text-decoration: none; font-family: monospace; font-size: 12px; }}
-        .doi-link:hover {{ color: var(--secondary); text-decoration: underline; }}
-        
-        .stats-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px; margin-bottom: 20px; }}
-        .stat-card {{ background: white; border-radius: 10px; padding: 15px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.08); }}
-        .stat-number {{ font-size: 28px; font-weight: bold; background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }}
-        .stat-label {{ font-size: 12px; color: #666; margin-top: 5px; }}
-        
-        .rank-item {{ background: white; border-radius: 8px; padding: 10px 15px; margin-bottom: 6px; border-left: 3px solid var(--primary); transition: all 0.2s; }}
-        .rank-item:hover {{ transform: translateX(5px); box-shadow: 0 2px 8px rgba(0,0,0,0.08); }}
-        .rank-name {{ font-weight: 500; }}
-        .rank-count {{ float: right; color: #666; font-weight: 500; }}
-        .progress-bar {{ background: #e0e0e0; border-radius: 10px; height: 6px; margin-top: 6px; overflow: hidden; }}
-        .progress-fill {{ background: linear-gradient(90deg, var(--primary), var(--secondary)); height: 100%; border-radius: 10px; transition: width 0.5s; }}
-        
-        table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
-        th {{ background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%); color: white; padding: 10px 12px; text-align: left; font-weight: 600; position: sticky; top: 0; z-index: 10; }}
-        td {{ padding: 8px 12px; border-bottom: 1px solid #f0f0f0; }}
-        tr:hover {{ background: #f8f9fa; }}
-        
-        .badge {{ display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }}
-        .badge-info {{ background: #d1ecf1; color: #0c5460; }}
-        .badge-success {{ background: #d4edda; color: #155724; }}
-        .badge-warning {{ background: #fff3cd; color: #856404; }}
-        .badge-danger {{ background: #f8d7da; color: #721c24; }}
-        
-        .section {{ margin-bottom: 40px; }}
-        .section-title {{ font-size: 24px; font-weight: 700; padding-bottom: 10px; margin-bottom: 20px; border-bottom: 3px solid var(--primary); }}
-        .icon {{ margin-right: 10px; }}
-        .header {{ text-align: center; padding: 20px 0; margin-bottom: 30px; }}
-        .date {{ font-size: 14px; color: #666; margin-top: 5px; }}
-        .footer {{ text-align: center; padding: 20px; color: #666; font-size: 12px; margin-top: 40px; border-top: 1px solid #e0e0e0; }}
-        .sidebar {{ position: fixed; left: 0; top: 0; width: 200px; height: 100vh; background: linear-gradient(180deg, var(--primary) 0%, var(--secondary) 100%); padding: 20px 15px; overflow-y: auto; z-index: 1000; }}
-        .sidebar h3 {{ color: white; font-size: 16px; margin-bottom: 15px; }}
-        .sidebar a {{ display: block; color: rgba(255,255,255,0.85); text-decoration: none; padding: 8px 12px; border-radius: 6px; font-size: 13px; transition: all 0.2s; }}
-        .sidebar a:hover {{ background: rgba(255,255,255,0.2); color: white; }}
-        .main-content {{ margin-left: 220px; padding: 20px 30px; max-width: 1200px; }}
-        
-        @media (max-width: 768px) {{
-            .sidebar {{ display: none; }}
-            .main-content {{ margin-left: 0; padding: 15px; }}
-            .stats-grid {{ grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); }}
-            .filter-row {{ flex-direction: column; align-items: stretch; }}
-            .filter-row div {{ width: 100%; }}
-            .filter-row input, .filter-row select {{ width: 100%; }}
+            rows.sort((a, b) => {{
+                let aVal, bVal;
+                if (column === 0) {{
+                    aVal = parseInt(a.cells[0].textContent);
+                    bVal = parseInt(b.cells[0].textContent);
+                }} else if (column === 1) {{
+                    aVal = a.cells[1].textContent.toLowerCase();
+                    bVal = b.cells[1].textContent.toLowerCase();
+                }} else if (column === 2) {{
+                    aVal = parseInt(a.cells[2].textContent);
+                    bVal = parseInt(b.cells[2].textContent);
+                }} else if (column === 3) {{
+                    aVal = parseInt(a.cells[3].textContent);
+                    bVal = parseInt(b.cells[3].textContent);
+                }} else if (column === 4) {{
+                    aVal = parseFloat(a.cells[4].textContent);
+                    bVal = parseFloat(b.cells[4].textContent);
+                }} else if (column === 5) {{
+                    aVal = a.cells[5].textContent.toLowerCase();
+                    bVal = b.cells[5].textContent.toLowerCase();
+                }} else {{
+                    return 0;
+                }}
+                
+                if (isNumeric) {{
+                    return bVal - aVal;
+                }} else {{
+                    if (aVal < bVal) return -1;
+                    if (aVal > bVal) return 1;
+                    return 0;
+                }}
+            }});
+            
+            rows.forEach(row => tbody.appendChild(row));
+            
+            // Update ranks
+            rows.forEach((row, index) => {{
+                row.cells[0].textContent = index + 1;
+            }});
         }}
-    </style>
+    </script>
 </head>
 <body>
-    {sidebar_html}
-    
     <div class="main-content">
-        {header_html}
-        {overview_html}
-        {most_cited_html}
-        {authors_html}
-        {citation_html}
-        {citing_html}
-        {topics_html}
-        {detailed_html}
-        {pub_html}
-        {footer_html}
+        <!-- Header -->
+        <div class="header">
+            <h1>📚 {get_text_local('app_title')}</h1>
+            <div class="subtitle">{get_text_local('app_subtitle')}</div>
+            <div class="meta">
+                ISSN: {html.escape(st.session_state.get('issn', 'N/A'))} | 
+                Period: {html.escape(st.session_state.get('period', 'N/A'))} | 
+                {get_text_local('html_generated')}: {current_date}
+            </div>
+        </div>
+        
+        <!-- 1. OVERVIEW SECTION -->
+        <div id="overview" class="section">
+            <div class="section-title"><span class="icon">📊</span> {get_text_local('overview')}</div>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-number">{overview['total_publications']}</div>
+                    <div class="stat-label">{get_text_local('total_publications')}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{overview['total_citations']}</div>
+                    <div class="stat-label">{get_text_local('total_citations')}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{overview['h_index']}</div>
+                    <div class="stat-label">{get_text_local('h_index')}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{overview['g_index']}</div>
+                    <div class="stat-label">{get_text_local('g_index')}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{overview['i10_index']}</div>
+                    <div class="stat-label">{get_text_local('i10_index')}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{overview['i100_index']}</div>
+                    <div class="stat-label">{get_text_local('i100_index')}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{overview['avg_citations']:.1f}</div>
+                    <div class="stat-label">{get_text_local('avg_citations')}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{overview['open_access_percent']:.1f}%</div>
+                    <div class="stat-label">{get_text_local('open_access')}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{overview['active_years']}</div>
+                    <div class="stat-label">{get_text_local('active_years')}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{overview['unique_authors']}</div>
+                    <div class="stat-label">{get_text_local('unique_authors')}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{overview['unique_countries']}</div>
+                    <div class="stat-label">{get_text_local('unique_countries')}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{overview['total_citing_works']}</div>
+                    <div class="stat-label">{get_text_local('total_citing_works')}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{overview['unique_citing_journals']}</div>
+                    <div class="stat-label">{get_text_local('unique_citing_journals')}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{overview['avg_authors_per_paper']:.1f}</div>
+                    <div class="stat-label">{get_text_local('avg_authors_per_paper')}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{overview['avg_affiliations_per_paper']:.1f}</div>
+                    <div class="stat-label">{get_text_local('avg_affiliations_per_paper')}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{overview['avg_countries_per_paper']:.1f}</div>
+                    <div class="stat-label">{get_text_local('avg_countries_per_paper')}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{overview['international_collaboration_rate']:.1f}%</div>
+                    <div class="stat-label">{get_text_local('international_collaboration_rate')}</div>
+                </div>
+            </div>
+            
+            <!-- Open Access Breakdown -->
+            <h4 style="margin-top: 20px;">{get_text_local('open_access_breakdown')}</h4>
+            {oa_html}
+        </div>
+        
+        <!-- 2. MOST CITED PUBLICATIONS -->
+        <div id="most_cited" class="section">
+            <div class="section-title"><span class="icon">🏆</span> {get_text_local('most_cited_publications')}</div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>{get_text_local('rank')}</th>
+                            <th>{get_text_local('title')}</th>
+                            <th>{get_text_local('year')}</th>
+                            <th>{get_text_local('citations')}</th>
+                            <th>{get_text_local('citations_per_year')}</th>
+                            <th>{get_text_local('authors')}</th>
+                            <th>DOI</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {most_cited_table}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- 3. AUTHOR ANALYSIS -->
+        <div id="authors" class="section">
+            <div class="section-title"><span class="icon">👨‍🎓</span> {get_text_local('author_analysis')}</div>
+            <h4>{get_text_local('top_authors')}</h4>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>{get_text_local('rank')}</th>
+                            <th>{get_text_local('author')}</th>
+                            <th>{get_text_local('affiliations')}</th>
+                            <th>{get_text_local('publication_count')}</th>
+                            <th>{get_text_local('citation_count')}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {author_table}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- GEOGRAPHIC ANALYSIS -->
+        <div id="geography" class="section">
+            <div class="section-title"><span class="icon">🌍</span> {get_text_local('geographic_analysis')}</div>
+            
+            <h4>{get_text_local('geography_type_1')}</h4>
+            <p style="font-size: 12px; color: #666; margin-bottom: 10px;">{get_text_local('geography_type_1_desc')}</p>
+            {geo_type1}
+            
+            <h4 style="margin-top: 20px;">{get_text_local('geography_type_2')}</h4>
+            <p style="font-size: 12px; color: #666; margin-bottom: 10px;">{get_text_local('geography_type_2_desc')}</p>
+            {geo_type2}
+            
+            <h4 style="margin-top: 20px;">{get_text_local('geography_type_3')}</h4>
+            <p style="font-size: 12px; color: #666; margin-bottom: 10px;">{get_text_local('geography_type_3_desc')}</p>
+            <div style="display: flex; gap: 20px; margin-bottom: 15px;">
+                <div><strong>{get_text_local('single_country')}:</strong> {geography.get('single_country_count', 0)}</div>
+                <div><strong>{get_text_local('international_collaboration')}:</strong> {geography.get('international_count', 0)}</div>
+            </div>
+            
+            <h4 style="margin-top: 20px;">{get_text_local('collaboration_couples')}</h4>
+            {geo_couples}
+        </div>
+        
+        <!-- 4. CITATION ANALYSIS -->
+        <div id="citation_analysis" class="section">
+            <div class="section-title"><span class="icon">📈</span> {get_text_local('citation_analysis')}</div>
+            
+            <h4>{get_text_local('yearly_citation_dynamics')}</h4>
+            <div style="overflow-x: auto;">
+                <table style="font-size: 12px;">
+                    <thead>
+                        <tr>
+                            <th>{get_text_local('publication_year')}</th>
+                            <th>{get_text_local('citation_year')}</th>
+                            <th>{get_text_local('citations_count')}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {''.join([
+                            f'<tr><td>{item["publication_year"]}</td><td>{item["citation_year"]}</td><td>{item["citations_count"]}</td></tr>'
+                            for item in citation_dynamics['network_data'][:50]
+                        ])}
+                    </tbody>
+                </table>
+            </div>
+            
+            <h4 style="margin-top: 20px;">{get_text_local('citation_network')}</h4>
+            {network_heatmap if network_heatmap else '<p>No citation network data available</p>'}
+        </div>
+        
+        <!-- 5. CITING WORKS ANALYSIS -->
+        <div id="citing_works" class="section">
+            <div class="section-title"><span class="icon">🔗</span> {get_text_local('citing_works_analysis')}</div>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-number">{citing_works['total_citing_works']}</div>
+                    <div class="stat-label">{get_text_local('total_citing_works')}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{citing_works['unique_citing_authors']}</div>
+                    <div class="stat-label">{get_text_local('unique_citing_authors')}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{citing_works['unique_citing_affiliations']}</div>
+                    <div class="stat-label">{get_text_local('unique_citing_affiliations')}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{citing_works['unique_citing_countries']}</div>
+                    <div class="stat-label">{get_text_local('unique_citing_countries')}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{citing_works['unique_citing_journals']}</div>
+                    <div class="stat-label">{get_text_local('unique_citing_journals')}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{citing_works['unique_citing_publishers']}</div>
+                    <div class="stat-label">{get_text_local('unique_citing_publishers')}</div>
+                </div>
+            </div>
+            
+            <h4>{get_text_local('top_citing_authors')}</h4>
+            <div class="table-container">
+                <table>
+                    <thead><tr><th>{get_text_local('rank')}</th><th>Author</th><th>{get_text_local('count')}</th></tr></thead>
+                    <tbody>{citing_authors_table}</tbody>
+                </table>
+            </div>
+            
+            <h4 style="margin-top: 20px;">{get_text_local('top_citing_affiliations')}</h4>
+            <div class="table-container">
+                <table>
+                    <thead><tr><th>{get_text_local('rank')}</th><th>Affiliation</th><th>{get_text_local('count')}</th></tr></thead>
+                    <tbody>{citing_affiliations_table}</tbody>
+                </table>
+            </div>
+            
+            <h4 style="margin-top: 20px;">{get_text_local('top_citing_countries')}</h4>
+            <div class="table-container">
+                <table>
+                    <thead><tr><th>{get_text_local('rank')}</th><th>Country</th><th>{get_text_local('count')}</th></tr></thead>
+                    <tbody>{citing_countries_table}</tbody>
+                </table>
+            </div>
+            
+            <h4 style="margin-top: 20px;">{get_text_local('top_citing_journals')}</h4>
+            <div class="table-container">
+                <table>
+                    <thead><tr><th>{get_text_local('rank')}</th><th>Journal</th><th>{get_text_local('count')}</th></tr></thead>
+                    <tbody>{citing_journals_table}</tbody>
+                </table>
+            </div>
+            
+            <h4 style="margin-top: 20px;">{get_text_local('top_citing_publishers')}</h4>
+            <div class="table-container">
+                <table>
+                    <thead><tr><th>{get_text_local('rank')}</th><th>Publisher</th><th>{get_text_local('count')}</th></tr></thead>
+                    <tbody>{citing_publishers_table}</tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- 6. TOPICS ANALYSIS -->
+        <div id="topics" class="section">
+            <div class="section-title"><span class="icon">🧠</span> {get_text_local('topics_analysis')}</div>
+            
+            <h4>{get_text_local('top_topics')}</h4>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>{get_text_local('rank')}</th>
+                            <th>{get_text_local('topic')}</th>
+                            <th>{get_text_local('analyzed_count')}</th>
+                            <th>{get_text_local('citing_count')}</th>
+                            <th>{get_text_local('analyzed_norm_count')}</th>
+                            <th>{get_text_local('citing_norm_count')}</th>
+                            <th>{get_text_local('total_norm_count')}</th>
+                            <th>{get_text_local('first_year')}</th>
+                            <th>{get_text_local('peak_year')}</th>
+                            <th>{get_text_local('recent_5_years_count')}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {topics_table}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- CITATION VELOCITY -->
+        <div id="citation_velocity" class="section">
+            <div class="section-title"><span class="icon">⚡</span> {get_text_local('citation_velocity')}</div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>{get_text_local('rank')}</th>
+                            <th>{get_text_local('title')}</th>
+                            <th>{get_text_local('year')}</th>
+                            <th>{get_text_local('citations')}</th>
+                            <th>{get_text_local('velocity')}</th>
+                            <th>{get_text_local('velocity_category')}</th>
+                            <th>{get_text_local('age')}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {velocity_table}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- 7. DETAILED CITATIONS -->
+        <div id="detailed_citations" class="section">
+            <div class="section-title"><span class="icon">📋</span> {get_text_local('detailed_citations')}</div>
+            {detailed_citations_html if detailed_citations_html else '<p>No detailed citations available</p>'}
+        </div>
+        
+        <!-- 8. ALL PUBLICATIONS -->
+        <div id="all_publications" class="section">
+            <div class="section-title"><span class="icon">📚</span> {get_text_local('all_publications')}</div>
+            
+            <div class="filter-section">
+                <div class="filter-row">
+                    <div>
+                        <label for="yearFilter">{get_text_local('filter_by_year')}</label>
+                        <select id="yearFilter" onchange="filterPublications()">
+                            <option value="">{get_text_local('all_years')}</option>
+                            {year_filter_html}
+                        </select>
+                    </div>
+                    <div>
+                        <label for="authorFilter">{get_text_local('filter_by_author')}</label>
+                        <input type="text" id="authorFilter" placeholder="{get_text_local('author_name_placeholder')}" onkeyup="filterPublications()">
+                    </div>
+                    <div>
+                        <label for="citationFilter">{get_text_local('filter_by_citations')}</label>
+                        <input type="number" id="citationFilter" placeholder="{get_text_local('min_citations_placeholder')}" min="0" onchange="filterPublications()">
+                    </div>
+                    <div>
+                        <label for="searchInput">{get_text_local('search_publications')}</label>
+                        <input type="text" id="searchInput" placeholder="{get_text_local('search_placeholder')}" onkeyup="filterPublications()">
+                    </div>
+                    <div>
+                        <label>&nbsp;</label>
+                        <span id="visibleCount" style="font-weight: 500;">{get_text_local('showing_publications').replace('{0}', str(len(all_publications)))}</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="table-container">
+                <table id="publicationsTable">
+                    <thead>
+                        <tr>
+                            <th onclick="sortTable(0)" style="cursor: pointer;">#</th>
+                            <th onclick="sortTable(1)" style="cursor: pointer;">{get_text_local('title')}</th>
+                            <th onclick="sortTable(2)" style="cursor: pointer;">{get_text_local('year')}</th>
+                            <th onclick="sortTable(3)" style="cursor: pointer;">{get_text_local('citations')}</th>
+                            <th onclick="sortTable(4)" style="cursor: pointer;">{get_text_local('citations_per_year')}</th>
+                            <th onclick="sortTable(5)" style="cursor: pointer;">{get_text_local('journal')}</th>
+                            <th>DOI</th>
+                            <th>{get_text_local('show_citations')}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {publications_table}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="footer-text">
+            {get_text_local('html_footer')}<br>
+            {get_text_local('html_copyright')}
+        </div>
     </div>
-    
-    {js_code}
 </body>
 </html>
-    """
+"""
     
-    return full_html
+    return html_content
 
 # ======================== STREAMLIT UI ========================
 
 def main():
-    # Page configuration
-    st.set_page_config(
-        page_title="Journal Metrics Analyzer",
-        page_icon="📚",
-        layout="wide",
-        initial_sidebar_state="expanded"
-    )
+    """Main Streamlit application"""
     
-    # Initialize session state
-    if 'language' not in st.session_state:
-        st.session_state.language = 'en'
-    if 'primary_color' not in st.session_state:
-        st.session_state.primary_color = '#667eea'
-    if 'secondary_color' not in st.session_state:
-        st.session_state.secondary_color = '#f39c12'
-    if 'analysis_complete' not in st.session_state:
-        st.session_state.analysis_complete = False
-    if 'data' not in st.session_state:
-        st.session_state.data = None
-    if 'metrics' not in st.session_state:
-        st.session_state.metrics = None
-    
-    # Sidebar - Settings and inputs
+    # Sidebar
     with st.sidebar:
-        st.image("logo.png", width=150) if os.path.exists("logo.png") else st.markdown("### 📚 Journal Metrics")
+        st.image("logo.png", width=150)
         
-        st.markdown(f"## {get_text('settings')}")
-        
-        # Language
-        st.markdown(f"### {get_text('language')}")
+        st.markdown(f"## {get_text('language_label')}")
         lang_option = st.selectbox(
             "",
             options=['en', 'ru'],
@@ -3063,18 +3211,16 @@ def main():
         if lang_option != st.session_state.language:
             st.session_state.language = lang_option
             st.rerun()
-        
         st.markdown("---")
         
-        # Input parameters
-        st.markdown(f"### {get_text('issn_label')}")
+        st.markdown(f"## {get_text('issn_label')}")
         issn = st.text_input(
             get_text('issn_label'),
             placeholder=get_text('issn_placeholder'),
             key="issn_input"
         )
         
-        st.markdown(f"### {get_text('period_label')}")
+        st.markdown(f"## {get_text('period_label')}")
         period = st.text_input(
             get_text('period_label'),
             placeholder=get_text('period_placeholder'),
@@ -3082,24 +3228,26 @@ def main():
             key="period_input"
         )
         
-        st.markdown(f"### {get_text('workers_label')}")
+        st.markdown(f"## {get_text('workers_label')}")
         max_workers = st.slider(
             get_text('workers_label'),
-            min_value=4,
-            max_value=12,
-            value=8,
-            step=1,
-            help=get_text('workers_help')
+            4, 12, 8,
+            help=get_text('workers_help'),
+            key="workers_slider"
         )
         
         st.markdown("---")
         
-        # Color Theme (from original code)
+        # Color Theme
         st.markdown(f"## 🎨 Color Theme")
         
-        # Predefined theme options
+        if 'primary_color' not in st.session_state:
+            st.session_state.primary_color = '#667eea'
+        if 'secondary_color' not in st.session_state:
+            st.session_state.secondary_color = get_complementary_color('#667eea')
+        
         preset_themes = {
-            "Default (Blue-Purple)": {"primary": "#667eea", "secondary": "#f39c12"},
+            "Default (Blue-Purple)": {"primary": "#667eea", "secondary": "#9b59b6"},
             "Emerald (Green-Teal)": {"primary": "#2ecc71", "secondary": "#27ae60"},
             "Sunset (Orange-Coral)": {"primary": "#e74c3c", "secondary": "#c0392b"},
             "Ocean (Deep Blue)": {"primary": "#3498db", "secondary": "#2980b9"},
@@ -3124,21 +3272,29 @@ def main():
         else:
             selected_color = st.color_picker(
                 "🎨 Pick your primary color",
-                value=st.session_state.primary_color
+                value=st.session_state.primary_color,
+                help="Choose any color. Complementary color will be auto-generated!"
             )
             st.session_state.primary_color = selected_color
             st.session_state.secondary_color = get_complementary_color(selected_color)
         
-        # Color preview
+        complementary = st.session_state.secondary_color
+        
         col1, col2 = st.columns(2)
         with col1:
             st.markdown(
-                f'<div style="text-align: center;"><div class="color-preview" style="background: {st.session_state.primary_color};"></div><div style="font-size: 11px;">Primary</div></div>',
+                f'<div style="text-align: center;">'
+                f'<div class="color-preview" style="background: {st.session_state.primary_color};"></div>'
+                f'<div style="font-size: 11px; margin-top: 5px;">Primary</div>'
+                f'</div>',
                 unsafe_allow_html=True
             )
         with col2:
             st.markdown(
-                f'<div style="text-align: center;"><div class="color-preview" style="background: {st.session_state.secondary_color};"></div><div style="font-size: 11px;">Secondary</div></div>',
+                f'<div style="text-align: center;">'
+                f'<div class="color-preview" style="background: {complementary};"></div>'
+                f'<div style="font-size: 11px; margin-top: 5px;">Complementary</div>'
+                f'</div>',
                 unsafe_allow_html=True
             )
         
@@ -3147,137 +3303,137 @@ def main():
             unsafe_allow_html=True
         )
         
-        # Apply theme
-        apply_theme_css(st.session_state.primary_color, st.session_state.secondary_color)
+        secondary = st.session_state.get('secondary_color', get_complementary_color(st.session_state.primary_color))
+        apply_theme_css(st.session_state.primary_color, secondary)
         
         st.markdown("---")
         
         # Start button
         if st.button(get_text('start_analysis'), type="primary", use_container_width=True):
             if not issn or not period:
-                st.warning("Please fill in both ISSN and Period fields!")
+                st.error("Please fill in ISSN and Period fields!")
             else:
                 # Parse period
-                period_clean = period.strip()
-                if ',' in period_clean:
-                    years = [int(y.strip()) for y in period_clean.split(',') if y.strip().isdigit()]
-                elif '-' in period_clean:
-                    parts = [p.strip() for p in period_clean.split('-')]
-                    if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
-                        years = (int(parts[0]), int(parts[1]))
+                period_str = period.strip()
+                if ',' in period_str:
+                    years = [int(y.strip()) for y in period_str.split(',') if y.strip().isdigit()]
+                elif '-' in period_str:
+                    parts = period_str.split('-')
+                    if len(parts) == 2:
+                        try:
+                            start_year = int(parts[0].strip())
+                            end_year = int(parts[1].strip())
+                            years = (start_year, end_year)
+                        except ValueError:
+                            st.error("Invalid period format. Use YYYY-YYYY")
+                            years = None
                     else:
-                        st.error("Invalid period format! Use: 2020-2023")
                         years = None
                 else:
                     try:
-                        years = int(period_clean)
+                        years = int(period_str)
                     except ValueError:
-                        st.error("Invalid period format! Use: 2025 or 2020-2023 or 2020,2021,2022")
+                        st.error("Invalid period format. Use YYYY, YYYY-YYYY, or YYYY,YYYY,YYYY")
                         years = None
                 
-                if years:
+                if years is None:
+                    st.error("Please fix period format!")
+                else:
+                    st.session_state.issn = issn
+                    st.session_state.period = period
+                    
                     # Progress tracking
-                    progress_status = st.status(get_text('collecting_publications'), expanded=True)
+                    progress_placeholder = st.empty()
+                    status_placeholder = st.empty()
                     
-                    # Define progress callback
-                    progress_values = {}
+                    def update_progress(message, percent):
+                        status_placeholder.text(message)
+                        progress_placeholder.progress(percent / 100)
                     
-                    def progress_callback(stage, value):
-                        if stage == "publications":
-                            progress_status.update(label=get_text('found_publications').format(value))
-                            st.session_state['pub_count'] = value
-                        elif stage == "citations_start":
-                            progress_status.update(label=get_text('collecting_citations').format(value))
-                            st.session_state['total_pubs'] = value
-                            st.session_state['processed_pubs'] = 0
-                        elif stage == "citations_progress":
-                            st.session_state['processed_pubs'] = value
-                            progress_status.update(
-                                label=get_text('collecting_citations').format(
-                                    f"{value}/{st.session_state['total_pubs']}"
-                                )
+                    with st.spinner(get_text('collecting_data')):
+                        try:
+                            data = collect_all_data(
+                                issn, 
+                                years, 
+                                max_workers=max_workers,
+                                progress_callback=update_progress
                             )
-                            # Update progress bar
-                            if 'progress_bar' in st.session_state:
-                                st.session_state.progress_bar.progress(
-                                    value / st.session_state['total_pubs']
+                            
+                            if data.publications:
+                                st.session_state.journal_data = data
+                                
+                                # Calculate metrics
+                                engine = MetricsEngine(data)
+                                metrics = {
+                                    'overview': engine.calculate_overview(),
+                                    'most_cited': engine.get_most_cited_publications(30),
+                                    'authors': engine.analyze_authors(),
+                                    'geography': engine.analyze_geography(),
+                                    'citation_dynamics': engine.analyze_citation_dynamics(),
+                                    'citing_works': engine.analyze_citing_works(),
+                                    'topics': engine.analyze_topics(),
+                                    'detailed_citations': engine.get_detailed_citations(),
+                                    'all_publications': engine.get_all_publications(),
+                                    'citation_velocity': engine.calculate_citation_velocity()
+                                }
+                                
+                                st.session_state.metrics = metrics
+                                st.session_state.analysis_complete = True
+                                
+                                progress_placeholder.progress(1.0)
+                                status_placeholder.success(
+                                    get_text('analysis_complete') + 
+                                    f" {get_text('total_publications_found').format(len(data.publications))} " +
+                                    f"{get_text('total_citations_found').format(sum(p.cited_by_count for p in data.publications))}"
                                 )
-                    
-                    # Create progress bar
-                    progress_bar = st.progress(0)
-                    st.session_state.progress_bar = progress_bar
-                    st.session_state['total_pubs'] = 0
-                    st.session_state['processed_pubs'] = 0
-                    
-                    # Collect data
-                    try:
-                        data = collect_journal_data(
-                            issn, 
-                            years, 
-                            max_workers=max_workers,
-                            progress_callback=progress_callback
-                        )
-                        
-                        progress_status.update(label=get_text('analyzing_data'), state="running")
-                        
-                        # Calculate metrics
-                        engine = MetricsEngine(data)
-                        metrics = {
-                            'overview': engine.calculate_overview(),
-                            'most_cited': engine.get_most_cited_publications(30),
-                            'authors': engine.analyze_authors(),
-                            'affiliations': engine.analyze_affiliations(),
-                            'geography': engine.analyze_geography(),
-                            'citation_dynamics': engine.analyze_citation_dynamics(),
-                            'citing_works': engine.analyze_citing_works(),
-                            'topics': engine.analyze_topics(),
-                            'detailed_citations': engine.get_detailed_citations(),
-                            'all_publications': engine.get_all_publications(),
-                            'citation_velocity': engine.calculate_citation_velocity()
-                        }
-                        
-                        # Store in session state
-                        st.session_state.data = data
-                        st.session_state.metrics = metrics
-                        st.session_state.analysis_complete = True
-                        
-                        progress_status.update(label=get_text('analysis_complete'), state="complete")
-                        st.balloons()
-                        
-                    except Exception as e:
-                        progress_status.update(label=f"❌ Error: {str(e)}", state="error")
-                        st.error(f"An error occurred during analysis: {str(e)}")
+                                st.balloons()
+                                st.info(get_text('go_to_analytics'))
+                            else:
+                                st.error("No publications found for this ISSN and period.")
+                                
+                        except Exception as e:
+                            st.error(f"Error during analysis: {str(e)}")
     
     # Main area
-    st.image("logo.png", width=200) if os.path.exists("logo.png") else None
-    st.markdown(f"# {get_text('app_title')}")
+    st.markdown(f"# 📚 {get_text('app_title')}")
     st.markdown(f"### {get_text('app_subtitle')}")
     st.markdown("---")
     
-    if st.session_state.analysis_complete and st.session_state.metrics:
-        metrics = st.session_state.metrics
-        data = st.session_state.data
+    tab1, tab2, tab3 = st.tabs([get_text('tab_collect'), get_text('tab_analytics'), get_text('tab_report')])
+    
+    with tab1:
+        st.markdown('<div class="custom-tab fade-in">', unsafe_allow_html=True)
+        st.markdown(f"### {get_text('tab_collect')}")
         
-        # Create tabs
-        tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
-            get_text('nav_overview'),
-            get_text('nav_most_cited'),
-            get_text('nav_authors'),
-            get_text('nav_citation_analysis'),
-            get_text('nav_citing_works'),
-            get_text('nav_topics'),
-            get_text('nav_detailed_citations'),
-            get_text('nav_all_publications'),
-            "📄 Export"
-        ])
+        if st.session_state.analysis_complete:
+            data = st.session_state.journal_data
+            if data:
+                st.success(f"✅ {get_text('analysis_complete')}")
+                st.metric(get_text('total_publications'), len(data.publications))
+                st.metric(get_text('total_citations'), sum(p.cited_by_count for p in data.publications))
+                
+                # Show sample of publications
+                with st.expander("📋 Sample Publications"):
+                    for i, pub in enumerate(data.publications[:10]):
+                        st.markdown(f"**{i+1}. {pub.title[:150]}...**")
+                        st.markdown(f"Year: {pub.publication_year} | Citations: {pub.cited_by_count} | DOI: {pub.doi}")
+                        st.markdown("---")
+        else:
+            st.info(get_text('run_analysis_first'))
         
-        with tab1:
-            st.markdown(f"### {get_text('overview')}")
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with tab2:
+        if st.session_state.analysis_complete and st.session_state.metrics:
+            metrics = st.session_state.metrics
+            data = st.session_state.journal_data
             
-            # Metrics grid
+            # Display metrics
             overview = metrics['overview']
-            col1, col2, col3, col4, col5, col6 = st.columns(6)
             
+            # Overview metrics
+            st.markdown(f"### {get_text('overview')}")
+            col1, col2, col3, col4 = st.columns(4)
             with col1:
                 st.metric(get_text('total_publications'), overview['total_publications'])
             with col2:
@@ -3285,274 +3441,274 @@ def main():
             with col3:
                 st.metric(get_text('h_index'), overview['h_index'])
             with col4:
-                st.metric(get_text('g_index'), overview['g_index'])
-            with col5:
-                st.metric(get_text('i10_index'), overview['i10_index'])
-            with col6:
-                st.metric(get_text('i100_index'), overview['i100_index'])
-            
-            col7, col8, col9, col10, col11, col12 = st.columns(6)
-            with col7:
                 st.metric(get_text('avg_citations'), f"{overview['avg_citations']:.1f}")
-            with col8:
-                st.metric(get_text('open_access'), f"{overview['open_access_percent']:.1f}%")
-            with col9:
-                st.metric(get_text('active_years'), overview['active_years'])
-            with col10:
-                st.metric(get_text('unique_authors'), overview['unique_authors'])
-            with col11:
-                st.metric(get_text('unique_countries'), overview['unique_countries'])
-            with col12:
-                st.metric(get_text('total_citing_works'), overview['total_citing_works'])
             
-            col13, col14, col15, col16, col17 = st.columns(5)
-            with col13:
+            col5, col6, col7, col8 = st.columns(4)
+            with col5:
+                st.metric(get_text('open_access'), f"{overview['open_access_percent']:.1f}%")
+            with col6:
+                st.metric(get_text('unique_authors'), overview['unique_authors'])
+            with col7:
+                st.metric(get_text('unique_countries'), overview['unique_countries'])
+            with col8:
                 st.metric(get_text('unique_citing_journals'), overview['unique_citing_journals'])
-            with col14:
-                st.metric(get_text('avg_authors_per_paper'), f"{overview['avg_authors_per_paper']:.1f}")
-            with col15:
-                st.metric(get_text('avg_affiliations_per_paper'), f"{overview['avg_affiliations_per_paper']:.1f}")
-            with col16:
-                st.metric(get_text('avg_countries_per_paper'), f"{overview['avg_countries_per_paper']:.1f}")
-            with col17:
-                st.metric(get_text('international_collaboration_rate'), f"{overview['international_collaboration_rate']:.1f}%")
+            
+            st.markdown("---")
             
             # Open Access Breakdown
-            st.markdown(f"#### {get_text('open_access_breakdown')}")
-            oa_breakdown = overview.get('open_access_breakdown', {})
-            oa_cols = st.columns(6)
-            oa_labels = ['gold', 'hybrid', 'green', 'bronze', 'closed', 'unknown']
-            oa_display = [get_text('gold'), get_text('hybrid'), get_text('green'), get_text('bronze'), get_text('closed'), get_text('unknown')]
-            for i, (key, label) in enumerate(zip(oa_labels, oa_display)):
-                with oa_cols[i]:
-                    st.metric(label, oa_breakdown.get(key, 0))
-        
-        with tab2:
+            with st.expander(f"📊 {get_text('open_access_breakdown')}"):
+                oa = overview['open_access_breakdown']
+                for oa_type, count in oa.items():
+                    if oa_type != 'unknown' or count > 0:
+                        label = get_text(oa_type)
+                        st.markdown(f"**{label}:** {count} ({count/overview['total_publications']*100 if overview['total_publications'] > 0 else 0:.1f}%)")
+                        st.progress(count/overview['total_publications'] if overview['total_publications'] > 0 else 0)
+            
+            # Most Cited
             st.markdown(f"### {get_text('most_cited_publications')}")
-            
             most_cited_df = pd.DataFrame(metrics['most_cited'])
-            st.dataframe(most_cited_df, use_container_width=True, hide_index=True)
-        
-        with tab3:
+            st.dataframe(most_cited_df, use_container_width=True)
+            
+            # Author Analysis
             st.markdown(f"### {get_text('author_analysis')}")
-            
-            # Top Authors
-            st.markdown(f"#### {get_text('top_authors')}")
             authors_df = pd.DataFrame(metrics['authors']['top_authors'])
-            st.dataframe(authors_df, use_container_width=True, hide_index=True)
-            
-            # Top Affiliations
-            st.markdown(f"#### {get_text('top_affiliations')}")
-            aff_df = pd.DataFrame(metrics['affiliations']['top_affiliations'], columns=['Affiliation', 'Count'])
-            st.dataframe(aff_df, use_container_width=True, hide_index=True)
+            st.dataframe(authors_df, use_container_width=True)
             
             # Geographic Analysis
-            st.markdown(f"#### {get_text('geographic_analysis')}")
+            st.markdown(f"### {get_text('geographic_analysis')}")
             
             geo = metrics['geography']
             
+            # Type 1
+            st.markdown(f"#### {get_text('geography_type_1')}")
+            st.caption(get_text('geography_type_1_desc'))
+            if geo['type1_unique_countries_per_publication']:
+                geo1_df = pd.DataFrame(list(geo['type1_unique_countries_per_publication'].items()), columns=["Country", "Publications"])
+                st.dataframe(geo1_df, use_container_width=True)
+            
+            # Type 2
+            st.markdown(f"#### {get_text('geography_type_2')}")
+            st.caption(get_text('geography_type_2_desc'))
+            if geo['type2_authors_per_country']:
+                geo2_df = pd.DataFrame(list(geo['type2_authors_per_country'].items()), columns=["Country", "Authors"])
+                st.dataframe(geo2_df, use_container_width=True)
+            
+            # Type 3
+            st.markdown(f"#### {get_text('geography_type_3')}")
+            st.caption(get_text('geography_type_3_desc'))
             col1, col2 = st.columns(2)
             with col1:
-                st.markdown(f"**{get_text('geography_type_1')}**")
-                st.caption(get_text('geography_type_1_desc'))
-                geo1_df = pd.DataFrame(list(geo['type1_unique_countries_per_pub'].items()), columns=['Country', 'Count'])
-                st.dataframe(geo1_df, use_container_width=True, hide_index=True)
-            
+                st.metric(get_text('single_country'), geo.get('single_country_count', 0))
             with col2:
-                st.markdown(f"**{get_text('geography_type_2')}**")
-                st.caption(get_text('geography_type_2_desc'))
-                geo2_df = pd.DataFrame(list(geo['type2_authors_per_country'].items()), columns=['Country', 'Count'])
-                st.dataframe(geo2_df, use_container_width=True, hide_index=True)
+                st.metric(get_text('international_collaboration'), geo.get('international_count', 0))
             
-            col3, col4 = st.columns(2)
-            with col3:
-                st.markdown(f"**{get_text('geography_type_3')}**")
-                st.caption(get_text('geography_type_3_desc'))
-                st.metric(get_text('single_country'), geo['single_country_count'])
-                st.metric(get_text('international_collab'), geo['international_count'])
+            if geo['collaboration_couples']:
+                st.markdown(f"#### {get_text('collaboration_couples')}")
+                couples_df = pd.DataFrame(geo['collaboration_couples'])
+                st.dataframe(couples_df, use_container_width=True)
             
-            with col4:
-                st.markdown(f"**{get_text('collaboration_couples')}**")
-                st.caption(get_text('collaboration_couples_desc'))
-                couples_df = pd.DataFrame(
-                    [(f"{c1} + {c2}", count) for (c1, c2), count in list(geo['collaboration_couples'].items())[:15]],
-                    columns=['Country Pair', 'Count']
-                )
-                st.dataframe(couples_df, use_container_width=True, hide_index=True)
-        
-        with tab4:
+            # Citation Dynamics
             st.markdown(f"### {get_text('citation_analysis')}")
             
-            # Citation dynamics
-            st.markdown(f"#### {get_text('citation_dynamics')}")
-            citation_data = metrics['citation_dynamics']
+            cd = metrics['citation_dynamics']
             
-            # Yearly dynamics chart data
-            yearly_data = []
-            for pub_year, cite_years in citation_data['yearly_matrix'].items():
-                for cite_year, count in cite_years.items():
-                    yearly_data.append({'Publication Year': pub_year, 'Citation Year': cite_year, 'Count': count})
+            st.markdown(f"#### {get_text('yearly_citation_dynamics')}")
+            if cd['network_data']:
+                network_df = pd.DataFrame(cd['network_data'])
+                st.dataframe(network_df, use_container_width=True)
             
-            if yearly_data:
-                df_yearly = pd.DataFrame(yearly_data)
-                st.dataframe(df_yearly, use_container_width=True)
-            
-            # Cumulative
-            st.markdown(f"#### {get_text('cumulative_citations')}")
-            cum_df = pd.DataFrame(list(citation_data['cumulative'].items()), columns=['Year', 'Cumulative Citations'])
-            st.dataframe(cum_df, use_container_width=True, hide_index=True)
-            
-            # Heatmap
             st.markdown(f"#### {get_text('citation_network')}")
-            heatmap_data = citation_data['heatmap_data']
-            if heatmap_data:
-                heatmap_df = pd.DataFrame(heatmap_data)
-                # Pivot for heatmap
-                heatmap_pivot = heatmap_df.pivot(index='publication_year', columns='citation_year', values='citations_count').fillna(0)
-                st.dataframe(heatmap_pivot, use_container_width=True)
-        
-        with tab5:
+            if cd['all_years']:
+                st.caption("Heatmap: Publication Year → Citation Year")
+                all_years = cd['all_years']
+                yearly_cites = cd['yearly_citations']
+                
+                heatmap_data = []
+                for pyear in sorted(yearly_cites.keys()):
+                    row = {'Publication Year': pyear}
+                    for cyear in all_years:
+                        row[str(cyear)] = yearly_cites.get(pyear, {}).get(cyear, 0)
+                    heatmap_data.append(row)
+                
+                if heatmap_data:
+                    heatmap_df = pd.DataFrame(heatmap_data)
+                    st.dataframe(heatmap_df, use_container_width=True)
+            
+            # Citing Works
             st.markdown(f"### {get_text('citing_works_analysis')}")
+            cw = metrics['citing_works']
             
-            citing = metrics['citing_works']
-            
-            col1, col2, col3, col4, col5, col6 = st.columns(6)
+            col1, col2, col3 = st.columns(3)
             with col1:
-                st.metric(get_text('total_citing_works'), citing['total_citing_works'])
+                st.metric(get_text('total_citing_works'), cw['total_citing_works'])
             with col2:
-                st.metric(get_text('unique_citing_authors'), citing['unique_authors'])
+                st.metric(get_text('unique_citing_authors'), cw['unique_citing_authors'])
             with col3:
-                st.metric(get_text('unique_citing_affiliations'), citing['unique_affiliations'])
-            with col4:
-                st.metric(get_text('unique_citing_countries'), citing['unique_countries'])
-            with col5:
-                st.metric(get_text('unique_citing_journals'), citing['unique_journals'])
-            with col6:
-                st.metric(get_text('unique_citing_publishers'), citing['unique_publishers'])
+                st.metric(get_text('unique_citing_journals'), cw['unique_citing_journals'])
             
-            st.markdown(f"#### {get_text('top_citing_authors')}")
-            citing_authors_df = pd.DataFrame(citing['top_authors'], columns=['Author', 'Count'])
-            st.dataframe(citing_authors_df, use_container_width=True, hide_index=True)
+            with st.expander(f"📊 {get_text('top_citing_authors')}"):
+                authors_df = pd.DataFrame(cw['top_authors'])
+                st.dataframe(authors_df, use_container_width=True)
             
-            st.markdown(f"#### {get_text('top_citing_journals')}")
-            citing_journals_df = pd.DataFrame(citing['top_journals'], columns=['Journal', 'Count'])
-            st.dataframe(citing_journals_df, use_container_width=True, hide_index=True)
+            with st.expander(f"📊 {get_text('top_citing_countries')}"):
+                countries_df = pd.DataFrame(cw['top_countries'])
+                st.dataframe(countries_df, use_container_width=True)
             
-            st.markdown(f"#### {get_text('top_citing_countries')}")
-            citing_countries_df = pd.DataFrame(citing['top_countries'], columns=['Country', 'Count'])
-            st.dataframe(citing_countries_df, use_container_width=True, hide_index=True)
-        
-        with tab6:
+            with st.expander(f"📊 {get_text('top_citing_journals')}"):
+                journals_df = pd.DataFrame(cw['top_journals'])
+                st.dataframe(journals_df, use_container_width=True)
+            
+            # Topics
             st.markdown(f"### {get_text('topics_analysis')}")
+            topics_df = pd.DataFrame(metrics['topics']['top_topics'])
+            st.dataframe(topics_df, use_container_width=True)
             
-            topics = metrics['topics']
+            # Citation Velocity
+            st.markdown(f"### {get_text('citation_velocity')}")
+            velocity_df = pd.DataFrame(metrics['citation_velocity'].values())
+            st.dataframe(velocity_df, use_container_width=True)
             
-            st.markdown(f"**{get_text('total_topics')}:** {topics['total_topics']}")
-            st.markdown(f"**{get_text('analyzed_count')}:** {topics['pub_topics_count']}")
-            st.markdown(f"**{get_text('citing_count')}:** {topics['cite_topics_count']}")
-            
-            topics_df = pd.DataFrame(topics['topics'])
-            st.dataframe(topics_df, use_container_width=True, hide_index=True)
-        
-        with tab7:
+            # Detailed Citations
             st.markdown(f"### {get_text('detailed_citations')}")
-            
-            detailed = metrics['detailed_citations']
-            if detailed:
-                for pub_id, data in detailed.items():
-                    with st.expander(f"{data['title']} ({data['year']}) - {data['total_citations']} citations"):
+            if metrics['detailed_citations']:
+                for pub_id, data in list(metrics['detailed_citations'].items())[:20]:
+                    with st.expander(f"📄 {data['title'][:150]}... ({data['year']}) - {data['total_citations']} citations"):
                         st.markdown(f"**DOI:** {data['doi']}")
                         st.markdown(f"**Total Citations:** {data['total_citations']}")
-                        st.markdown("---")
-                        for cite in data['citations']:
-                            st.markdown(f"**{cite['citing_title']}**")
-                            st.markdown(f"- Journal: {cite['citing_journal']} | Year: {cite['citing_year']} | Lag: {cite['citation_lag']} years")
-                            st.markdown(f"- Authors: {', '.join(cite['citing_authors'][:3])}")
-                            st.markdown(f"- Countries: {', '.join(cite['citing_countries'][:3])}")
-                            st.markdown(f"- DOI: {cite['citing_doi']}")
-                            st.markdown("---")
+                        
+                        for cite in data['citations'][:10]:
+                            st.markdown(f"""
+                            <div style="background: #f8f9fa; padding: 10px; border-radius: 6px; margin: 5px 0;">
+                                <strong>{cite['citing_title'][:150]}...</strong><br>
+                                {get_text('citing_journal')}: {cite['citing_journal']} | 
+                                {get_text('citing_year')}: {cite['citing_year']} | 
+                                {get_text('citation_lag')}: {cite['citation_lag']} years<br>
+                                <a href="https://doi.org/{cite['citing_doi']}" target="_blank">DOI: {cite['citing_doi']}</a>
+                            </div>
+                            """, unsafe_allow_html=True)
             else:
-                st.info("No citations found")
-        
-        with tab8:
+                st.info("No detailed citations available")
+            
+            # All Publications
             st.markdown(f"### {get_text('all_publications')}")
+            all_pubs_df = pd.DataFrame(metrics['all_publications'])
+            st.dataframe(all_pubs_df, use_container_width=True)
             
-            all_pubs = metrics['all_publications']
-            all_pubs_df = pd.DataFrame(all_pubs)
-            st.dataframe(all_pubs_df, use_container_width=True, hide_index=True)
-        
-        with tab9:
-            st.markdown(f"### {get_text('export_report')}")
+        else:
+            st.info(get_text('run_analysis_first'))
+    
+    with tab3:
+        if st.session_state.analysis_complete and st.session_state.metrics:
+            data = st.session_state.journal_data
+            metrics = st.session_state.metrics
+            lang = st.session_state.language
+            primary = st.session_state.primary_color
+            secondary = st.session_state.secondary_color
             
-            # Generate HTML report
-            if st.button(get_text('download_html'), type="primary"):
-                with st.spinner(get_text('generating_report')):
-                    html_report = generate_html_report(
-                        data,
-                        metrics,
-                        st.session_state.language,
-                        st.session_state.primary_color,
-                        st.session_state.secondary_color
-                    )
-                    
-                    # Generate filename
-                    issn_clean = issn.replace('-', '')
-                    file_name = f"journal_metrics_{issn_clean}_{datetime.now().strftime('%Y%m%d')}.html"
-                    
-                    st.download_button(
-                        label="💾 Download HTML Report",
-                        data=html_report.encode('utf-8'),
-                        file_name=file_name,
-                        mime="text/html"
-                    )
+            st.markdown(f"### {get_text('export_html_report')}")
             
-            # Text export
-            st.markdown(f"#### {get_text('text_export')}")
+            html_report = generate_html_report(data, metrics, lang, primary, secondary)
             
-            # Build text export
-            overview = metrics['overview']
-            text_export = f"""
-=== JOURNAL METRICS ANALYZER ===
-Generated: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}
+            # Generate filename
+            issn_clean = st.session_state.get('issn', 'journal').replace('-', '')
+            period_clean = st.session_state.get('period', 'period').replace(',', '_').replace('-', '_')
+            filename = f"journal_metrics_{issn_clean}_{period_clean}.html"
+            
+            st.download_button(
+                label=get_text('download_html_report'),
+                data=html_report.encode('utf-8'),
+                file_name=filename,
+                mime="text/html"
+            )
+            
+            st.markdown("---")
+            
+            # CSV Export
+            st.markdown(f"### {get_text('export_csv')}")
+            
+            # Prepare CSV data
+            csv_data = []
+            for pub in data.publications:
+                author_names = ', '.join([a.display_name for a in pub.authors if a.display_name])
+                countries = ', '.join(set(c for a in pub.authors for c in a.countries if c))
+                
+                citing_dois = []
+                if pub.id in data.citations:
+                    citing_dois = [c.citing_doi for c in data.citations[pub.id]]
+                
+                csv_data.append({
+                    'DOI': pub.doi,
+                    'Title': pub.title,
+                    'Year': pub.publication_year,
+                    'Citations': pub.cited_by_count,
+                    'Citations_Per_Year': pub.citations_per_year,
+                    'Journal': pub.journal_name,
+                    'Publisher': pub.publisher,
+                    'Authors': author_names,
+                    'Countries': countries,
+                    'Open_Access': pub.is_open_access,
+                    'Open_Access_Status': pub.open_access_status,
+                    'Citing_Works_Count': len(citing_dois),
+                    'Citing_Works': '|'.join(citing_dois)
+                })
+            
+            csv_df = pd.DataFrame(csv_data)
+            csv_str = csv_df.to_csv(index=False)
+            
+            csv_filename = f"journal_data_{issn_clean}_{period_clean}.csv"
+            
+            st.download_button(
+                label=get_text('download_csv'),
+                data=csv_str,
+                file_name=csv_filename,
+                mime="text/csv"
+            )
+            
+            st.markdown("---")
+            
+            # Text Export
+            st.markdown(f"### {get_text('export_text')}")
+            
+            export_text = f"""
+=== JOURNAL METRICS ANALYSIS ===
+ISSN: {st.session_state.get('issn', 'N/A')}
+Period: {st.session_state.get('period', 'N/A')}
+Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
 === OVERVIEW ===
-Total Publications: {overview['total_publications']}
-Total Citations: {overview['total_citations']}
-h-index: {overview['h_index']}
-g-index: {overview['g_index']}
-i10-index: {overview['i10_index']}
-i100-index: {overview['i100_index']}
-Avg Citations: {overview['avg_citations']:.1f}
-Open Access: {overview['open_access_percent']:.1f}%
-Active Years: {overview['active_years']}
-Unique Authors: {overview['unique_authors']}
-Unique Countries: {overview['unique_countries']}
-Total Citing Works: {overview['total_citing_works']}
-Unique Citing Journals: {overview['unique_citing_journals']}
-Avg Authors/Paper: {overview['avg_authors_per_paper']:.1f}
-Avg Affiliations/Paper: {overview['avg_affiliations_per_paper']:.1f}
-Avg Countries/Paper: {overview['avg_countries_per_paper']:.1f}
-International Collaboration Rate: {overview['international_collaboration_rate']:.1f}%
+Total Publications: {metrics['overview']['total_publications']}
+Total Citations: {metrics['overview']['total_citations']}
+h-index: {metrics['overview']['h_index']}
+g-index: {metrics['overview']['g_index']}
+i10-index: {metrics['overview']['i10_index']}
+i100-index: {metrics['overview']['i100_index']}
+Average Citations: {metrics['overview']['avg_citations']:.1f}
+Open Access: {metrics['overview']['open_access_percent']:.1f}%
+Active Years: {metrics['overview']['active_years']}
+Unique Authors: {metrics['overview']['unique_authors']}
+Unique Countries: {metrics['overview']['unique_countries']}
+Total Citing Works: {metrics['overview']['total_citing_works']}
+Unique Citing Journals: {metrics['overview']['unique_citing_journals']}
 
 === MOST CITED PUBLICATIONS (TOP 10) ===
+{chr(10).join([f"{i+1}. {pub['title'][:100]}... ({pub['year']}) - {pub['citations']} citations" for i, pub in enumerate(metrics['most_cited'][:10])])}
+
+=== TOP AUTHORS ===
+{chr(10).join([f"{i+1}. {author['display_name']}: {author['publication_count']} publications, {author['citation_count']} citations" for i, author in enumerate(metrics['authors']['top_authors'][:10])])}
+
+=== TOP COUNTRIES (by publications) ===
+{chr(10).join([f"{country}: {count}" for country, count in list(metrics['geography']['type1_unique_countries_per_publication'].items())[:10]])}
+
+=== TOP CITING JOURNALS ===
+{chr(10).join([f"{journal['name']}: {journal['count']}" for journal in metrics['citing_works']['top_journals'][:10]])}
 """
-            for pub in metrics['most_cited'][:10]:
-                text_export += f"{pub['rank']}. {pub['title']} ({pub['year']}) - {pub['citations']} citations\n"
             
-            text_export += f"\n=== TOP AUTHORS (TOP 10) ===\n"
-            for author in metrics['authors']['top_authors'][:10]:
-                text_export += f"{author['display_name']} - {author['publication_count']} publications, {author['citation_count']} citations\n"
-            
-            text_export += f"\n=== TOTAL CITING WORKS ===\n{metrics['citing_works']['total_citing_works']}\n"
-            text_export += f"Unique Citing Journals: {metrics['citing_works']['unique_journals']}\n"
-            
-            st.text_area(get_text('text_export'), text_export, height=400)
+            st.text_area(get_text('export_text'), export_text, height=300)
             
             if st.button(get_text('copy_to_clipboard')):
                 st.success(get_text('copied'))
-    
-    else:
-        st.info(get_text('run_analysis_first'))
+        else:
+            st.info(get_text('run_analysis_first'))
 
 if __name__ == "__main__":
     main()
