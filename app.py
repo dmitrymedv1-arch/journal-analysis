@@ -2947,10 +2947,7 @@ def generate_enhanced_html_report(journal: Journal, analytics: Dict, periods: Li
                             {''.join([
                                 f'<tr>'
                                 f'<td><strong>{pub_year}</strong></td>'
-                                + ''.join([
-                                    f'<td>{citation_matrix.get(pub_year, {}).get(cite_year, 0)}</td>'
-                                    for cite_year in sorted(citation_matrix.keys())
-                                ])
+                                f'{''.join([f'<td>{citation_matrix.get(pub_year, {}).get(cite_year, 0)}</td>' for cite_year in sorted(citation_matrix.keys())])}'
                                 f'</tr>'
                                 for pub_year in sorted(citation_matrix.keys())
                             ])}
