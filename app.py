@@ -3048,7 +3048,7 @@ def main():
     
     # Sidebar - Settings and inputs
     with st.sidebar:
-        st.image("logo.png", width=150) if os.path.exists("logo.png") else None
+        st.markdown("### 📚 Journal Metrics")
         
         st.markdown(f"## {get_text('settings')}")
         
@@ -3249,7 +3249,6 @@ def main():
                         st.error(f"An error occurred during analysis: {str(e)}")
     
     # Main area
-    st.image("logo.png", width=200) if os.path.exists("logo.png") else None
     st.markdown(f"# {get_text('app_title')}")
     st.markdown(f"### {get_text('app_subtitle')}")
     st.markdown("---")
