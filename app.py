@@ -713,39 +713,50 @@ async def get_journal_by_issn(issn: str, session) -> Optional[Dict]:
 async def get_journal_publications(journal_id: str, session, periods: List[Tuple[int, int]], progress_callback=None) -> List[Dict]:
     if not journal_id:
         return []
-    year_filters = []
-    for start, end in periods:
-        if start == end:
-            year_filters.append(str(start))
-        else:
-            year_filters.append(f"{start}-{end}")
-    year_filter = ','.join(year_filters)
+    
     all_works = []
-    url = "https://api.openalex.org/works"
-    params = {
-        'filter': f'source.id:{journal_id},publication_year:{year_filter}',
-        'per-page': 200,
-        'sort': 'publication_date:desc'
-    }
-    page_count = 0
-    while True:
-        page_count += 1
-        data = await fetch_with_retry(session, url, params=params)
-        if not data:
-            break
-        results = data.get('results', [])
-        if not results:
-            break
-        all_works.extend(results)
-        if progress_callback:
-            progress_callback(len(all_works), data.get('meta', {}).get('count', 0))
-        meta = data.get('meta', {})
-        next_url = meta.get('next_page_url')
-        if not next_url:
-            break
-        url = next_url
-        params = None
-        await asyncio.sleep(DELAY_BETWEEN_BATCHES)
+    
+    for start, end in periods:
+        url = "https://api.openalex.org/works"
+        
+        # Формируем фильтр по годам
+        if start == end:
+            year_filter = f"publication_year:{start}"
+        else:
+            year_filter = f"publication_year:{start}-{end}"
+        
+        params = {
+            'filter': f'source.id:{journal_id},{year_filter}',
+            'per-page': 200,
+            'sort': 'publication_date:desc'
+        }
+        
+        page_count = 0
+        while True:
+            page_count += 1
+            data = await fetch_with_retry(session, url, params=params)
+            
+            if not data:
+                break
+            
+            results = data.get('results', [])
+            if not results:
+                break
+            
+            all_works.extend(results)
+            
+            if progress_callback:
+                progress_callback(len(all_works), data.get('meta', {}).get('count', 0))
+            
+            meta = data.get('meta', {})
+            next_url = meta.get('next_page_url')
+            if not next_url:
+                break
+            
+            url = next_url
+            params = None
+            await asyncio.sleep(DELAY_BETWEEN_BATCHES)
+    
     return all_works
 
 async def get_work_citations(work_id: str, session, progress_callback=None) -> List[Dict]:
