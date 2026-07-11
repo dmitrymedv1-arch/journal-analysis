@@ -3476,7 +3476,203 @@ def generate_enhanced_html_report(journal: Journal, analytics: Dict, periods: Li
 # MAIN ANALYSIS FUNCTION
 # ============================================
 
-async def analyze_journal
+async def analyze_journal(issn: str, periods: List[Tuple[int, int]], progress_callback=None) -> Tuple[Journal, List[Publication], Dict[str, List[Citation]], Dict]:
+    """Main journal analysis function with improved logging"""
+    
+    issn_clean = parse_issn(issn)
+    if not issn_clean:
+        if SHOW_DEBUG_LOGS:
+            print(f"❌ Invalid ISSN: {issn}")
+        return None, [], {}, {}
+    
+    if SHOW_DEBUG_LOGS:
+        print(f"🔍 Starting analysis for ISSN: {issn_clean}")
+        print(f"📅 Periods: {periods}")
+    
+    periods_hash = hashlib.md5(str(periods).encode()).hexdigest()[:8]
+    cache_data = load_from_cache(issn_clean, periods_hash)
+    if cache_data:
+        if SHOW_DEBUG_LOGS:
+            print(f"✅ Loaded from cache")
+        journal = Journal(**cache_data['journal'])
+        publications = [Publication(**p) for p in cache_data['publications']]
+        citations = {k: [Citation(**c) for c in v] for k, v in cache_data['citations'].items()}
+        return journal, publications, citations, cache_data.get('analytics', {})
+    
+    timeout = aiohttp.ClientTimeout(total=120, connect=30, sock_read=60)
+    
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        if progress_callback:
+            progress_callback('journal', 0, 100)
+        
+        # Получение информации о журнале
+        try:
+            if SHOW_DEBUG_LOGS:
+                print(f"🔍 Fetching journal data for ISSN: {issn_clean}")
+            
+            journal_data = await asyncio.wait_for(
+                get_journal_by_issn(issn_clean, session),
+                timeout=45.0
+            )
+        except asyncio.TimeoutError:
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ Timeout getting journal data for {issn_clean}")
+            return None, [], {}, {}
+        except Exception as e:
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ Error getting journal data: {e}")
+            return None, [], {}, {}
+        
+        if not journal_data:
+            if SHOW_DEBUG_LOGS:
+                print(f"❌ No journal found for ISSN: {issn_clean}")
+                # Попробуем прямой запрос для диагностики
+                try:
+                    test_url = f"https://api.openalex.org/sources?filter=issn:{issn_clean}"
+                    async with session.get(test_url) as response:
+                        test_data = await response.json()
+                        if SHOW_DEBUG_LOGS:
+                            print(f"📊 Diagnostic response: {test_data}")
+                except Exception as e:
+                    if SHOW_DEBUG_LOGS:
+                        print(f"⚠️ Diagnostic error: {e}")
+            return None, [], {}, {}
+        
+        journal = Journal(
+            id=journal_data.get('id', ''),
+            issn=issn_clean,
+            title=journal_data.get('display_name', 'Unknown'),
+            publisher=journal_data.get('publisher', ''),
+            works_count=journal_data.get('works_count', 0),
+            cited_by_count=journal_data.get('cited_by_count', 0),
+            is_oa=journal_data.get('is_oa', False),
+            created_date=journal_data.get('created_date', ''),
+            updated_date=journal_data.get('updated_date', '')
+        )
+        
+        if SHOW_DEBUG_LOGS:
+            print(f"✅ Found journal: {journal.title}")
+            print(f"📊 Total works in OpenAlex: {journal.works_count}")
+        
+        if progress_callback:
+            progress_callback('publications', 0, 100)
+        
+        def pub_progress(current, total):
+            if progress_callback:
+                progress_callback('publications', current, total)
+        
+        # Получение публикаций
+        try:
+            if SHOW_DEBUG_LOGS:
+                print(f"🔍 Fetching publications for period: {periods}")
+            
+            works = await asyncio.wait_for(
+                get_journal_publications(journal.id, session, periods, pub_progress, issn_clean),
+                timeout=180.0
+            )
+        except asyncio.TimeoutError:
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ Timeout getting publications for {journal.title}")
+            return journal, [], {}, {}
+        except Exception as e:
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ Error getting publications: {e}")
+            return journal, [], {}, {}
+        
+        if not works:
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ No publications found for {journal.title}")
+            return journal, [], {}, {}
+        
+        if SHOW_DEBUG_LOGS:
+            print(f"✅ Retrieved {len(works)} raw works")
+        
+        publications = []
+        for work in works:
+            pub = parse_publication_from_openalex(work)
+            if pub:
+                publications.append(pub)
+        
+        if SHOW_DEBUG_LOGS:
+            print(f"✅ Parsed {len(publications)} publications")
+        
+        if len(publications) > MAX_PUBLICATIONS_TO_ANALYZE:
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ Limiting to {MAX_PUBLICATIONS_TO_ANALYZE} publications")
+            publications = publications[:MAX_PUBLICATIONS_TO_ANALYZE]
+        
+        if progress_callback:
+            progress_callback('citations', 0, len(publications))
+        
+        citations = {}
+        total_citations = 0
+        
+        # Получение цитирований
+        for idx, pub in enumerate(publications):
+            if progress_callback:
+                progress_callback('citations', idx + 1, len(publications))
+            
+            if pub.cited_by_count > 0:
+                if SHOW_DEBUG_LOGS and idx % 10 == 0:
+                    print(f"🔍 Fetching citations for publication {idx+1}/{len(publications)}: {pub.title[:50]}...")
+                
+                try:
+                    citing_works = await asyncio.wait_for(
+                        get_work_citations(pub.id, session),
+                        timeout=60.0
+                    )
+                except asyncio.TimeoutError:
+                    if SHOW_DEBUG_LOGS:
+                        print(f"⚠️ Timeout getting citations for {pub.id}")
+                    continue
+                except Exception as e:
+                    if SHOW_DEBUG_LOGS:
+                        print(f"⚠️ Error getting citations: {e}")
+                    continue
+                
+                parsed_citations = []
+                for cw in citing_works:
+                    citation = parse_citation_from_openalex(cw, pub.publication_year)
+                    if citation:
+                        parsed_citations.append(citation)
+                        if citation.citing_year > 0:
+                            pub.citation_years[citation.citing_year] = pub.citation_years.get(citation.citing_year, 0) + 1
+                citations[pub.id] = parsed_citations
+                total_citations += len(parsed_citations)
+                
+                if SHOW_DEBUG_LOGS and len(parsed_citations) > 0:
+                    print(f"   ✅ Found {len(parsed_citations)} citations")
+        
+        if SHOW_DEBUG_LOGS:
+            print(f"✅ Total citations: {total_citations}")
+        
+        current_year = datetime.now().year
+        for pub in publications:
+            if pub.publication_year > 0:
+                years_since = current_year - pub.publication_year + 1
+                pub.citations_per_year = pub.cited_by_count / max(years_since, 1)
+        
+        if progress_callback:
+            progress_callback('analytics', 0, 100)
+        
+        if SHOW_DEBUG_LOGS:
+            print("🔍 Running analytics...")
+        
+        analytics_engine = JournalAnalytics(journal, publications, citations)
+        analytics = analytics_engine.get_analytics()
+        
+        if SHOW_DEBUG_LOGS:
+            print("✅ Analytics complete")
+        
+        cache_data = {
+            'journal': asdict(journal),
+            'publications': [asdict(p) for p in publications],
+            'citations': {k: [asdict(c) for c in v] for k, v in citations.items()},
+            'analytics': analytics
+        }
+        save_to_cache(issn_clean, periods_hash, cache_data)
+        
+        return journal, publications, citations, analytics
 
 # ============================================
 # STREAMLIT INTERFACE
