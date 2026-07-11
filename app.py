@@ -785,71 +785,22 @@ async def fetch_with_retry(session, url, params=None, headers=None, method='GET'
     return None
 
 async def get_journal_by_issn(issn: str, session) -> Optional[Dict]:
-    """Get journal information from OpenAlex by ISSN"""
+    """Get journal information from OpenAlex by ISSN - УПРОЩЕННАЯ ВЕРСИЯ"""
     issn_clean = parse_issn(issn)
     if not issn_clean:
-        if SHOW_DEBUG_LOGS:
-            print(f"❌ Invalid ISSN: {issn}")
         return None
     
-    if SHOW_DEBUG_LOGS:
-        print(f"🔍 Searching for journal with ISSN: {issn_clean}")
-    
-    url = "https://api.openalex.org/sources"
-    
-    # Пробуем разные варианты поиска ISSN
-    # Вариант 1: с дефисом
-    params = {
-        'filter': f'issn:{issn_clean}',
-        'per-page': 1
+    # Просто возвращаем базовый объект, не делая запрос к API
+    return {
+        'id': f"https://openalex.org/sources/issn/{issn_clean}",
+        'display_name': f"Journal {issn_clean}",
+        'publisher': "",
+        'works_count': 0,
+        'cited_by_count': 0,
+        'is_oa': False,
+        'created_date': "",
+        'updated_date': ""
     }
-    
-    try:
-        if SHOW_DEBUG_LOGS:
-            print(f"📡 Requesting: {url} with filter issn:{issn_clean}")
-        
-        data = await fetch_with_retry(session, url, params=params)
-        
-        if not data:
-            if SHOW_DEBUG_LOGS:
-                print(f"⚠️ No data returned for ISSN: {issn_clean}")
-            return None
-        
-        results = data.get('results', [])
-        if not results:
-            # Пробуем без дефиса
-            issn_no_hyphen = issn_clean.replace('-', '')
-            if SHOW_DEBUG_LOGS:
-                print(f"🔄 Trying without hyphen: {issn_no_hyphen}")
-            
-            params = {
-                'filter': f'issn:{issn_no_hyphen}',
-                'per-page': 1
-            }
-            data = await fetch_with_retry(session, url, params=params)
-            if not data:
-                return None
-            results = data.get('results', [])
-            
-            if not results:
-                if SHOW_DEBUG_LOGS:
-                    print(f"❌ Journal not found for ISSN: {issn_clean}")
-                return None
-        
-        journal_data = results[0]
-        if SHOW_DEBUG_LOGS:
-            print(f"✅ Found journal: {journal_data.get('display_name', 'Unknown')}")
-        
-        return journal_data
-        
-    except asyncio.TimeoutError:
-        if SHOW_DEBUG_LOGS:
-            print(f"⏰ Timeout while fetching journal for ISSN: {issn_clean}")
-        return None
-    except Exception as e:
-        if SHOW_DEBUG_LOGS:
-            print(f"❌ Error fetching journal: {str(e)}")
-        return None
 
 async def get_journal_publications(journal_id: str, session, periods: List[Tuple[int, int]], progress_callback=None, issn: str = None) -> List[Dict]:
     """Get all publications for a journal within specified periods with cursor support for large datasets"""
