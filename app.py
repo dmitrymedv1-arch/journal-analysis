@@ -819,6 +819,7 @@ async def get_journal_publications(journal_id: str, session, periods: List[Tuple
     if not journal_id:
         return []
     
+    # Build year filter
     year_filters = []
     for start, end in periods:
         if start == end:
@@ -835,10 +836,15 @@ async def get_journal_publications(journal_id: str, session, periods: List[Tuple
         'filter': f'primary_location.source.issn:{issn},publication_year:{year_filter}',
         'per-page': 200,
         'sort': 'publication_date:desc',
-        'cursor': '*'
+        'cursor': '*'  # Начинаем с первого курсора
     }
     
-    while True:
+    page = 0
+    max_pages = 100  # Защита от бесконечного цикла (максимум 100 страниц = 20000 статей)
+    
+    while page < max_pages:
+        page += 1
+        
         data = await fetch_with_retry(session, url, params=params)
         
         if not data:
@@ -856,13 +862,21 @@ async def get_journal_publications(journal_id: str, session, periods: List[Tuple
         if progress_callback:
             progress_callback(len(all_works), total_count)
         
+        # Получаем следующий курсор
         next_cursor = meta.get('next_cursor')
-        if not next_cursor:
+        
+        # Проверяем условия завершения пагинации
+        if not next_cursor or next_cursor == params.get('cursor'):
             break
         
+        # Обновляем курсор для следующего запроса
         params['cursor'] = next_cursor
         
+        # Задержка между запросами
         await asyncio.sleep(DELAY_BETWEEN_BATCHES)
+    
+    if SHOW_DEBUG_LOGS:
+        print(f"📊 Получено {len(all_works)} публикаций из {total_count} доступных")
     
     return all_works
     
