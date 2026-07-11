@@ -1987,7 +1987,8 @@ def generate_html_report(journal: Journal, analytics: Dict, periods: List[Tuple[
                         </tr>
                     </thead>
                     <tbody>
-                        {''.join([
+                        ''' +
+                        ''.join([
                             f'<tr>'
                             f'<td>{i+1}</td>'
                             f'<td>{html.escape(pub["title"][:80])}{"..." if len(pub["title"]) > 80 else ""}</td>'
@@ -1998,7 +1999,8 @@ def generate_html_report(journal: Journal, analytics: Dict, periods: List[Tuple[
                             f'<td><a href="https://doi.org/{pub["doi"]}" target="_blank" class="doi-link">{pub["doi"][:20]}{"..." if len(pub["doi"]) > 20 else ""}</a></td>'
                             f'</tr>'
                             for i, pub in enumerate(most_cited[:20])
-                        ])}
+                        ]) +
+                        '''
                     </tbody>
                 </table>
             </div>
