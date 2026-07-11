@@ -779,10 +779,20 @@ async def fetch_with_retry(session, url, params=None, headers=None, method='GET'
                 
                 if response.status == 200:
                     return await response.json()
+                elif response.status == 404:
+                    # Нет данных - не ошибка, просто возвращаем None
+                    return None
                 else:
                     if SHOW_DEBUG_LOGS:
                         print(f"⚠️ Error {response.status} for {url}")
                     return None
+        except asyncio.TimeoutError:
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ Timeout attempt {attempt+1}/{MAX_RETRIES}")
+            if attempt < MAX_RETRIES - 1:
+                await asyncio.sleep(RETRY_DELAY * (attempt + 1))
+            else:
+                return None
         except Exception as e:
             if SHOW_DEBUG_LOGS:
                 print(f"⚠️ Attempt {attempt+1}/{MAX_RETRIES} error: {str(e)[:100]}")
@@ -806,10 +816,14 @@ async def get_journal_by_issn(issn: str, session) -> Optional[Dict]:
     
     data = await fetch_with_retry(session, url, params=params)
     if not data:
+        if SHOW_DEBUG_LOGS:
+            print(f"❌ No data returned for ISSN: {issn_clean}")
         return None
     
     results = data.get('results', [])
     if not results:
+        if SHOW_DEBUG_LOGS:
+            print(f"❌ No results for ISSN: {issn_clean}")
         return None
     
     return results[0]
