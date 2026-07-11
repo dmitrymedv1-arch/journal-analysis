@@ -3244,7 +3244,6 @@ def main():
                         st.session_state.analysis_complete = True
                         
                         progress_status.update(label=get_text('analysis_complete'), state="complete")
-                        st.balloons()
                         
                     except Exception as e:
                         progress_status.update(label=f"❌ Error: {str(e)}", state="error")
