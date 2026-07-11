@@ -3786,9 +3786,9 @@ def main():
             st.caption(f"ISSN: {journal.issn}")
         with col2:
             st.caption(f"Publisher: {journal.publisher}")
-            st.caption(f"Works: {journal.works_count}")
+            st.caption(f"Works: {journal.works_count if journal.works_count is not None else 0}")
         with col3:
-            st.caption(f"Citations: {journal.cited_by_count:,}")
+            st.caption(f"Citations: {journal.cited_by_count if journal.cited_by_count is not None else 0:,}")
             st.caption(f"Period: {', '.join([f'{s}-{e}' if s != e else str(s) for s, e in periods])}")
         
         st.markdown("---")
