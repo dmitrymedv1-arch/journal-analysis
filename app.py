@@ -2084,6 +2084,13 @@ def collect_journal_data(issn: str, years, max_workers: int = 8, progress_callba
 def generate_html_report(data: JournalData, metrics: Dict, lang: str = 'en', primary_color: str = '#667eea', secondary_color: str = '#f39c12') -> str:
     """Generate comprehensive HTML report"""
     
+    # Добавьте эти строки
+    BASE_CSS = """
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f5f7fa; color: #333; line-height: 1.6; }
+        .main-content { max-width: 1400px; margin: 0 auto; padding: 20px; }
+    """
+    
     import base64
     
     # Load logo
