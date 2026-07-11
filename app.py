@@ -769,30 +769,28 @@ async def fetch_with_retry(session, url, params=None, headers=None, method='GET'
     """Execute request with retries on error"""
     for attempt in range(MAX_RETRIES):
         try:
-            async with session.request(method, url, params=params, headers=headers, timeout=TIMEOUT) as response:
-                if response.status == 429:
-                    retry_after = int(response.headers.get('Retry-After', RETRY_DELAY * (attempt + 1)))
-                    if SHOW_DEBUG_LOGS:
-                        print(f"⚠️ Rate limit, waiting {retry_after} sec...")
-                    await asyncio.sleep(retry_after)
-                    continue
-                
-                if response.status == 200:
-                    return await response.json()
-                elif response.status == 404:
-                    # Нет данных - не ошибка, просто возвращаем None
-                    return None
-                else:
-                    if SHOW_DEBUG_LOGS:
-                        print(f"⚠️ Error {response.status} for {url}")
-                    return None
-        except asyncio.TimeoutError:
-            if SHOW_DEBUG_LOGS:
-                print(f"⚠️ Timeout attempt {attempt+1}/{MAX_RETRIES}")
-            if attempt < MAX_RETRIES - 1:
-                await asyncio.sleep(RETRY_DELAY * (attempt + 1))
+            # Если url - это уже полный URL (source_id), params должен быть None
+            if url.startswith('https://'):
+                async with session.request(method, url, headers=headers, timeout=TIMEOUT) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    elif response.status == 404:
+                        return None
+                    else:
+                        if SHOW_DEBUG_LOGS:
+                            print(f"⚠️ Error {response.status} for {url}")
+                        return None
             else:
-                return None
+                # Обычный запрос с params
+                async with session.request(method, url, params=params, headers=headers, timeout=TIMEOUT) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    elif response.status == 404:
+                        return None
+                    else:
+                        if SHOW_DEBUG_LOGS:
+                            print(f"⚠️ Error {response.status} for {url}")
+                        return None
         except Exception as e:
             if SHOW_DEBUG_LOGS:
                 print(f"⚠️ Attempt {attempt+1}/{MAX_RETRIES} error: {str(e)[:100]}")
@@ -803,17 +801,19 @@ async def fetch_with_retry(session, url, params=None, headers=None, method='GET'
     return None
 
 async def get_journal_by_issn(issn: str, session) -> Optional[Dict]:
-    """Get journal information from OpenAlex by ISSN - DIRECT APPROACH"""
+    """Get journal information from OpenAlex by ISSN - DIRECT APPROACH (same as working code)"""
     issn_clean = parse_issn(issn)
     if not issn_clean:
         return None
     
-    # Прямой запрос к works для получения информации о журнале
+    if SHOW_DEBUG_LOGS:
+        print(f"🔍 Searching for ISSN: {issn_clean}")
+    
+    # Прямой запрос к works - БЕЗ select, как в проверочном коде
     url = "https://api.openalex.org/works"
     params = {
         'filter': f'primary_location.source.issn:{issn_clean}',
-        'per-page': 1,
-        'select': 'primary_location.source.id,primary_location.source.display_name,primary_location.source.publisher'
+        'per-page': 1
     }
     
     data = await fetch_with_retry(session, url, params=params)
@@ -828,6 +828,9 @@ async def get_journal_by_issn(issn: str, session) -> Optional[Dict]:
             print(f"❌ No results for ISSN: {issn_clean}")
         return None
     
+    if SHOW_DEBUG_LOGS:
+        print(f"✅ Found {len(results)} works for ISSN: {issn_clean}")
+    
     # Извлекаем информацию о журнале из первой публикации
     first_work = results[0]
     primary_location = first_work.get('primary_location', {})
@@ -835,43 +838,66 @@ async def get_journal_by_issn(issn: str, session) -> Optional[Dict]:
     
     if not source:
         if SHOW_DEBUG_LOGS:
-            print(f"❌ No source info for ISSN: {issn_clean}")
+            print(f"❌ No source info in first work for ISSN: {issn_clean}")
         return None
     
-    # Формируем структуру, аналогичную ответу от sources endpoint
+    # Получаем ID источника для дополнительной информации
+    source_id = source.get('id', '')
+    
+    # Формируем базовую информацию о журнале
     journal_info = {
-        'id': source.get('id', ''),
+        'id': source_id,
         'display_name': source.get('display_name', 'Unknown'),
         'publisher': source.get('publisher', ''),
         'issn': issn_clean,
-        'works_count': None,  # Будет заполнено позже
+        'works_count': None,
         'cited_by_count': None,
         'is_oa': False,
         'created_date': '',
         'updated_date': ''
     }
     
-    # Попробуем получить дополнительную информацию через sources endpoint (с таймаутом)
+    if SHOW_DEBUG_LOGS:
+        print(f"📚 Journal name: {journal_info['display_name']}")
+    
+    # Пытаемся получить полную информацию о журнале через sources endpoint
+    # Используем отдельный запрос с таймаутом
     try:
-        source_url = "https://api.openalex.org/sources"
-        source_params = {
-            'filter': f'issn:{issn_clean}',
-            'per-page': 1
-        }
-        source_data = await fetch_with_retry(session, source_url, params=source_params)
-        if source_data and source_data.get('results'):
-            source_info = source_data['results'][0]
-            journal_info['works_count'] = source_info.get('works_count', 0)
-            journal_info['cited_by_count'] = source_info.get('cited_by_count', 0)
-            journal_info['is_oa'] = source_info.get('is_oa', False)
-            journal_info['created_date'] = source_info.get('created_date', '')
-            journal_info['updated_date'] = source_info.get('updated_date', '')
+        if source_id:
+            # Используем прямой запрос к sources по ID
+            source_url = source_id  # source_id уже содержит полный URL
+            source_data = await fetch_with_retry(session, source_url)
+            if source_data:
+                journal_info['works_count'] = source_data.get('works_count', 0)
+                journal_info['cited_by_count'] = source_data.get('cited_by_count', 0)
+                journal_info['is_oa'] = source_data.get('is_oa', False)
+                journal_info['created_date'] = source_data.get('created_date', '')
+                journal_info['updated_date'] = source_data.get('updated_date', '')
+                if SHOW_DEBUG_LOGS:
+                    print(f"✅ Full journal info fetched: {journal_info['works_count']} works")
+        else:
+            # Fallback: поиск по ISSN в sources
+            source_url = "https://api.openalex.org/sources"
+            source_params = {
+                'filter': f'issn:{issn_clean}',
+                'per-page': 1
+            }
+            source_data = await fetch_with_retry(session, source_url, params=source_params)
+            if source_data and source_data.get('results'):
+                source_info = source_data['results'][0]
+                journal_info['works_count'] = source_info.get('works_count', 0)
+                journal_info['cited_by_count'] = source_info.get('cited_by_count', 0)
+                journal_info['is_oa'] = source_info.get('is_oa', False)
+                journal_info['created_date'] = source_info.get('created_date', '')
+                journal_info['updated_date'] = source_info.get('updated_date', '')
+                if SHOW_DEBUG_LOGS:
+                    print(f"✅ Full journal info fetched from sources endpoint")
     except Exception as e:
         if SHOW_DEBUG_LOGS:
             print(f"⚠️ Could not fetch additional source info: {e}")
     
     if SHOW_DEBUG_LOGS:
-        print(f"✅ Journal found: {journal_info['display_name']}")
+        print(f"✅ Journal ready: {journal_info['display_name']} ({journal_info.get('works_count', '?')} works)")
     
     return journal_info
 
