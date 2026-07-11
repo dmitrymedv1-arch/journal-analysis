@@ -820,10 +820,15 @@ async def fetch_with_retry(session, url, params=None, headers=None, method='GET'
     return None
 
 async def get_journal_by_issn(issn: str, session) -> Optional[Dict]:
-    """Get journal information from OpenAlex by ISSN with timeout"""
+    """Get journal information from OpenAlex by ISSN with detailed logging"""
     issn_clean = parse_issn(issn)
     if not issn_clean:
+        if SHOW_DEBUG_LOGS:
+            print(f"❌ Invalid ISSN format: {issn}")
         return None
+    
+    if SHOW_DEBUG_LOGS:
+        print(f"🔍 Looking for journal with ISSN: {issn_clean}")
     
     url = "https://api.openalex.org/sources"
     params = {
@@ -840,21 +845,40 @@ async def get_journal_by_issn(issn: str, session) -> Optional[Dict]:
         if SHOW_DEBUG_LOGS:
             print(f"⚠️ Timeout getting journal by ISSN: {issn_clean}")
         return None
+    except Exception as e:
+        if SHOW_DEBUG_LOGS:
+            print(f"⚠️ Error getting journal by ISSN: {e}")
+        return None
     
     if not data:
+        if SHOW_DEBUG_LOGS:
+            print(f"❌ No data returned for ISSN: {issn_clean}")
         return None
     
     results = data.get('results', [])
     if not results:
+        if SHOW_DEBUG_LOGS:
+            print(f"❌ No journal found with ISSN: {issn_clean}")
+            print(f"   Response: {data}")
         return None
     
-    return results[0]
+    journal_data = results[0]
+    if SHOW_DEBUG_LOGS:
+        print(f"✅ Found journal: {journal_data.get('display_name', 'Unknown')}")
+    
+    return journal_data
 
 async def get_journal_publications(journal_id: str, session, periods: List[Tuple[int, int]], progress_callback=None, issn: str = None) -> List[Dict]:
     """Get all publications for a journal within specified periods with cursor support for large datasets"""
     if not journal_id:
         return []
     
+    if not issn:
+        if SHOW_DEBUG_LOGS:
+            print("❌ No ISSN provided for publication search")
+        return []
+    
+    # Build year filter
     year_filters = []
     for start, end in periods:
         if start == end:
@@ -864,9 +888,13 @@ async def get_journal_publications(journal_id: str, session, periods: List[Tuple
     
     year_filter = ','.join(year_filters)
     
+    if SHOW_DEBUG_LOGS:
+        print(f"🔍 Searching publications with ISSN: {issn}, Years: {year_filter}")
+    
     all_works = []
     url = "https://api.openalex.org/works"
     
+    # Используем правильный фильтр - как в мини-коде
     params = {
         'filter': f'primary_location.source.issn:{issn},publication_year:{year_filter}',
         'per-page': 200,
@@ -874,7 +902,7 @@ async def get_journal_publications(journal_id: str, session, periods: List[Tuple
         'cursor': '*'
     }
     
-    max_pages = 25  # Ограничение на количество страниц (25 * 200 = 5000 работ)
+    max_pages = 25
     page_count = 0
     
     while True:
@@ -893,18 +921,29 @@ async def get_journal_publications(journal_id: str, session, periods: List[Tuple
             if SHOW_DEBUG_LOGS:
                 print(f"⚠️ Timeout getting publications, page {page_count}")
             break
+        except Exception as e:
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ Error getting publications: {e}")
+            break
         
         if not data:
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ No data returned for page {page_count}")
             break
         
         results = data.get('results', [])
         if not results:
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ No results for page {page_count}")
             break
         
         all_works.extend(results)
         
         meta = data.get('meta', {})
         total_count = meta.get('count', 0)
+        
+        if SHOW_DEBUG_LOGS and page_count == 1:
+            print(f"📊 Total publications found: {total_count}")
         
         if progress_callback:
             progress_callback(len(all_works), total_count)
@@ -916,6 +955,9 @@ async def get_journal_publications(journal_id: str, session, periods: List[Tuple
         params['cursor'] = next_cursor
         
         await asyncio.sleep(DELAY_BETWEEN_BATCHES)
+    
+    if SHOW_DEBUG_LOGS:
+        print(f"✅ Retrieved {len(all_works)} publications")
     
     return all_works
     
@@ -1024,7 +1066,7 @@ def parse_author_from_openalex(auth_data: Dict) -> Author:
     )
 
 def parse_publication_from_openalex(item: Dict) -> Optional[Publication]:
-    """Parse publication from OpenAlex data"""
+    """Parse publication from OpenAlex data with better error handling"""
     try:
         pub_id = item.get('id', '')
         doi = item.get('doi', '').replace('https://doi.org/', '')
@@ -1032,17 +1074,32 @@ def parse_publication_from_openalex(item: Dict) -> Optional[Publication]:
         publication_year = item.get('publication_year', 0)
         publication_date = item.get('publication_date', '')
         
+        # Journal info with fallback
         journal_name = ''
         publisher = ''
         primary_location = item.get('primary_location', {})
+        
         if primary_location:
             source = primary_location.get('source', {})
-            journal_name = source.get('display_name', '')
-            publisher = source.get('publisher', '')
-            if not publisher:
-                publisher = source.get('host_organization_name', '')
-            if not publisher and source.get('host_organization_lineage_names'):
-                publisher = source['host_organization_lineage_names'][0] if source['host_organization_lineage_names'] else ''
+            if source:
+                journal_name = source.get('display_name', '')
+                publisher = source.get('publisher', '')
+                if not publisher:
+                    publisher = source.get('host_organization_name', '')
+                if not publisher and source.get('host_organization_lineage_names'):
+                    publisher = source['host_organization_lineage_names'][0] if source['host_organization_lineage_names'] else ''
+        
+        # Если primary_location пустой, пробуем другие источники
+        if not journal_name:
+            # Пробуем найти journal через locations
+            locations = item.get('locations', [])
+            for loc in locations:
+                if isinstance(loc, dict):
+                    source = loc.get('source', {})
+                    if source:
+                        journal_name = source.get('display_name', '')
+                        if journal_name:
+                            break
         
         oa = item.get('open_access', {})
         is_oa = oa.get('is_oa', False)
@@ -1054,13 +1111,14 @@ def parse_publication_from_openalex(item: Dict) -> Optional[Publication]:
         
         for auth in item.get('authorships', []):
             author = parse_author_from_openalex(auth)
-            authors.append(author)
-            
-            for aff in author.affiliations:
-                if aff not in affiliations:
-                    affiliations.append(aff)
-                if aff.get('country') and aff['country'] not in countries:
-                    countries.append(aff['country'])
+            if author:
+                authors.append(author)
+                
+                for aff in author.affiliations:
+                    if aff not in affiliations:
+                        affiliations.append(aff)
+                    if aff.get('country') and aff['country'] not in countries:
+                        countries.append(aff['country'])
         
         topics = []
         concepts = []
@@ -1115,8 +1173,8 @@ def parse_publication_from_openalex(item: Dict) -> Optional[Publication]:
             authors=authors,
             affiliations=affiliations,
             countries=list(set(countries)),
-            journal_name=journal_name,
-            publisher=publisher,
+            journal_name=journal_name or 'Unknown Journal',
+            publisher=publisher or 'Unknown Publisher',
             cited_by_count=cited_by_count,
             is_oa=is_oa,
             open_access_status=open_access_status,
@@ -1134,6 +1192,7 @@ def parse_publication_from_openalex(item: Dict) -> Optional[Publication]:
     except Exception as e:
         if SHOW_DEBUG_LOGS:
             print(f"⚠️ Error parsing publication: {e}")
+            print(f"   Item ID: {item.get('id', 'unknown')}")
         return None
 
 def parse_citation_from_openalex(item: Dict, publication_year: int = 0) -> Optional[Citation]:
@@ -3417,137 +3476,7 @@ def generate_enhanced_html_report(journal: Journal, analytics: Dict, periods: Li
 # MAIN ANALYSIS FUNCTION
 # ============================================
 
-async def analyze_journal(issn: str, periods: List[Tuple[int, int]], progress_callback=None) -> Tuple[Journal, List[Publication], Dict[str, List[Citation]], Dict]:
-    """Main journal analysis function with timeout handling"""
-    
-    issn_clean = parse_issn(issn)
-    if not issn_clean:
-        return None, [], {}, {}
-    
-    periods_hash = hashlib.md5(str(periods).encode()).hexdigest()[:8]
-    cache_data = load_from_cache(issn_clean, periods_hash)
-    if cache_data:
-        journal = Journal(**cache_data['journal'])
-        publications = [Publication(**p) for p in cache_data['publications']]
-        citations = {k: [Citation(**c) for c in v] for k, v in cache_data['citations'].items()}
-        return journal, publications, citations, cache_data.get('analytics', {})
-    
-    # Создаем сессию с таймаутами
-    timeout = aiohttp.ClientTimeout(total=120, connect=30, sock_read=60)
-    
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        if progress_callback:
-            progress_callback('journal', 0, 100)
-        
-        # Получение информации о журнале с таймаутом
-        try:
-            journal_data = await asyncio.wait_for(
-                get_journal_by_issn(issn_clean, session),
-                timeout=45.0
-            )
-        except asyncio.TimeoutError:
-            if SHOW_DEBUG_LOGS:
-                print(f"⚠️ Timeout getting journal data for {issn_clean}")
-            return None, [], {}, {}
-        
-        if not journal_data:
-            return None, [], {}, {}
-        
-        journal = Journal(
-            id=journal_data.get('id', ''),
-            issn=issn_clean,
-            title=journal_data.get('display_name', 'Unknown'),
-            publisher=journal_data.get('publisher', ''),
-            works_count=journal_data.get('works_count', 0),
-            cited_by_count=journal_data.get('cited_by_count', 0),
-            is_oa=journal_data.get('is_oa', False),
-            created_date=journal_data.get('created_date', ''),
-            updated_date=journal_data.get('updated_date', '')
-        )
-        
-        if progress_callback:
-            progress_callback('publications', 0, 100)
-        
-        def pub_progress(current, total):
-            if progress_callback:
-                progress_callback('publications', current, total)
-        
-        # Получение публикаций с таймаутом
-        try:
-            works = await asyncio.wait_for(
-                get_journal_publications(journal.id, session, periods, pub_progress, issn_clean),
-                timeout=180.0
-            )
-        except asyncio.TimeoutError:
-            if SHOW_DEBUG_LOGS:
-                print(f"⚠️ Timeout getting publications for {journal.title}")
-            return journal, [], {}, {}
-        
-        if not works:
-            return journal, [], {}, {}
-        
-        publications = []
-        for work in works:
-            pub = parse_publication_from_openalex(work)
-            if pub:
-                publications.append(pub)
-        
-        if len(publications) > MAX_PUBLICATIONS_TO_ANALYZE:
-            publications = publications[:MAX_PUBLICATIONS_TO_ANALYZE]
-        
-        if progress_callback:
-            progress_callback('citations', 0, len(publications))
-        
-        citations = {}
-        total_citations = 0
-        
-        # Получение цитирований с таймаутом для каждой работы
-        for idx, pub in enumerate(publications):
-            if progress_callback:
-                progress_callback('citations', idx + 1, len(publications))
-            
-            if pub.cited_by_count > 0:
-                try:
-                    citing_works = await asyncio.wait_for(
-                        get_work_citations(pub.id, session),
-                        timeout=60.0
-                    )
-                except asyncio.TimeoutError:
-                    if SHOW_DEBUG_LOGS:
-                        print(f"⚠️ Timeout getting citations for {pub.id}")
-                    continue
-                
-                parsed_citations = []
-                for cw in citing_works:
-                    citation = parse_citation_from_openalex(cw, pub.publication_year)
-                    if citation:
-                        parsed_citations.append(citation)
-                        if citation.citing_year > 0:
-                            pub.citation_years[citation.citing_year] = pub.citation_years.get(citation.citing_year, 0) + 1
-                citations[pub.id] = parsed_citations
-                total_citations += len(parsed_citations)
-        
-        current_year = datetime.now().year
-        for pub in publications:
-            if pub.publication_year > 0:
-                years_since = current_year - pub.publication_year + 1
-                pub.citations_per_year = pub.cited_by_count / max(years_since, 1)
-        
-        if progress_callback:
-            progress_callback('analytics', 0, 100)
-        
-        analytics_engine = JournalAnalytics(journal, publications, citations)
-        analytics = analytics_engine.get_analytics()
-        
-        cache_data = {
-            'journal': asdict(journal),
-            'publications': [asdict(p) for p in publications],
-            'citations': {k: [asdict(c) for c in v] for k, v in citations.items()},
-            'analytics': analytics
-        }
-        save_to_cache(issn_clean, periods_hash, cache_data)
-        
-        return journal, publications, citations, analytics
+async def analyze_journal
 
 # ============================================
 # STREAMLIT INTERFACE
