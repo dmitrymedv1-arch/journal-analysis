@@ -2254,7 +2254,8 @@ def generate_html_report(journal: Journal, analytics: Dict, periods: List[Tuple[
                         </tr>
                     </thead>
                     <tbody>
-                        {''.join([
+                        ''' +
+                        ''.join([
                             f'<tr>'
                             f'<td>{i+1}</td>'
                             f'<td>{html.escape(p.title[:80])}{"..." if len(p.title) > 80 else ""}</td>'
@@ -2267,7 +2268,8 @@ def generate_html_report(journal: Journal, analytics: Dict, periods: List[Tuple[
                             f'<td><a href="https://doi.org/{p.doi}" target="_blank" class="doi-link">{p.doi[:20]}{"..." if len(p.doi) > 20 else ""}</a></td>'
                             f'</tr>'
                             for i, p in enumerate(publications[:100]) if publications else []
-                        ])}
+                        ]) +
+                        '''
                     </tbody>
                 </table>
             </div>
