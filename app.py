@@ -831,7 +831,7 @@ async def get_journal_by_issn(issn: str, session) -> Optional[Dict]:
         issn_matches = False
         
         # Проверяем точное совпадение
-        if issn_clean in source_issns:
+        if source_issns and issn_clean in source_issns:
             issn_matches = True
         else:
             # Проверяем без дефисов
@@ -926,7 +926,7 @@ async def get_journal_by_issn(issn: str, session) -> Optional[Dict]:
     source_issns = full_source_data.get('issn', [])
     issn_matches = False
     
-    if issn_clean in source_issns:
+    if source_issns and issn_clean in source_issns:
         issn_matches = True
     else:
         issn_clean_no_hyphen = issn_clean.replace('-', '')
@@ -1044,7 +1044,7 @@ async def get_journal_publications(journal_id: str, session, periods: List[Tuple
                 # Если ID не совпадает, проверяем ISSN (если он есть)
                 if issn:
                     source_issns = source.get('issn', [])
-                    if issn in source_issns or issn.replace('-', '') in [s.replace('-', '') for s in source_issns]:
+                    if source_issns and (issn in source_issns or issn.replace('-', '') in [s.replace('-', '') for s in source_issns]):
                         valid_results.append(work)
                     else:
                         if SHOW_DEBUG_LOGS:
