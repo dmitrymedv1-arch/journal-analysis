@@ -1152,11 +1152,12 @@ def get_journal_publications(issn: str, years, progress_callback=None) -> List[P
     
     base_url = "https://api.openalex.org/works"
     
-    if isinstance(years, list):
+    if isinstance(years, list) and len(years) > 0:
         year_filter = "|".join(f"publication_year:{y}" for y in years)
-    elif isinstance(years, tuple):
+    elif isinstance(years, tuple) and len(years) == 2:
         year_filter = f"publication_year:{years[0]}-{years[1]}"
     else:
+        # Если years - это число (один год)
         year_filter = f"publication_year:{years}"
     
     cursor = "*"
