@@ -803,17 +803,19 @@ async def get_journal_publications(journal_id: str, session, periods: List[Tuple
     all_works = []
     url = "https://api.openalex.org/works"
     
-    # Используем ISSN напрямую, как в рабочем коде
+    # Используем ISSN напрямую
     params = {
         'filter': f'primary_location.source.issn:{issn},publication_year:{year_filter}',
-        'per-page': 200,
+        'per-page': 200,  # Максимум 200 на страницу
         'sort': 'publication_date:desc'
     }
     
-    page_count = 0
+    page = 1
+    total_pages = None
     
     while True:
-        page_count += 1
+        params['page'] = page
+        
         data = await fetch_with_retry(session, url, params=params)
         
         if not data:
@@ -825,19 +827,31 @@ async def get_journal_publications(journal_id: str, session, periods: List[Tuple
         
         all_works.extend(results)
         
-        if progress_callback:
-            progress_callback(len(all_works), data.get('meta', {}).get('count', 0))
-        
-        # Check for next page
+        # Получаем общее количество и страницы
         meta = data.get('meta', {})
+        total_count = meta.get('count', 0)
+        
+        if total_pages is None and total_count > 0:
+            total_pages = (total_count + 199) // 200  # Округление вверх
+        
+        if progress_callback:
+            progress_callback(len(all_works), total_count)
+        
+        # Проверяем, есть ли следующая страница
+        if total_pages and page >= total_pages:
+            break
+        
+        # Альтернативная проверка через next_page_url
         next_url = meta.get('next_page_url')
         if not next_url:
             break
         
+        # Используем URL следующей страницы
         url = next_url
         params = None
+        page += 1
         
-        # Respect rate limits
+        # Уважаем лимиты API
         await asyncio.sleep(DELAY_BETWEEN_BATCHES)
     
     return all_works
