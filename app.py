@@ -3048,7 +3048,7 @@ def main():
     
     # Sidebar - Settings and inputs
     with st.sidebar:
-        st.image("logo.png", width=150) if os.path.exists("logo.png") else st.markdown("### 📚 Journal Metrics")
+        st.image("logo.png", width=150) if os.path.exists("logo.png") else None
         
         st.markdown(f"## {get_text('settings')}")
         
