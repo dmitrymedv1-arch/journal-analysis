@@ -27,29 +27,6 @@ import difflib
 from itertools import combinations
 import colorsys
 
-# ======================== ИМПОРТ СТИЛЕЙ ========================
-from styles import (
-    BASE_CSS,
-    generate_theme_css,
-    get_theme_info,
-    get_available_themes,
-    get_theme_display_name,
-    theme_uses_primary,
-    theme_uses_secondary,
-    get_reference_color_style,
-    REFERENCE_COLORS_FULL,
-    REFERENCE_COLORS_BORDER_ONLY,
-    REFERENCE_COLORS_ICONS,
-    REFERENCE_COLORS_THEMED,
-    REFERENCE_COLORS_TEXT,
-    hex_to_rgb,
-    rgb_to_hex,
-    get_complementary_color,
-    get_contrast_color,
-    get_analogous_colors,
-    get_gradient_colors,
-    inject_color_placeholders
-)
 
 # ======================== COLOR UTILITIES FOR DYNAMIC THEMES ========================
 def hex_to_rgb(hex_color: str) -> tuple:
