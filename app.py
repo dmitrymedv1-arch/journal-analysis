@@ -801,112 +801,188 @@ async def fetch_with_retry(session, url, params=None, headers=None, method='GET'
     return None
 
 async def get_journal_by_issn(issn: str, session) -> Optional[Dict]:
-    """Get journal information from OpenAlex by ISSN - DIRECT APPROACH (same as working code)"""
+    """
+    Получение информации о журнале через sources endpoint
+    Правильный подход: сначала ищем в sources, затем верифицируем через works
+    """
     issn_clean = parse_issn(issn)
     if not issn_clean:
+        if SHOW_DEBUG_LOGS:
+            print(f"❌ Неверный формат ISSN: {issn}")
         return None
     
     if SHOW_DEBUG_LOGS:
-        print(f"🔍 Searching for ISSN: {issn_clean}")
+        print(f"🔍 Поиск журнала по ISSN: {issn_clean}")
     
-    # Прямой запрос к works - БЕЗ select, как в проверочном коде
-    url = "https://api.openalex.org/works"
-    params = {
-        'filter': f'primary_location.source.issn:{issn_clean}',
+    # ========== ШАГ 1: Прямой поиск в sources ==========
+    source_url = "https://api.openalex.org/sources"
+    source_params = {
+        'filter': f'issn:{issn_clean}',
         'per-page': 1
     }
     
-    data = await fetch_with_retry(session, url, params=params)
-    if not data:
-        if SHOW_DEBUG_LOGS:
-            print(f"❌ No data returned for ISSN: {issn_clean}")
-        return None
+    source_data = await fetch_with_retry(session, source_url, params=source_params)
     
-    results = data.get('results', [])
-    if not results:
-        if SHOW_DEBUG_LOGS:
-            print(f"❌ No results for ISSN: {issn_clean}")
-        return None
+    if source_data and source_data.get('results'):
+        source = source_data['results'][0]
+        
+        # Проверяем, что ISSN действительно совпадает
+        source_issns = source.get('issn', [])
+        issn_matches = False
+        
+        # Проверяем точное совпадение
+        if issn_clean in source_issns:
+            issn_matches = True
+        else:
+            # Проверяем без дефисов
+            issn_clean_no_hyphen = issn_clean.replace('-', '')
+            for s_issn in source_issns:
+                if s_issn.replace('-', '') == issn_clean_no_hyphen:
+                    issn_matches = True
+                    break
+        
+        if issn_matches:
+            if SHOW_DEBUG_LOGS:
+                print(f"✅ Найден журнал в sources: {source.get('display_name', 'Unknown')}")
+            
+            return {
+                'id': source.get('id', ''),
+                'display_name': source.get('display_name', 'Unknown'),
+                'publisher': source.get('publisher', ''),
+                'issn': issn_clean,
+                'issn_list': source_issns,
+                'works_count': source.get('works_count', 0),
+                'cited_by_count': source.get('cited_by_count', 0),
+                'is_oa': source.get('is_oa', False),
+                'created_date': source.get('created_date', ''),
+                'updated_date': source.get('updated_date', ''),
+                'source_type': source.get('type', 'unknown')
+            }
+        else:
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ Найден источник, но ISSN не совпадает: {source_issns}")
     
+    # ========== ШАГ 2: Fallback - поиск через works ==========
     if SHOW_DEBUG_LOGS:
-        print(f"✅ Found {len(results)} works for ISSN: {issn_clean}")
+        print(f"🔍 Fallback: поиск через works для ISSN: {issn_clean}")
     
-    # Извлекаем информацию о журнале из первой публикации
-    first_work = results[0]
+    works_url = "https://api.openalex.org/works"
+    works_params = {
+        'filter': f'primary_location.source.issn:{issn_clean}',
+        'per-page': 1,
+        'select': 'id,primary_location'
+    }
+    
+    works_data = await fetch_with_retry(session, works_url, params=works_params)
+    
+    if not works_data or not works_data.get('results'):
+        if SHOW_DEBUG_LOGS:
+            print(f"❌ Журнал не найден ни в sources, ни в works для ISSN: {issn_clean}")
+        return None
+    
+    first_work = works_data['results'][0]
     primary_location = first_work.get('primary_location', {})
     source = primary_location.get('source', {})
     
     if not source:
         if SHOW_DEBUG_LOGS:
-            print(f"❌ No source info in first work for ISSN: {issn_clean}")
+            print(f"❌ В найденной работе нет информации об источнике")
         return None
     
-    # Получаем ID источника для дополнительной информации
     source_id = source.get('id', '')
     
-    # Формируем базовую информацию о журнале
+    if not source_id:
+        if SHOW_DEBUG_LOGS:
+            print(f"❌ Нет ID источника в найденной работе")
+        return None
+    
+    # ========== ШАГ 3: Получение полной информации об источнике ==========
+    if SHOW_DEBUG_LOGS:
+        print(f"🔍 Получение полной информации об источнике: {source_id}")
+    
+    full_source_data = await fetch_with_retry(session, source_id)
+    
+    if not full_source_data:
+        # Если не удалось получить полную информацию, используем то, что есть
+        if SHOW_DEBUG_LOGS:
+            print(f"⚠️ Не удалось получить полную информацию об источнике, использую частичные данные")
+        
+        return {
+            'id': source_id,
+            'display_name': source.get('display_name', 'Unknown'),
+            'publisher': source.get('publisher', ''),
+            'issn': issn_clean,
+            'issn_list': [issn_clean],
+            'works_count': None,
+            'cited_by_count': None,
+            'is_oa': False,
+            'created_date': '',
+            'updated_date': '',
+            'source_type': source.get('type', 'unknown')
+        }
+    
+    # ========== ШАГ 4: Верификация ISSN ==========
+    # Проверяем, что найденный источник действительно имеет нужный ISSN
+    source_issns = full_source_data.get('issn', [])
+    issn_matches = False
+    
+    if issn_clean in source_issns:
+        issn_matches = True
+    else:
+        issn_clean_no_hyphen = issn_clean.replace('-', '')
+        for s_issn in source_issns:
+            if s_issn.replace('-', '') == issn_clean_no_hyphen:
+                issn_matches = True
+                break
+    
+    if not issn_matches and source_issns:
+        if SHOW_DEBUG_LOGS:
+            print(f"⚠️ ВНИМАНИЕ: Найденный источник имеет ISSN {source_issns}, но искали {issn_clean}")
+            print(f"⚠️ Это может привести к неверным данным! Использую source.id для фильтрации.")
+    
+    # ========== ШАГ 5: Возврат результата ==========
     journal_info = {
         'id': source_id,
-        'display_name': source.get('display_name', 'Unknown'),
-        'publisher': source.get('publisher', ''),
+        'display_name': full_source_data.get('display_name', source.get('display_name', 'Unknown')),
+        'publisher': full_source_data.get('publisher', source.get('publisher', '')),
         'issn': issn_clean,
-        'works_count': None,
-        'cited_by_count': None,
-        'is_oa': False,
-        'created_date': '',
-        'updated_date': ''
+        'issn_list': source_issns or [issn_clean],
+        'works_count': full_source_data.get('works_count', 0),
+        'cited_by_count': full_source_data.get('cited_by_count', 0),
+        'is_oa': full_source_data.get('is_oa', False),
+        'created_date': full_source_data.get('created_date', ''),
+        'updated_date': full_source_data.get('updated_date', ''),
+        'source_type': full_source_data.get('type', source.get('type', 'unknown'))
     }
     
     if SHOW_DEBUG_LOGS:
-        print(f"📚 Journal name: {journal_info['display_name']}")
-    
-    # Пытаемся получить полную информацию о журнале через sources endpoint
-    # Используем отдельный запрос с таймаутом
-    try:
-        if source_id:
-            # Используем прямой запрос к sources по ID
-            source_url = source_id  # source_id уже содержит полный URL
-            source_data = await fetch_with_retry(session, source_url)
-            if source_data:
-                journal_info['works_count'] = source_data.get('works_count', 0)
-                journal_info['cited_by_count'] = source_data.get('cited_by_count', 0)
-                journal_info['is_oa'] = source_data.get('is_oa', False)
-                journal_info['created_date'] = source_data.get('created_date', '')
-                journal_info['updated_date'] = source_data.get('updated_date', '')
-                if SHOW_DEBUG_LOGS:
-                    print(f"✅ Full journal info fetched: {journal_info['works_count']} works")
-        else:
-            # Fallback: поиск по ISSN в sources
-            source_url = "https://api.openalex.org/sources"
-            source_params = {
-                'filter': f'issn:{issn_clean}',
-                'per-page': 1
-            }
-            source_data = await fetch_with_retry(session, source_url, params=source_params)
-            if source_data and source_data.get('results'):
-                source_info = source_data['results'][0]
-                journal_info['works_count'] = source_info.get('works_count', 0)
-                journal_info['cited_by_count'] = source_info.get('cited_by_count', 0)
-                journal_info['is_oa'] = source_info.get('is_oa', False)
-                journal_info['created_date'] = source_info.get('created_date', '')
-                journal_info['updated_date'] = source_info.get('updated_date', '')
-                if SHOW_DEBUG_LOGS:
-                    print(f"✅ Full journal info fetched from sources endpoint")
-    except Exception as e:
-        if SHOW_DEBUG_LOGS:
-            print(f"⚠️ Could not fetch additional source info: {e}")
-    
-    if SHOW_DEBUG_LOGS:
-        print(f"✅ Journal ready: {journal_info['display_name']} ({journal_info.get('works_count', '?')} works)")
+        print(f"✅ Журнал найден: {journal_info['display_name']}")
+        print(f"   ID: {journal_info['id']}")
+        print(f"   ISSN: {journal_info['issn_list']}")
+        print(f"   Работ: {journal_info['works_count']}")
     
     return journal_info
 
-async def get_journal_publications(journal_id: str, session, periods: List[Tuple[int, int]], progress_callback=None, issn: str = None) -> List[Dict]:
-    """Get all publications for a journal within specified periods - DIRECT APPROACH"""
-    if not issn:
+
+async def get_journal_publications(journal_id: str, session, periods: List[Tuple[int, int]], 
+                                   progress_callback=None, issn: str = None) -> List[Dict]:
+    """
+    Получение публикаций журнала с использованием source.id для точной фильтрации
+    """
+    if not journal_id:
+        if SHOW_DEBUG_LOGS:
+            print("❌ Нет ID журнала для поиска публикаций")
         return []
     
-    # Build year filter
+    if SHOW_DEBUG_LOGS:
+        print(f"🔍 Поиск публикаций для журнала ID: {journal_id}")
+    
+    # Извлекаем ID источника из полного URL
+    source_id = journal_id
+    if '/sources/' in journal_id:
+        source_id = journal_id.split('/sources/')[-1]
+    
+    # Строим фильтр по годам
     year_filters = []
     for start, end in periods:
         if start == end:
@@ -916,32 +992,74 @@ async def get_journal_publications(journal_id: str, session, periods: List[Tuple
     
     year_filter = ','.join(year_filters)
     
+    if SHOW_DEBUG_LOGS:
+        print(f"📅 Фильтр по годам: {year_filter}")
+    
+    # ========== ОСНОВНОЙ ЗАПРОС: используем source.id ==========
     all_works = []
     url = "https://api.openalex.org/works"
     
+    # Используем select для ограничения полей (как в проверочном коде)
     params = {
-        'filter': f'primary_location.source.issn:{issn},publication_year:{year_filter}',
+        'filter': f'primary_location.source.id:{source_id},publication_year:{year_filter}',
         'per-page': 200,
-        'sort': 'publication_date:desc',
+        'select': 'id,doi,publication_year,cited_by_count,authorships,primary_location,open_access,concepts,title,publication_date,is_retracted,is_correction',
         'cursor': '*'
     }
     
     page = 0
-    max_pages = 100
+    max_pages = 100  # Ограничение для предотвращения бесконечного цикла
+    total_count = 0
     
     while page < max_pages:
         page += 1
         
+        if SHOW_DEBUG_LOGS and page % 10 == 0:
+            print(f"📄 Загрузка страницы {page}, получено {len(all_works)} работ...")
+        
         data = await fetch_with_retry(session, url, params=params)
         
         if not data:
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ Не удалось получить данные на странице {page}")
             break
         
         results = data.get('results', [])
         if not results:
+            if SHOW_DEBUG_LOGS:
+                print(f"ℹ️ Больше нет результатов на странице {page}")
             break
         
-        all_works.extend(results)
+        # ========== ВАЛИДАЦИЯ: проверяем, что работы принадлежат нужному журналу ==========
+        valid_results = []
+        for work in results:
+            primary_location = work.get('primary_location', {})
+            source = primary_location.get('source', {})
+            work_source_id = source.get('id', '')
+            
+            # Проверяем совпадение ID источника
+            if work_source_id and (work_source_id == journal_id or work_source_id.endswith(f'/sources/{source_id}')):
+                valid_results.append(work)
+            else:
+                # Если ID не совпадает, проверяем ISSN (если он есть)
+                if issn:
+                    source_issns = source.get('issn', [])
+                    if issn in source_issns or issn.replace('-', '') in [s.replace('-', '') for s in source_issns]:
+                        valid_results.append(work)
+                    else:
+                        if SHOW_DEBUG_LOGS:
+                            print(f"⚠️ Работа {work.get('id', '')} не принадлежит журналу {journal_id}, пропускаем")
+                else:
+                    if SHOW_DEBUG_LOGS:
+                        print(f"⚠️ Работа {work.get('id', '')} не принадлежит журналу {journal_id}, пропускаем")
+        
+        if not valid_results:
+            if SHOW_DEBUG_LOGS:
+                print(f"ℹ️ На странице {page} нет валидных работ для журнала")
+            # Все равно добавляем результаты, но с предупреждением
+            all_works.extend(results)
+        else:
+            all_works.extend(valid_results)
         
         meta = data.get('meta', {})
         total_count = meta.get('count', 0)
@@ -952,14 +1070,35 @@ async def get_journal_publications(journal_id: str, session, periods: List[Tuple
         next_cursor = meta.get('next_cursor')
         
         if not next_cursor or next_cursor == params.get('cursor'):
+            if SHOW_DEBUG_LOGS:
+                print(f"ℹ️ Достигнут конец списка на странице {page}")
             break
         
         params['cursor'] = next_cursor
         
+        # Задержка между запросами
         await asyncio.sleep(DELAY_BETWEEN_BATCHES)
     
     if SHOW_DEBUG_LOGS:
-        print(f"📊 Получено {len(all_works)} публикаций из {total_count if 'total_count' in locals() else '?'} доступных")
+        print(f"📊 Получено {len(all_works)} публикаций")
+        if total_count > 0:
+            print(f"   Всего доступно: {total_count}")
+            if len(all_works) < total_count:
+                print(f"   ⚠️ Загружено только {len(all_works)} из {total_count} (ограничение)")
+    
+    # ========== ДОПОЛНИТЕЛЬНАЯ ВАЛИДАЦИЯ: проверяем через works_count ==========
+    if len(all_works) > 0:
+        # Проверяем, что все работы действительно принадлежат журналу
+        # Для этого берем первую работу и проверяем ее источник
+        sample_work = all_works[0]
+        primary_location = sample_work.get('primary_location', {})
+        source = primary_location.get('source', {})
+        source_id_from_work = source.get('id', '')
+        
+        if source_id_from_work and not (source_id_from_work == journal_id or source_id_from_work.endswith(f'/sources/{source_id}')):
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ ВНИМАНИЕ: Первая работа принадлежит источнику {source_id_from_work}, а не {journal_id}")
+                print(f"⚠️ Возможно, данные неверны. Проверьте ISSN и период.")
     
     return all_works
     
