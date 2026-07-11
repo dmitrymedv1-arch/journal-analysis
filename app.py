@@ -3592,7 +3592,7 @@ def generate_enhanced_html_report(journal: Journal, analytics: Dict, periods: Li
 # ============================================
 
 async def analyze_journal(issn: str, periods: List[Tuple[int, int]], progress_callback=None) -> Tuple[Journal, List[Publication], Dict[str, List[Citation]], Dict]:
-    """Main journal analysis function"""
+    """Main journal analysis function with improved journal identification"""
     
     issn_clean = parse_issn(issn)
     if not issn_clean:
@@ -3610,11 +3610,34 @@ async def analyze_journal(issn: str, periods: List[Tuple[int, int]], progress_ca
         if progress_callback:
             progress_callback('journal', 0, 100)
         
-        # Получаем информацию о журнале напрямую через works
+        # ========== ПОЛУЧАЕМ ИНФОРМАЦИЮ О ЖУРНАЛЕ ==========
         journal_data = await get_journal_by_issn(issn_clean, session)
+        
         if not journal_data:
+            if SHOW_DEBUG_LOGS:
+                print(f"❌ Журнал не найден для ISSN: {issn_clean}")
             return None, [], {}, {}
         
+        # ========== ВЕРИФИЦИРУЕМ ЖУРНАЛ ==========
+        verification = await verify_journal_by_works(issn_clean, session, journal_data['id'])
+        
+        if verification and not verification.get('verified', True):
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ ВНИМАНИЕ: Журнал не верифицирован!")
+                print(f"   Найденные источники: {verification.get('found_sources', [])}")
+                print(f"   Продолжаем с первым найденным источником...")
+            
+            # Если верификация не удалась, но есть другие источники, пробуем их
+            if verification.get('found_sources'):
+                first_source = verification['found_sources'][0]
+                # Получаем информацию о первом источнике
+                source_data = await fetch_with_retry(session, first_source)
+                if source_data:
+                    journal_data['id'] = first_source
+                    journal_data['display_name'] = source_data.get('display_name', journal_data['display_name'])
+                    journal_data['works_count'] = source_data.get('works_count', journal_data.get('works_count', 0))
+        
+        # ========== СОЗДАЕМ ОБЪЕКТ ЖУРНАЛА ==========
         journal = Journal(
             id=journal_data.get('id', ''),
             issn=issn_clean,
@@ -3627,6 +3650,15 @@ async def analyze_journal(issn: str, periods: List[Tuple[int, int]], progress_ca
             updated_date=journal_data.get('updated_date', '')
         )
         
+        if SHOW_DEBUG_LOGS:
+            print(f"\n📚 АНАЛИЗИРУЕМЫЙ ЖУРНАЛ:")
+            print(f"   Название: {journal.title}")
+            print(f"   ID: {journal.id}")
+            print(f"   ISSN: {journal.issn}")
+            print(f"   Всего работ: {journal.works_count}")
+            print(f"   Цитирований: {journal.cited_by_count}")
+            print(f"   Издатель: {journal.publisher}")
+        
         if progress_callback:
             progress_callback('publications', 0, 100)
         
@@ -3634,24 +3666,48 @@ async def analyze_journal(issn: str, periods: List[Tuple[int, int]], progress_ca
             if progress_callback:
                 progress_callback('publications', current, total)
         
-        # Получаем публикации напрямую через works с фильтром по ISSN
-        works = await get_journal_publications(journal.id, session, periods, pub_progress, issn_clean)
+        # ========== ПОЛУЧАЕМ ПУБЛИКАЦИИ ==========
+        works = await get_journal_publications(
+            journal.id, 
+            session, 
+            periods, 
+            pub_progress,
+            issn_clean
+        )
         
         if not works:
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ Публикации не найдены для журнала {journal.title}")
             return journal, [], {}, {}
         
+        # ========== ПАРСИМ ПУБЛИКАЦИИ ==========
         publications = []
         for work in works:
             pub = parse_publication_from_openalex(work)
             if pub:
+                # Дополнительная проверка: убеждаемся, что журнал совпадает
+                if pub.journal_name and journal.title and pub.journal_name.lower() != journal.title.lower():
+                    if SHOW_DEBUG_LOGS:
+                        print(f"⚠️ Предупреждение: работа '{pub.title[:50]}...'"
+                              f" принадлежит журналу '{pub.journal_name}', а не '{journal.title}'")
+                    # Все равно добавляем, но с предупреждением
                 publications.append(pub)
         
+        # Ограничиваем количество публикаций
         if len(publications) > MAX_PUBLICATIONS_TO_ANALYZE:
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ Ограничение: {len(publications)} > {MAX_PUBLICATIONS_TO_ANALYZE}, обрезаем...")
             publications = publications[:MAX_PUBLICATIONS_TO_ANALYZE]
+        
+        if SHOW_DEBUG_LOGS:
+            print(f"\n📊 СТАТИСТИКА ПУБЛИКАЦИЙ:")
+            print(f"   Всего загружено: {len(publications)}")
+            print(f"   Годы: {sorted(set(p.publication_year for p in publications if p.publication_year > 0))}")
         
         if progress_callback:
             progress_callback('citations', 0, len(publications))
         
+        # ========== ПОЛУЧАЕМ ЦИТИРОВАНИЯ ==========
         citations = {}
         total_citations = 0
         
@@ -3660,6 +3716,9 @@ async def analyze_journal(issn: str, periods: List[Tuple[int, int]], progress_ca
                 progress_callback('citations', idx + 1, len(publications))
             
             if pub.cited_by_count > 0:
+                if SHOW_DEBUG_LOGS and idx % 10 == 0:
+                    print(f"📊 Получение цитирований для работы {idx+1}/{len(publications)}: {pub.title[:50]}...")
+                
                 citing_works = await get_work_citations(pub.id, session)
                 parsed_citations = []
                 for cw in citing_works:
@@ -3671,18 +3730,27 @@ async def analyze_journal(issn: str, periods: List[Tuple[int, int]], progress_ca
                 citations[pub.id] = parsed_citations
                 total_citations += len(parsed_citations)
         
+        # ========== РАСЧЕТ CITATIONS PER YEAR ==========
         current_year = datetime.now().year
         for pub in publications:
             if pub.publication_year > 0:
                 years_since = current_year - pub.publication_year + 1
                 pub.citations_per_year = pub.cited_by_count / max(years_since, 1)
         
+        if SHOW_DEBUG_LOGS:
+            print(f"\n📊 ИТОГОВАЯ СТАТИСТИКА:")
+            print(f"   Публикаций: {len(publications)}")
+            print(f"   Всего цитирований: {sum(p.cited_by_count for p in publications)}")
+            print(f"   Загружено цитирующих работ: {total_citations}")
+        
         if progress_callback:
             progress_callback('analytics', 0, 100)
         
+        # ========== ВЫПОЛНЯЕМ АНАЛИЗ ==========
         analytics_engine = JournalAnalytics(journal, publications, citations)
         analytics = analytics_engine.get_analytics()
         
+        # ========== СОХРАНЯЕМ В КЭШ ==========
         cache_data = {
             'journal': asdict(journal),
             'publications': [asdict(p) for p in publications],
