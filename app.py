@@ -802,8 +802,10 @@ async def get_journal_publications(journal_id: str, session, periods: List[Tuple
     
     all_works = []
     url = "https://api.openalex.org/works"
+    import re
+    source_id = re.sub(r'^https?://openalex\.org/', '', journal_id)
     params = {
-        'filter': f'source.id:{journal_id},publication_year:{year_filter}',
+        'filter': f'source.id:{source_id},publication_year:{year_filter}',
         'per-page': 200,
         'sort': 'publication_date:desc'
     }
