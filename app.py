@@ -2945,13 +2945,15 @@ def generate_enhanced_html_report(journal: Journal, analytics: Dict, periods: Li
                         </thead>
                         <tbody>
                             {''.join([
-                                f'<tr>'
-                                f'<td><strong>{pub_year}</strong></td>'
-                                + ''.join([
-                                    f'<td>{citation_matrix.get(pub_year, {}).get(cite_year, 0)}</td>'
-                                    for cite_year in sorted(citation_matrix.keys())
+                                ''.join([
+                                    f'<tr>',
+                                    f'<td><strong>{pub_year}</strong></td>',
+                                    ''.join([
+                                        f'<td>{citation_matrix.get(pub_year, {}).get(cite_year, 0)}</td>'
+                                        for cite_year in sorted(citation_matrix.keys())
+                                    ]),
+                                    f'</tr>'
                                 ])
-                                f'</tr>'
                                 for pub_year in sorted(citation_matrix.keys())
                             ])}
                         </tbody>
