@@ -1,0 +1,12 @@
+streamlit
+aiohttp
+pandas
+numpy
+matplotlib
+seaborn
+plotly
+wordcloud
+reportlab
+beautifulsoup4
+requests
+python-dotenv
