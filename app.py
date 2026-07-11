@@ -786,7 +786,7 @@ async def get_journal_by_issn(issn: str, session) -> Optional[Dict]:
     return results[0]
 
 async def get_journal_publications(journal_id: str, session, periods: List[Tuple[int, int]], progress_callback=None, issn: str = None) -> List[Dict]:
-    """Get all publications for a journal within specified periods"""
+    """Get all publications for a journal within specified periods with cursor support for large datasets"""
     if not journal_id:
         return []
     
@@ -803,19 +803,14 @@ async def get_journal_publications(journal_id: str, session, periods: List[Tuple
     all_works = []
     url = "https://api.openalex.org/works"
     
-    # Используем ISSN напрямую
     params = {
         'filter': f'primary_location.source.issn:{issn},publication_year:{year_filter}',
-        'per-page': 200,  # Максимум 200 на страницу
-        'sort': 'publication_date:desc'
+        'per-page': 200,
+        'sort': 'publication_date:desc',
+        'cursor': '*'  # Начинаем с первого курсора
     }
     
-    page = 1
-    total_pages = None
-    
     while True:
-        params['page'] = page
-        
         data = await fetch_with_retry(session, url, params=params)
         
         if not data:
@@ -827,35 +822,24 @@ async def get_journal_publications(journal_id: str, session, periods: List[Tuple
         
         all_works.extend(results)
         
-        # Получаем общее количество и страницы
         meta = data.get('meta', {})
         total_count = meta.get('count', 0)
-        
-        if total_pages is None and total_count > 0:
-            total_pages = (total_count + 199) // 200  # Округление вверх
         
         if progress_callback:
             progress_callback(len(all_works), total_count)
         
-        # Проверяем, есть ли следующая страница
-        if total_pages and page >= total_pages:
+        # Получаем следующий курсор
+        next_cursor = meta.get('next_cursor')
+        if not next_cursor:
             break
         
-        # Альтернативная проверка через next_page_url
-        next_url = meta.get('next_page_url')
-        if not next_url:
-            break
+        # Обновляем курсор для следующего запроса
+        params['cursor'] = next_cursor
         
-        # Используем URL следующей страницы
-        url = next_url
-        params = None
-        page += 1
-        
-        # Уважаем лимиты API
         await asyncio.sleep(DELAY_BETWEEN_BATCHES)
     
     return all_works
-
+    
 async def get_work_citations(work_id: str, session, progress_callback=None) -> List[Dict]:
     """Get all citing works for a publication"""
     if not work_id:
