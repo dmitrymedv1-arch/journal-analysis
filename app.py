@@ -836,7 +836,8 @@ async def get_journal_by_issn(issn: str, session) -> Optional[Dict]:
         else:
             # Проверяем без дефисов
             issn_clean_no_hyphen = issn_clean.replace('-', '')
-            for s_issn in source_issns:
+            if source_issns:
+                for s_issn in source_issns:
                 if s_issn.replace('-', '') == issn_clean_no_hyphen:
                     issn_matches = True
                     break
@@ -930,7 +931,8 @@ async def get_journal_by_issn(issn: str, session) -> Optional[Dict]:
         issn_matches = True
     else:
         issn_clean_no_hyphen = issn_clean.replace('-', '')
-        for s_issn in source_issns:
+        if source_issns:
+            for s_issn in source_issns:
             if s_issn.replace('-', '') == issn_clean_no_hyphen:
                 issn_matches = True
                 break
