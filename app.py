@@ -2042,7 +2042,7 @@ def create_advanced_visualizations(analytics: Dict, lang: str = 'en') -> Dict[st
         for topic, data in list(hot_topics.items())[:10]:
             names.append(topic[:20])
             sizes.append(data['hot_index'])
-            colors.append(data['ratio'] / max([d['ratio'] for d in hot_topics.values()], 1))
+            colors.append(data['ratio'] / max(d['ratio'] for d in hot_topics.values()) if hot_topics else 1)
         
         if names:
             scatter = ax.scatter(range(len(names)), sizes, s=[s * 20 for s in sizes], 
