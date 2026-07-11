@@ -745,6 +745,7 @@ TEXTS = {
         'html_frequency': "Frequency",
         'html_connections': "connections",
         'html_joint_works': "joint works",
+        'html_authors_count': "authors",
         'html_citations_label': "citations",
         'html_not_found': "Not found",
         
@@ -935,6 +936,7 @@ TEXTS = {
         'html_frequency': "Частота",
         'html_connections': "связей",
         'html_joint_works': "совместных работ",
+        'html_authors_count': "авторов",
         'html_citations_label': "цитирований",
         'html_not_found': "Не найден",
         
