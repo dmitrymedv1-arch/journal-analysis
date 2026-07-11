@@ -2656,16 +2656,16 @@ def generate_html_report(data: JournalData, metrics: Dict, lang: str = 'en', pri
                 
                 detailed_html += f"""
                 <div class="citation-detail">
-                    <div class="citation-title"><strong>{html.escape(cite['citing_title'])}</strong></div>
+                    <div class="citation-title"><strong>{html.escape(cite['citing_title'] or '')}</strong></div>
                     <div class="cite-meta">
-                        <strong>{t('citing_journal')}:</strong> {html.escape(cite['citing_journal'])} | 
-                        <strong>{t('citing_year')}:</strong> {cite['citing_year']} | 
-                        <strong>{t('citing_date')}:</strong> {cite['citing_date']} |
-                        <strong>{t('citation_lag')}:</strong> {cite['citation_lag']} years
+                        <strong>{t('citing_journal')}:</strong> {html.escape(cite['citing_journal']) or ''} | 
+                        <strong>{t('citing_year')}:</strong> {cite['citing_year'] or ''} | 
+                        <strong>{t('citing_date')}:</strong> {cite['citing_date'] or ''} |
+                        <strong>{t('citation_lag')}:</strong> {cite['citation_lag'] or ''} years
                     </div>
                     <div class="cite-meta">
-                        <strong>{t('authors')}:</strong> {html.escape(authors_str)} |
-                        <strong>{t('countries')}:</strong> {html.escape(countries_str)} |
+                        <strong>{t('authors')}:</strong> {html.escape(authors_str) or ''} |
+                        <strong>{t('countries')}:</strong> {html.escape(countries_str) or ''} |
                         <strong>{t('topics')}:</strong> {html.escape(topics_str)}
                     </div>
                     <div class="cite-meta">
