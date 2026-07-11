@@ -785,7 +785,7 @@ async def get_journal_by_issn(issn: str, session) -> Optional[Dict]:
     
     return results[0]
 
-async def get_journal_publications(journal_id: str, session, periods: List[Tuple[int, int]], progress_callback=None) -> List[Dict]:
+async def get_journal_publications(journal_id: str, session, periods: List[Tuple[int, int]], progress_callback=None, issn: str = None) -> List[Dict]:
     """Get all publications for a journal within specified periods"""
     if not journal_id:
         return []
@@ -803,11 +803,9 @@ async def get_journal_publications(journal_id: str, session, periods: List[Tuple
     all_works = []
     url = "https://api.openalex.org/works"
     
-    import re
-    source_id = re.sub(r'^https?://openalex\.org/', '', journal_id)
-    
+    # Используем ISSN напрямую, как в рабочем коде
     params = {
-        'filter': f'source.id:{source_id},publication_year:{year_filter}',
+        'filter': f'primary_location.source.issn:{issn},publication_year:{year_filter}',
         'per-page': 200,
         'sort': 'publication_date:desc'
     }
@@ -3185,7 +3183,7 @@ async def analyze_journal(issn: str, periods: List[Tuple[int, int]], progress_ca
             if progress_callback:
                 progress_callback('publications', current, total)
         
-        works = await get_journal_publications(journal.id, session, periods, pub_progress)
+        works = await get_journal_publications(journal.id, session, periods, pub_progress, issn_clean)
         
         if not works:
             return journal, [], {}, {}
