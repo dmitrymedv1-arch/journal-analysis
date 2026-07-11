@@ -765,24 +765,51 @@ def save_to_cache(issn: str, periods_hash: str, data: Dict):
 # API CLIENT
 # ============================================
 
-async def fetch_with_retry(session, url, params=None, headers=None, method='GET'):
-    """Execute request with retries on error"""
+async def fetch_with_retry(session, url, params=None, headers=None, method='GET', timeout_override=None):
+    """Execute request with retries on error with proper timeout handling"""
+    timeout_value = timeout_override if timeout_override else TIMEOUT
+    
     for attempt in range(MAX_RETRIES):
         try:
-            async with session.request(method, url, params=params, headers=headers, timeout=TIMEOUT) as response:
+            async with session.request(
+                method, url, params=params, headers=headers, 
+                timeout=aiohttp.ClientTimeout(total=timeout_value)
+            ) as response:
                 if response.status == 429:
                     retry_after = int(response.headers.get('Retry-After', RETRY_DELAY * (attempt + 1)))
                     if SHOW_DEBUG_LOGS:
                         print(f"⚠️ Rate limit, waiting {retry_after} sec...")
-                    await asyncio.sleep(retry_after)
+                    await asyncio.sleep(min(retry_after, 30))  # Не ждать больше 30 секунд
                     continue
                 
                 if response.status == 200:
                     return await response.json()
+                elif response.status == 404:
+                    # Not found - don't retry
+                    return None
                 else:
                     if SHOW_DEBUG_LOGS:
                         print(f"⚠️ Error {response.status} for {url}")
+                    if response.status >= 500:
+                        # Server error - retry
+                        if attempt < MAX_RETRIES - 1:
+                            await asyncio.sleep(RETRY_DELAY * (attempt + 1))
+                            continue
                     return None
+        except asyncio.TimeoutError:
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ Timeout attempt {attempt+1}/{MAX_RETRIES} for {url}")
+            if attempt < MAX_RETRIES - 1:
+                await asyncio.sleep(RETRY_DELAY * (attempt + 1))
+            else:
+                return None
+        except aiohttp.ClientError as e:
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ Client error attempt {attempt+1}/{MAX_RETRIES} for {url}: {str(e)[:100]}")
+            if attempt < MAX_RETRIES - 1:
+                await asyncio.sleep(RETRY_DELAY * (attempt + 1))
+            else:
+                return None
         except Exception as e:
             if SHOW_DEBUG_LOGS:
                 print(f"⚠️ Attempt {attempt+1}/{MAX_RETRIES} error: {str(e)[:100]}")
@@ -793,7 +820,7 @@ async def fetch_with_retry(session, url, params=None, headers=None, method='GET'
     return None
 
 async def get_journal_by_issn(issn: str, session) -> Optional[Dict]:
-    """Get journal information from OpenAlex by ISSN"""
+    """Get journal information from OpenAlex by ISSN with timeout"""
     issn_clean = parse_issn(issn)
     if not issn_clean:
         return None
@@ -804,7 +831,16 @@ async def get_journal_by_issn(issn: str, session) -> Optional[Dict]:
         'per-page': 1
     }
     
-    data = await fetch_with_retry(session, url, params=params)
+    try:
+        data = await asyncio.wait_for(
+            fetch_with_retry(session, url, params=params),
+            timeout=30.0
+        )
+    except asyncio.TimeoutError:
+        if SHOW_DEBUG_LOGS:
+            print(f"⚠️ Timeout getting journal by ISSN: {issn_clean}")
+        return None
+    
     if not data:
         return None
     
@@ -838,8 +874,25 @@ async def get_journal_publications(journal_id: str, session, periods: List[Tuple
         'cursor': '*'
     }
     
+    max_pages = 25  # Ограничение на количество страниц (25 * 200 = 5000 работ)
+    page_count = 0
+    
     while True:
-        data = await fetch_with_retry(session, url, params=params)
+        page_count += 1
+        if page_count > max_pages:
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ Reached max pages limit ({max_pages})")
+            break
+        
+        try:
+            data = await asyncio.wait_for(
+                fetch_with_retry(session, url, params=params),
+                timeout=45.0
+            )
+        except asyncio.TimeoutError:
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ Timeout getting publications, page {page_count}")
+            break
         
         if not data:
             break
@@ -867,7 +920,7 @@ async def get_journal_publications(journal_id: str, session, periods: List[Tuple
     return all_works
     
 async def get_work_citations(work_id: str, session, progress_callback=None) -> List[Dict]:
-    """Get all citing works for a publication"""
+    """Get all citing works for a publication with timeout"""
     if not work_id:
         return []
     
@@ -879,10 +932,24 @@ async def get_work_citations(work_id: str, session, progress_callback=None) -> L
     }
     
     page_count = 0
+    max_citation_pages = 3  # 3 * 200 = 600 цитирований на работу
     
     while True:
         page_count += 1
-        data = await fetch_with_retry(session, url, params=params)
+        if page_count > max_citation_pages:
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ Reached max citation pages limit ({max_citation_pages}) for {work_id}")
+            break
+        
+        try:
+            data = await asyncio.wait_for(
+                fetch_with_retry(session, url, params=params),
+                timeout=30.0
+            )
+        except asyncio.TimeoutError:
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ Timeout getting citations for {work_id}")
+            break
         
         if not data:
             break
@@ -3351,7 +3418,7 @@ def generate_enhanced_html_report(journal: Journal, analytics: Dict, periods: Li
 # ============================================
 
 async def analyze_journal(issn: str, periods: List[Tuple[int, int]], progress_callback=None) -> Tuple[Journal, List[Publication], Dict[str, List[Citation]], Dict]:
-    """Main journal analysis function"""
+    """Main journal analysis function with timeout handling"""
     
     issn_clean = parse_issn(issn)
     if not issn_clean:
@@ -3365,11 +3432,24 @@ async def analyze_journal(issn: str, periods: List[Tuple[int, int]], progress_ca
         citations = {k: [Citation(**c) for c in v] for k, v in cache_data['citations'].items()}
         return journal, publications, citations, cache_data.get('analytics', {})
     
-    async with aiohttp.ClientSession() as session:
+    # Создаем сессию с таймаутами
+    timeout = aiohttp.ClientTimeout(total=120, connect=30, sock_read=60)
+    
+    async with aiohttp.ClientSession(timeout=timeout) as session:
         if progress_callback:
             progress_callback('journal', 0, 100)
         
-        journal_data = await get_journal_by_issn(issn_clean, session)
+        # Получение информации о журнале с таймаутом
+        try:
+            journal_data = await asyncio.wait_for(
+                get_journal_by_issn(issn_clean, session),
+                timeout=45.0
+            )
+        except asyncio.TimeoutError:
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ Timeout getting journal data for {issn_clean}")
+            return None, [], {}, {}
+        
         if not journal_data:
             return None, [], {}, {}
         
@@ -3392,7 +3472,16 @@ async def analyze_journal(issn: str, periods: List[Tuple[int, int]], progress_ca
             if progress_callback:
                 progress_callback('publications', current, total)
         
-        works = await get_journal_publications(journal.id, session, periods, pub_progress, issn_clean)
+        # Получение публикаций с таймаутом
+        try:
+            works = await asyncio.wait_for(
+                get_journal_publications(journal.id, session, periods, pub_progress, issn_clean),
+                timeout=180.0
+            )
+        except asyncio.TimeoutError:
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ Timeout getting publications for {journal.title}")
+            return journal, [], {}, {}
         
         if not works:
             return journal, [], {}, {}
@@ -3412,12 +3501,22 @@ async def analyze_journal(issn: str, periods: List[Tuple[int, int]], progress_ca
         citations = {}
         total_citations = 0
         
+        # Получение цитирований с таймаутом для каждой работы
         for idx, pub in enumerate(publications):
             if progress_callback:
                 progress_callback('citations', idx + 1, len(publications))
             
             if pub.cited_by_count > 0:
-                citing_works = await get_work_citations(pub.id, session)
+                try:
+                    citing_works = await asyncio.wait_for(
+                        get_work_citations(pub.id, session),
+                        timeout=60.0
+                    )
+                except asyncio.TimeoutError:
+                    if SHOW_DEBUG_LOGS:
+                        print(f"⚠️ Timeout getting citations for {pub.id}")
+                    continue
+                
                 parsed_citations = []
                 for cw in citing_works:
                     citation = parse_citation_from_openalex(cw, pub.publication_year)
@@ -3634,9 +3733,16 @@ def main():
         try:
             start_time = time.time()
             
-            journal, publications, citations, analytics = asyncio.run(
-                analyze_journal(issn_clean, periods, progress_callback)
-            )
+            # Создаем новый событийный цикл для изоляции
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            try:
+                journal, publications, citations, analytics = loop.run_until_complete(
+                    analyze_journal(issn_clean, periods, progress_callback)
+                )
+            finally:
+                loop.close()
             
             if not journal:
                 st.error(t('journal_not_found'))
@@ -3644,21 +3750,12 @@ def main():
                 status_placeholder.empty()
                 return
             
-            st.session_state.journal = journal
-            st.session_state.publications = publications
-            st.session_state.citations = citations
-            st.session_state.analytics = analytics
-            st.session_state.periods = periods
-            st.session_state.analysis_done = True
-            
-            elapsed = time.time() - start_time
-            
-            progress_placeholder.progress(1.0)
+            # ... остальной код
+        except asyncio.TimeoutError:
+            st.error("❌ Analysis timed out. Please try again or check your internet connection.")
+            progress_placeholder.empty()
             status_placeholder.empty()
-            
-            st.success(t('analysis_complete', count=len(publications), time=elapsed))
-            st.balloons()
-            
+            return
         except Exception as e:
             st.error(f"❌ Error: {str(e)}")
             import traceback
