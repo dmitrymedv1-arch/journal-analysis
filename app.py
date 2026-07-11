@@ -790,24 +790,28 @@ async def get_journal_publications(journal_id: str, session, periods: List[Tuple
     if not journal_id:
         return []
     
-    # Build year filter
-    year_filters = []
-    for start, end in periods:
-        if start == end:
-            year_filters.append(str(start))
-        else:
-            year_filters.append(f"{start}-{end}")
-    
-    year_filter = ','.join(year_filters)
+    # Строим фильтр для годов с правильным синтаксисом
+    if len(periods) == 1 and periods[0][0] == periods[0][1]:
+        # Один конкретный год
+        year_filter_str = f"publication_year:{periods[0][0]}"
+    else:
+        # Диапазоны и несколько периодов
+        year_parts = []
+        for start, end in periods:
+            if start == end:
+                year_parts.append(f"publication_year:{start}")
+            else:
+                year_parts.append(f"publication_year:{start}-{end}")
+        year_filter_str = "|".join(year_parts)
     
     all_works = []
     url = "https://api.openalex.org/works"
     
     params = {
-        'filter': f'primary_location.source.issn:{issn},publication_year:{year_filter}',
+        'filter': f'primary_location.source.issn:{issn},{year_filter_str}',
         'per-page': 200,
         'sort': 'publication_date:desc',
-        'cursor': '*'  # Начинаем с первого курсора
+        'cursor': '*'
     }
     
     while True:
