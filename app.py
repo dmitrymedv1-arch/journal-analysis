@@ -3115,7 +3115,7 @@ def generate_enhanced_html_report(journal: Journal, analytics: Dict, periods: Li
                     </tbody>
                 </table>
             </div>
-            {f'<p style="margin-top: 10px; color: #666; font-size: 13px;">Showing first 50 of {len(publications)} publications. Use filters above to find specific publications.</p>' if len(publications) > 50 else ''}
+            {f'<p style="margin-top: 10px; color: #666; font-size: 13px;">Showing first 50 of {len(pubs)} publications. Use filters above to find specific publications.</p>' if len(pubs) > 50 else ''}
         </div>
         
         <!-- Footer -->
