@@ -2126,7 +2126,8 @@ def create_advanced_visualizations(analytics: Dict, lang: str = 'en') -> Dict[st
 # ============================================
 
 def generate_enhanced_html_report(journal: Journal, analytics: Dict, periods: List[Tuple[int, int]], 
-                                   images: Dict[str, str], theme_colors: Dict, lang: str = 'en') -> str:
+                                   images: Dict[str, str], theme_colors: Dict, lang: str = 'en',
+                                   all_publications: List[Publication] = None) -> str:
     """Generate enhanced HTML report with all features"""
     
     def t(key: str, **kwargs) -> str:
@@ -3109,7 +3110,7 @@ def generate_enhanced_html_report(journal: Journal, analytics: Dict, periods: Li
                             f'<button onclick="toggleCitations(\'{p.id.replace("https://openalex.org/", "")}\')" style="padding: 3px 8px; border: none; border-radius: 4px; background: {primary}; color: white; cursor: pointer; font-size: 11px;">{t("show_citations")}</button>'
                             f'</td>'
                             f'</tr>'
-                            for i, p in enumerate(publications[:50])
+                            for i, p in enumerate(all_publications[:50])
                         ])}
                     </tbody>
                 </table>
@@ -3559,9 +3560,9 @@ def main():
                 'secondary': st.session_state.secondary_color
             }
             html_report = generate_enhanced_html_report(
-                journal, analytics, periods, images, theme_colors, current_lang
+                journal, analytics, periods, images, theme_colors, current_lang, publications
             )
-        
+
         # Download button
         filename = f"journal_{journal.issn}_{datetime.now().strftime('%Y%m%d')}.html"
         st.download_button(
