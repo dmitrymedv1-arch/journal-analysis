@@ -2079,6 +2079,34 @@ def collect_journal_data(issn: str, years, max_workers: int = 8, progress_callba
     
     return data
 
+def generate_theme_css(theme_name: str, primary_color: str, secondary_color: str) -> str:
+    """Generate theme CSS based on colors"""
+    css_vars = generate_css_variables(primary_color, secondary_color)
+    return f"""
+        :root {{
+            --primary: {css_vars['--primary-color']};
+            --secondary: {css_vars['--secondary-color']};
+            --primary-light: {css_vars['--primary-light']};
+            --secondary-light: {css_vars['--secondary-light']};
+            --primary-contrast: {css_vars['--primary-contrast']};
+            --secondary-contrast: {css_vars['--secondary-contrast']};
+            --gradient-start: {css_vars['--gradient-start']};
+            --gradient-end: {css_vars['--gradient-end']};
+            --accent-1: {css_vars['--accent-1']};
+            --accent-2: {css_vars['--accent-2']};
+            --hover-light: {css_vars['--hover-light']};
+        }}
+    """
+
+def get_reference_color_style(mode: str) -> str:
+    """Generate reference color styles"""
+    return """
+        .badge-oa-gold { background: #ffd700; color: #000; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+        .badge-oa-hybrid { background: #ff8c00; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+        .badge-oa-green { background: #2e8b57; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+        .badge-oa-bronze { background: #cd7f32; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+        .badge-oa-closed { background: #6c757d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+    """
 # ======================== HTML REPORT GENERATOR ========================
 
 def generate_html_report(data: JournalData, metrics: Dict, lang: str = 'en', primary_color: str = '#667eea', secondary_color: str = '#f39c12') -> str:
