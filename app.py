@@ -2121,20 +2121,20 @@ class HTMLReportGenerator:
                 pub_id = pub.id.replace('https://openalex.org/', '')
                 
                 citation_items = ''
-                for cite in citations_list[:20]:  # Ограничиваем
+                for cite in citations_list[:20]:
                     citation_items += f'''
                     <div class="citation-detail">
-                        <div><strong>{html.escape(cite.citing_title)}</strong></div>
+                        <div><strong>{html.escape(cite.citing_title or 'No title')}</strong></div>
                         <div class="cite-meta">
-                            <strong>{get_text('citing_journal')}:</strong> {html.escape(cite.citing_journal)} | 
+                            <strong>{get_text('citing_journal')}:</strong> {html.escape(cite.citing_journal or 'Unknown')} | 
                             <strong>{get_text('citing_year')}:</strong> {cite.citing_year} | 
-                            <strong>{get_text('citing_date')}:</strong> {cite.citing_date} |
+                            <strong>{get_text('citing_date')}:</strong> {cite.citing_date or 'N/A'} |
                             <strong>{get_text('citation_lag')}:</strong> {cite.citation_lag} years
                         </div>
                         <div class="cite-meta">
-                            <strong>{get_text('authors')}:</strong> {', '.join([a.display_name for a in cite.citing_authors[:5]])}
+                            <strong>{get_text('authors')}:</strong> {', '.join([a.display_name or 'Unknown' for a in cite.citing_authors[:5]])}
                             {', +' + str(len(cite.citing_authors) - 5) + ' more' if len(cite.citing_authors) > 5 else ''} |
-                            <strong>{get_text('countries')}:</strong> {', '.join(cite.citing_countries[:3])}
+                            <strong>{get_text('countries')}:</strong> {', '.join(cite.citing_countries[:3] or ['N/A'])}
                         </div>
                         <div class="cite-meta">
                             <a href="https://doi.org/{cite.citing_doi}" target="_blank" class="doi-link">DOI: {cite.citing_doi}</a>
