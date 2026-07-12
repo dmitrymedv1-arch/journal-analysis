@@ -2003,7 +2003,7 @@ class HTMLReportGenerator:
                     elif category == 'subtopic':
                         name = topic.subtopic or topic.display_name
                     elif category == 'field':
-                        name = topic.field or topic.display_name
+                        name = topic.topic_field or topic.display_name  # исправлено
                     elif category == 'domain':
                         name = topic.domain or topic.display_name
                     elif category == 'concept':
