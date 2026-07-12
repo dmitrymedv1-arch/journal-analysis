@@ -1237,7 +1237,7 @@ class JournalAnalyzer:
                 break
         
         return citing[:max_citing]
-    
+
     def _fetch_journal_articles(self) -> List[Dict]:
         """Fetch all articles from the journal for the specified period"""
         base_url = "https://api.openalex.org/works"
@@ -1252,33 +1252,126 @@ class JournalAnalyzer:
         articles = []
         cursor = "*"
         
+        # Try multiple ISSN formats
+        issn_variants = [
+            self.issn,  # with hyphen: 2411-1414
+            self.issn.replace('-', ''),  # without hyphen: 24111414
+        ]
+        
         self._update_progress(5, translate('fetching_articles', st.session_state.get('language', 'en')))
         
         with tqdm(desc=translate('loading_articles', st.session_state.get('language', 'en')), unit="str") as pbar:
-            while True:
+            for issn_variant in issn_variants:
+                try:
+                    # Try primary_location.source.issn filter
+                    data = smart_get(base_url, {
+                        "filter": f"primary_location.source.issn:{issn_variant},{year_filter}",
+                        "per_page": 200,
+                        "select": "id,doi,title,publication_year,cited_by_count,open_access,authorships,primary_location,topics,concepts",
+                        "cursor": cursor
+                    })
+                    
+                    if data and data.get("results"):
+                        for w in data["results"]:
+                            # Extract journal name and publisher from first result
+                            if not self.journal_name and w.get('primary_location'):
+                                source = w['primary_location'].get('source', {})
+                                self.journal_name = source.get('display_name', '')
+                                self.publisher = source.get('host_organization_name') or source.get('publisher', '')
+                            
+                            articles.append(w)
+                        
+                        pbar.update(len(data["results"]))
+                        cursor = data.get("meta", {}).get("next_cursor")
+                        
+                        # Continue pagination for this ISSN variant
+                        while cursor:
+                            data = smart_get(base_url, {
+                                "filter": f"primary_location.source.issn:{issn_variant},{year_filter}",
+                                "per_page": 200,
+                                "select": "id,doi,title,publication_year,cited_by_count,open_access,authorships,primary_location,topics,concepts",
+                                "cursor": cursor
+                            })
+                            
+                            if not data or not data.get("results"):
+                                break
+                            
+                            for w in data["results"]:
+                                if not self.journal_name and w.get('primary_location'):
+                                    source = w['primary_location'].get('source', {})
+                                    self.journal_name = source.get('display_name', '')
+                                    self.publisher = source.get('host_organization_name') or source.get('publisher', '')
+                                articles.append(w)
+                            
+                            pbar.update(len(data["results"]))
+                            cursor = data.get("meta", {}).get("next_cursor")
+                        
+                        # If we found articles, break out of the ISSN variant loop
+                        if articles:
+                            break
+                        
+                except Exception as e:
+                    if SHOW_DEBUG_LOGS:
+                        print(f"⚠️ Error with ISSN variant {issn_variant}: {e}")
+                    continue
+        
+        # If still no articles, try without year filter (just to check if journal exists)
+        if not articles:
+            try:
                 data = smart_get(base_url, {
-                    "filter": f"primary_location.source.issn:{self.issn},{year_filter}",
-                    "per_page": 200,
-                    "select": "id,doi,title,publication_year,cited_by_count,open_access,authorships,primary_location,topics,concepts",
-                    "cursor": cursor
+                    "filter": f"primary_location.source.issn:{self.issn}",
+                    "per_page": 1,
+                    "select": "id,doi,title,publication_year,cited_by_count"
                 })
                 
-                if not data or not data.get("results"):
-                    break
-                
-                for w in data["results"]:
-                    # Extract journal name and publisher from first result
-                    if not self.journal_name and w.get('primary_location'):
-                        source = w['primary_location'].get('source', {})
-                        self.journal_name = source.get('display_name', '')
-                        self.publisher = source.get('host_organization_name') or source.get('publisher', '')
+                if data and data.get("results"):
+                    # Journal exists but no articles in specified period
+                    # Try with ISSN without hyphen
+                    data = smart_get(base_url, {
+                        "filter": f"primary_location.source.issn:{self.issn.replace('-', '')}",
+                        "per_page": 1,
+                        "select": "id,doi,title,publication_year,cited_by_count"
+                    })
                     
-                    articles.append(w)
-                
-                pbar.update(len(data["results"]))
-                cursor = data.get("meta", {}).get("next_cursor")
-                if not cursor:
-                    break
+                    if data and data.get("results"):
+                        # Found articles with different ISSN format, try fetching all
+                        data = smart_get(base_url, {
+                            "filter": f"primary_location.source.issn:{self.issn.replace('-', '')},{year_filter}",
+                            "per_page": 200,
+                            "select": "id,doi,title,publication_year,cited_by_count,open_access,authorships,primary_location,topics,concepts"
+                        })
+                        
+                        if data and data.get("results"):
+                            for w in data["results"]:
+                                if not self.journal_name and w.get('primary_location'):
+                                    source = w['primary_location'].get('source', {})
+                                    self.journal_name = source.get('display_name', '')
+                                    self.publisher = source.get('host_organization_name') or source.get('publisher', '')
+                                articles.append(w)
+                            
+                            cursor = data.get("meta", {}).get("next_cursor")
+                            while cursor:
+                                data = smart_get(base_url, {
+                                    "filter": f"primary_location.source.issn:{self.issn.replace('-', '')},{year_filter}",
+                                    "per_page": 200,
+                                    "select": "id,doi,title,publication_year,cited_by_count,open_access,authorships,primary_location,topics,concepts",
+                                    "cursor": cursor
+                                })
+                                
+                                if not data or not data.get("results"):
+                                    break
+                                
+                                for w in data["results"]:
+                                    if not self.journal_name and w.get('primary_location'):
+                                        source = w['primary_location'].get('source', {})
+                                        self.journal_name = source.get('display_name', '')
+                                        self.publisher = source.get('host_organization_name') or source.get('publisher', '')
+                                    articles.append(w)
+                                
+                                cursor = data.get("meta", {}).get("next_cursor")
+            except Exception as e:
+                if SHOW_DEBUG_LOGS:
+                    print(f"⚠️ Error checking journal existence: {e}")
         
         self._update_progress(20, translate('journal_articles_fetched', st.session_state.get('language', 'en'), count=len(articles)))
         return articles
