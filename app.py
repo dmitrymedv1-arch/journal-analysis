@@ -299,7 +299,7 @@ class Topic:
     id: str
     display_name: str
     subtopic: Optional[str] = None
-    field: Optional[str] = None
+    topic_field: Optional[str] = None  # переименовали поле
     domain: Optional[str] = None
     concepts: List[str] = field(default_factory=list)
 
@@ -396,12 +396,11 @@ def parse_author(author_data: Dict) -> Author:
     )
 
 def parse_topic(topic_data: Dict) -> Topic:
-    """Парсинг темы из данных API"""
     return Topic(
         id=topic_data.get('id', ''),
         display_name=topic_data.get('display_name', 'Unknown'),
         subtopic=topic_data.get('subtopic', {}).get('display_name'),
-        field=topic_data.get('field', {}).get('display_name'),
+        topic_field=topic_data.get('field', {}).get('display_name'),  # изменили
         domain=topic_data.get('domain', {}).get('display_name'),
         concepts=[c.get('display_name', '') for c in topic_data.get('concepts', [])]
     )
