@@ -1955,19 +1955,19 @@ class HTMLReportGenerator:
             </div>
             
             <div class="subsection-title">{get_text('top_citing_authors')}</div>
-            {generate_top_table(m['top_citing_authors'], get_text('authors'), get_text('citations'))}
+            {generate_top_table(m['top_citing_authors'], get_text('top_citing_authors'), get_text('authors'), get_text('citations'))}
             
             <div class="subsection-title">{get_text('top_citing_affiliations')}</div>
-            {generate_top_table(m['top_citing_affiliations'], get_text('affiliations'), get_text('citations'))}
+            {generate_top_table(m['top_citing_affiliations'], get_text('top_citing_affiliations'), get_text('affiliations'), get_text('citations'))}
             
             <div class="subsection-title">{get_text('top_citing_countries')}</div>
-            {generate_top_table(m['top_citing_countries'], get_text('countries'), get_text('citations'))}
+            {generate_top_table(m['top_citing_countries'], get_text('top_citing_countries'), get_text('countries'), get_text('citations'))}
             
             <div class="subsection-title">{get_text('top_citing_journals')}</div>
-            {generate_top_table(m['top_citing_journals'], get_text('journal'), get_text('citations'))}
+            {generate_top_table(m['top_citing_journals'], get_text('top_citing_journals'), get_text('journal'), get_text('citations'))}
             
             <div class="subsection-title">{get_text('top_citing_publishers')}</div>
-            {generate_top_table(m['top_citing_publishers'], get_text('publisher'), get_text('citations'))}
+            {generate_top_table(m['top_citing_publishers'], get_text('top_citing_publishers'), get_text('publisher'), get_text('citations'))}
         </div>
         '''
     
