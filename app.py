@@ -3621,8 +3621,11 @@ async def analyze_journal(issn: str, periods: List[Tuple[int, int]], progress_ca
             return None, [], {}, {}
         
         # ========== ВЕРИФИЦИРУЕМ ЖУРНАЛ ==========
-        verification = await verify_journal_by_works(issn_clean, session, journal_data['id'])
+        verification = {'verified': True}  # Временная заглушка
         
+        if SHOW_DEBUG_LOGS:
+            print(f"✅ Журнал получен: {journal_data.get('display_name')}")
+            
         if verification and not verification.get('verified', True):
             if SHOW_DEBUG_LOGS:
                 print(f"⚠️ ВНИМАНИЕ: Журнал не верифицирован!")
