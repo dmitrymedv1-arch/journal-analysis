@@ -2531,22 +2531,21 @@ def generate_journal_html_report(metrics: Dict, issn: str, period: str,
         for cite in data['citations']:
             citations_html += f"""
             <div class="citation-detail">
-                <div><strong>{html.escape(cite['citing_title'])}</strong></div>
+                <div><strong>{html.escape(cite['citing_title'] or 'No title')}</strong></div>
                 <div class="cite-meta">
-                    <strong>{t('citing_journal')}:</strong> {html.escape(cite['citing_journal'])} | 
-                    <strong>{t('citing_year')}:</strong> {cite['citing_year']} | 
-                    <strong>{t('citing_date')}:</strong> {cite['citing_date']} |
-                    <strong>{t('citation_lag')}:</strong> {cite['citation_lag']} years
+                    <strong>{t('citing_journal')}:</strong> {html.escape(cite.get('citing_journal', 'Unknown') or 'Unknown')} | 
+                    <strong>{t('citing_year')}:</strong> {cite.get('citing_year', 'N/A') or 'N/A'} | 
+                    <strong>{t('citing_date')}:</strong> {cite.get('citing_date', 'N/A') or 'N/A'} |
+                    <strong>{t('citation_lag')}:</strong> {cite.get('citation_lag', 0) or 0} years
                 </div>
                 <div class="cite-meta">
-                    <strong>{t('authors')}:</strong> {', '.join([html.escape(a) for a in cite['citing_authors'][:5]])}{' + more' if len(cite['citing_authors']) > 5 else ''} |
-                    <strong>{t('countries')}:</strong> {', '.join(cite['citing_countries'][:5])}{' + more' if len(cite['citing_countries']) > 5 else ''} |
-                    <strong>{t('topics')}:</strong> {', '.join([html.escape(t) for t in cite['citing_topics'][:5]])}{' + more' if len(cite['citing_topics']) > 5 else ''}
+                    <strong>{t('authors')}:</strong> {', '.join([html.escape(a or 'Unknown') for a in cite.get('citing_authors', [])[:5]])}{' + more' if len(cite.get('citing_authors', [])) > 5 else ''} |
+                    <strong>{t('countries')}:</strong> {', '.join([c or 'Unknown' for c in cite.get('citing_countries', [])[:5]])}{' + more' if len(cite.get('citing_countries', [])) > 5 else ''} |
+                    <strong>{t('topics')}:</strong> {', '.join([html.escape(t or 'Unknown') for t in cite.get('citing_topics', [])[:5]])}{' + more' if len(cite.get('citing_topics', [])) > 5 else ''}
                 </div>
                 <div class="cite-meta">
-                    <a href="https://doi.org/{cite['citing_doi']}" target="_blank" class="doi-link">DOI: {cite['citing_doi']}</a>
+                    <a href="https://doi.org/{cite.get('citing_doi', '')}" target="_blank" class="doi-link">DOI: {cite.get('citing_doi', 'N/A')}</a>
                 </div>
-            </div>
             """
         
         detailed_citations_html += f"""
