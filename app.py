@@ -2625,9 +2625,6 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, stats: Dict, logo_ba
                                 f"</tr>"
                                 for pub_year in sorted(stats.get('heatmap_data', {{}}).keys())
                             ])}
-                                f"</tr>"
-                                for pub_year in sorted(stats.get('heatmap_data', {}).keys())
-                            ])}
                         </tbody>
                     </table>
                 </div>
