@@ -2617,13 +2617,13 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, stats: Dict, logo_ba
                                 f"<tr>"
                                 f"<td><strong>{pub_year}</strong></td>"
                                 f"{''.join([
-                                    f"<td style=\"background: {get_heatmap_color(stats.get('heatmap_data', {}).get(pub_year, {}).get(year, 0), max_val)}\">"
-                                    f"{stats.get('heatmap_data', {}).get(pub_year, {}).get(year, '-')}"
+                                    f"<td style=\"background: {get_heatmap_color(stats.get('heatmap_data', {{}}).get(pub_year, {{}}).get(year, 0), max_val)}\">"
+                                    f"{stats.get('heatmap_data', {{}}).get(pub_year, {{}}).get(year, '-')}"
                                     f"</td>"
-                                    for year in sorted(set([y for years in stats.get('heatmap_data', {}).values() for y in years.keys()]))
+                                    for year in sorted(set([y for years in stats.get('heatmap_data', {{}}).values() for y in years.keys()]))
                                 ])}"
                                 f"</tr>"
-                                for pub_year in sorted(stats.get('heatmap_data', {}).keys())
+                                for pub_year in sorted(stats.get('heatmap_data', {{}}).keys())
                             ])}
                                 f"</tr>"
                                 for pub_year in sorted(stats.get('heatmap_data', {}).keys())
