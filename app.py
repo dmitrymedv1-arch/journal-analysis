@@ -847,6 +847,7 @@ def get_or_create_cache(issn: str, period: str) -> Dict:
     
     # Проверяем, есть ли актуальный кэш в session_state
     if ('analysis_cache' in st.session_state and 
+        st.session_state.analysis_cache is not None and
         st.session_state.analysis_cache.get('cache_key') == cache_key and
         st.session_state.analysis_cache.get('status') not in ['idle', 'error']):
         return st.session_state.analysis_cache
