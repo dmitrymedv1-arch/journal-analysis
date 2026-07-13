@@ -2000,7 +2000,7 @@ def generate_journal_html_report(
             for cite in data.get('citations', []):
                 detailed_citations_html += f"""
                 <div class="citation-detail" style="background: white; padding: 12px; margin: 8px 0; border-radius: 6px; border-left: 3px solid {primary}; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                    <div><strong>{html.escape(cite.get('citing_title', 'No title'))}</strong></div>
+                    <div><strong>{html.escape(cite.get('citing_title') or 'No title')}</strong></div>
                     <div class="cite-meta" style="font-size: 12px; color: #555; margin-top: 4px;">
                         <strong>{t('citing_journal')}:</strong> {html.escape(cite.get('citing_journal', 'Unknown'))} | 
                         <strong>{t('citing_year')}:</strong> {cite.get('citing_year', '')} | 
