@@ -3663,11 +3663,11 @@ def generate_journal_html_report(result: Dict, logo_base64: Optional[str] = None
                                 f'<td class="year-label" style="background: #f8f9fa; font-weight: 600;">{pub_year}</td>'
                                 + ''.join([
                                     f'<td style="background: {get_heatmap_color(count, max_count)}; color: {get_contrast_color(get_heatmap_color(count, max_count))};">{count if count > 0 else "-"}</td>'
-                                    for citing_year in sorted(set(d["citation_year"] for d in citation_dynamics.get('dynamics', [])))
-                                    for count in [next((d["count"] for d in citation_dynamics.get('dynamics', []) if d["publication_year"] == pub_year and d["citation_year"] == citing_year), 0)]
+                                    for citing_year in sorted(set(d["citation_year"] for d in citation_dynamics.get("dynamics", [])))
+                                    for count in [next((d["count"] for d in citation_dynamics.get("dynamics", []) if d["publication_year"] == pub_year and d["citation_year"] == citing_year), 0)]
                                 ])
-                                f'</tr>'
-                                for pub_year in sorted(set(d["publication_year"] for d in citation_dynamics.get('dynamics', [])))
+                                + f'</tr>'
+                                for pub_year in sorted(set(d["publication_year"] for d in citation_dynamics.get("dynamics", [])))
                             ])}
                         </tbody>
                     </table>
