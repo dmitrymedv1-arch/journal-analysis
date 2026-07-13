@@ -586,7 +586,10 @@ def parse_openalex_work(work: dict) -> dict:
     
     # Basic info
     parsed['id'] = work.get('id', '')
-    parsed['doi'] = work.get('doi', '').replace('https://doi.org/', '')
+    
+    doi = work.get('doi')
+    parsed['doi'] = doi.replace('https://doi.org/', '') if doi else ''
+
     parsed['title'] = work.get('title', 'No title')
     parsed['publication_year'] = work.get('publication_year')
     parsed['publication_date'] = work.get('publication_date', '')
