@@ -704,20 +704,26 @@ def parse_openalex_work(work: dict) -> dict:
     
     return parsed
 
-def get_citing_dois_optimized(oa_id: str, max_citing: int = MAX_CITING_PER_PAPER) -> List[Dict]:
+def get_citing_dois_optimized(oa_id: str, max_citing: int = MAX_CITING_PER_PAPER) -> List[str]:
     """
-    Оптимизированная версия получения цитирующих работ
-    Полностью скопирована из проверочного кода с добавлением полного парсинга
+    Оптимизированная версия получения только DOI цитирующих работ
+    Возвращает список DOI (чистых, без https://doi.org/)
     """
-    citing = []
+    # Извлекаем чистый ID из полного URL
+    if oa_id.startswith("https://openalex.org/"):
+        clean_id = oa_id.replace("https://openalex.org/", "")
+    else:
+        clean_id = oa_id
+    
+    citing_dois = []
     cursor = "*"
     base_url = "https://api.openalex.org/works"
     
     for _ in range(8):  # ограничение пагинации
         data = smart_get(base_url, {
-            "filter": f"cites:{oa_id}",
+            "filter": f"cites:{clean_id}",
             "per_page": 200,
-            "select": "id,doi,title,publication_year,publication_date,cited_by_count,type,open_access,primary_location,authorships,topics,concepts",
+            "select": "doi",
             "cursor": cursor
         })
         
@@ -728,18 +734,77 @@ def get_citing_dois_optimized(oa_id: str, max_citing: int = MAX_CITING_PER_PAPER
             break
             
         for item in results:
-            citing.append(parse_openalex_work(item))
-            if len(citing) >= max_citing:
+            doi = item.get("doi")
+            if doi:
+                citing_dois.append(doi.replace("https://doi.org/", ""))
+            if len(citing_dois) >= max_citing:
                 break
         
-        if len(citing) >= max_citing:
+        if len(citing_dois) >= max_citing:
             break
         
         cursor = data.get("meta", {}).get("next_cursor")
         if not cursor:
             break
     
-    return citing[:max_citing]
+    return citing_dois[:max_citing]
+
+def fetch_full_works_by_dois(dois: List[str], max_workers: int = MAX_WORKERS) -> List[Dict]:
+    """
+    Получение полных данных о работах по списку DOI
+    Использует параллельные запросы
+    """
+    if not dois:
+        return []
+    
+    full_works = []
+    futures = {}
+    base_url = "https://api.openalex.org/works"
+    
+    # Разбиваем список DOI на пачки по 50 для batch-запросов
+    batch_size = 50
+    doi_batches = [dois[i:i+batch_size] for i in range(0, len(dois), batch_size)]
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        for batch in doi_batches:
+            # Используем filter с OR для нескольких DOI
+            doi_filter = "|".join(f"doi:{doi}" for doi in batch)
+            future = executor.submit(smart_get, base_url, {
+                "filter": doi_filter,
+                "per_page": batch_size,
+                "select": "id,doi,title,publication_year,publication_date,cited_by_count,type,open_access,primary_location,authorships,topics,concepts"
+            })
+            futures[future] = batch
+    
+    for future in as_completed(futures):
+        try:
+            data = future.result()
+            if data and data.get("results"):
+                for work in data["results"]:
+                    full_works.append(parse_openalex_work(work))
+        except Exception as e:
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ Error fetching full works: {e}")
+    
+    return full_works
+
+def get_citing_works_batch(oa_id: str, max_citing: int = MAX_CITING_PER_PAPER, 
+                           max_workers: int = MAX_WORKERS) -> List[Dict]:
+    """
+    Получение цитирующих работ с полными данными в два этапа:
+    1. Сбор DOI цитирующих работ
+    2. Параллельный запрос полных данных по DOI
+    """
+    # Этап 1: Собираем только DOI
+    citing_dois = get_citing_dois_optimized(oa_id, max_citing)
+    
+    if not citing_dois:
+        return []
+    
+    # Этап 2: Получаем полные данные по DOI
+    full_works = fetch_full_works_by_dois(citing_dois, max_workers)
+    
+    return full_works
 
 def get_journal_name_by_issn(issn: str) -> Optional[str]:
     """Get journal name by ISSN from OpenAlex"""
@@ -825,7 +890,7 @@ def full_parallel_analysis(issn: str, period: str, max_workers: int = MAX_WORKER
     if progress_callback:
         progress_callback(0, 100, translate('fetching_articles', 'en'))
     
-    # ============= ПАРСИНГ ПЕРИОДА (ПОЛНОСТЬЮ ИЗ ПРОВЕРОЧНОГО КОДА) =============
+    # ============= ПАРСИНГ ПЕРИОДА =============
     if ',' in period:
         years = [int(y.strip()) for y in period.split(',') if y.strip().isdigit()]
         if len(years) == 1:
@@ -849,7 +914,7 @@ def full_parallel_analysis(issn: str, period: str, max_workers: int = MAX_WORKER
     if not years or not year_filter:
         return {'error': 'Invalid period format'}
     
-    # ============= ЗАГРУЗКА СТАТЕЙ (ПОЛНОСТЬЮ ИЗ ПРОВЕРОЧНОГО КОДА) =============
+    # ============= ЗАГРУЗКА СТАТЕЙ =============
     base_url = "https://api.openalex.org/works"
     articles = []
     cursor = "*"
@@ -870,6 +935,9 @@ def full_parallel_analysis(issn: str, period: str, max_workers: int = MAX_WORKER
             
         for work in data["results"]:
             parsed = parse_openalex_work(work)
+            # Добавляем чистый ID для быстрого доступа
+            if parsed.get('id'):
+                parsed['clean_id'] = parsed['id'].replace("https://openalex.org/", "")
             articles.append(parsed)
         
         if progress_callback and len(articles) % 50 == 0:
@@ -886,7 +954,11 @@ def full_parallel_analysis(issn: str, period: str, max_workers: int = MAX_WORKER
     if progress_callback:
         progress_callback(20, 100, translate('articles_found', 'en', count=len(articles)))
     
-    # ============= ПАРАЛЛЕЛЬНЫЙ СБОР ЦИТИРУЮЩИХ (ПОЛНОСТЬЮ ИЗ ПРОВЕРОЧНОГО КОДА) =============
+    # ============= ПОЛУЧАЕМ НАЗВАНИЕ ЖУРНАЛА =============
+    journal_name = get_journal_name_by_issn(normalized)
+    journal_abbr = get_journal_abbreviation(normalized)
+    
+    # ============= ПАРАЛЛЕЛЬНЫЙ СБОР ЦИТИРУЮЩИХ =============
     if progress_callback:
         progress_callback(25, 100, translate('fetching_citations', 'en'))
     
@@ -896,14 +968,14 @@ def full_parallel_analysis(issn: str, period: str, max_workers: int = MAX_WORKER
     # Создаем список статей для обработки (только те, у которых есть цитирования)
     articles_to_process = []
     for article in articles:
-        if article.get('cited_by_count', 0) > 0 and article.get('id'):
+        if article.get('cited_by_count', 0) > 0 and article.get('clean_id'):
             articles_to_process.append(article)
     
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         for article in articles_to_process:
-            # Используем OpenAlex ID
-            oa_id = article['id']
-            future = executor.submit(get_citing_dois_optimized, oa_id)
+            # Используем чистый ID
+            clean_id = article['clean_id']
+            future = executor.submit(get_citing_works_batch, clean_id, MAX_CITING_PER_PAPER, max_workers)
             futures[future] = article['doi']
         
         completed = 0
@@ -930,10 +1002,6 @@ def full_parallel_analysis(issn: str, period: str, max_workers: int = MAX_WORKER
     # ============= ОБРАБОТКА РЕЗУЛЬТАТОВ =============
     if progress_callback:
         progress_callback(90, 100, translate('processing_data', 'en'))
-    
-    # Get journal name
-    journal_name = get_journal_name_by_issn(normalized)
-    journal_abbr = get_journal_abbreviation(normalized)
     
     # Build comprehensive analysis
     result = {
