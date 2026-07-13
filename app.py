@@ -744,43 +744,67 @@ def get_citing_dois_optimized(oa_id: str, max_citing: int = MAX_CITING_PER_PAPER
 def get_journal_name_by_issn(issn: str) -> Optional[str]:
     """Get journal name by ISSN from OpenAlex"""
     normalized = normalize_issn(issn)
-    base_url = "https://api.openalex.org/sources"
+    # Use direct endpoint for better results
+    url = f"https://api.openalex.org/sources/issn:{normalized}"
     
+    data = smart_get(url, {}, retries=3, delay=0.2)
+    
+    if data and data.get("display_name"):
+        return data.get("display_name")
+    
+    # Fallback: try search with filter
+    base_url = "https://api.openalex.org/sources"
     data = smart_get(base_url, {
         "filter": f"issn:{normalized}",
-        "select": "display_name,issn,abbreviation",
         "per_page": 1
     })
     
     if data and data.get("results"):
         return data["results"][0].get("display_name")
+    
     return None
 
 def get_journal_abbreviation(issn: str) -> Optional[str]:
     """Get journal abbreviation by ISSN from OpenAlex or generate from name"""
     normalized = normalize_issn(issn)
-    base_url = "https://api.openalex.org/sources"
+    # Use direct endpoint for better results
+    url = f"https://api.openalex.org/sources/issn:{normalized}"
     
-    data = smart_get(base_url, {
-        "filter": f"issn:{normalized}",
-        "select": "display_name,issn,abbreviation",
-        "per_page": 1
-    })
+    data = smart_get(url, {}, retries=3, delay=0.2)
     
-    if data and data.get("results"):
-        result = data["results"][0]
+    if data:
         # Try to get abbreviation
-        abbr = result.get("abbreviation")
+        abbr = data.get("abbreviation")
         if abbr:
             return abbr
         # Generate from display name
-        display_name = result.get("display_name", "")
+        display_name = data.get("display_name", "")
         if display_name:
             # Simple abbreviation: take first letters of each word
             words = re.findall(r'\b\w+\b', display_name)
             if words:
                 abbr = ''.join(w[0].upper() for w in words if w[0].isalpha())[:8]
                 return abbr
+    
+    # Fallback: try search with filter
+    base_url = "https://api.openalex.org/sources"
+    data = smart_get(base_url, {
+        "filter": f"issn:{normalized}",
+        "per_page": 1
+    })
+    
+    if data and data.get("results"):
+        result = data["results"][0]
+        abbr = result.get("abbreviation")
+        if abbr:
+            return abbr
+        display_name = result.get("display_name", "")
+        if display_name:
+            words = re.findall(r'\b\w+\b', display_name)
+            if words:
+                abbr = ''.join(w[0].upper() for w in words if w[0].isalpha())[:8]
+                return abbr
+    
     return None
 
 def full_parallel_analysis(issn: str, period: str, max_workers: int = MAX_WORKERS, progress_callback=None) -> Dict:
