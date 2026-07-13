@@ -3580,7 +3580,7 @@ def main():
     if program_logo_base64:
         st.markdown(
             f'<div style="text-align: center; margin-bottom: 20px;">'
-            f'<img src="data:image/png;base64,{program_logo_base64}" style="max-height: 100px; max-width: 400px; object-fit: contain;">'
+            f'<img src="data:image/png;base64,{program_logo_base64}" style="max-height: 200px; max-width: 800px; object-fit: contain;">'
             f'</div>',
             unsafe_allow_html=True
         )
