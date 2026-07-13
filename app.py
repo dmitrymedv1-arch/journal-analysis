@@ -3529,11 +3529,13 @@ def generate_journal_html_report(result: Dict, logo_base64: Optional[str] = None
                                 f'<tr>'
                                 f'<td>{a["rank"]}</td>'
                                 f'<td>{html.escape(a["name"])}</td>'
-                                f'<td>{a["count"]}</td>'
-                                f'<td>{a["citations"]}</td>'
+                                f'<td>' + (f'<a href="https://orcid.org/{a["orcid"]}" target="_blank">{a["orcid"]}</a>' if a["orcid"] else "-") + '</td>'
+                                f'<td>{", ".join([html.escape(aff) for aff in a["affiliations"]])}</td>'
                                 f'<td>{", ".join(a["countries"])}</td>'
+                                f'<td>{a["publications"]}</td>'
+                                f'<td>{a["citations"]}</td>'
                                 f'</tr>'
-                                for a in top_affiliations
+                                for a in author_analysis
                             ])}
                         </tbody>
                     </table>
