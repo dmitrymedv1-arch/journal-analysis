@@ -1,4 +1,15 @@
+# ============================================
+# ADVANCED JOURNAL ANALYSIS TOOL
+# ============================================
+# Версия: 2.0
+# Дата: 2026-07-12
+# Описание: Анализ журналов на основе данных OpenAlex
+# с расширенной библиометрической аналитикой
+# ============================================
 
+# ============================================
+# СЕКЦИЯ ПАРАМЕТРОВ
+# ============================================
 
 # Параметры API запросов
 MAX_WORKERS = 8  # Количество параллельных потоков для OpenAlex
@@ -85,18 +96,18 @@ LANG = {
         'report_ready': '📄 Report ready for download',
         
         # HTML Report Navigation
-        'nav_overview': 'Overview',
-        'nav_analyzed': 'Analyzed Articles',
-        'nav_authors': 'Author Analysis',
-        'nav_geo': 'Geographic Analysis',
-        'nav_citations': 'Citation Analysis',
-        'nav_dynamics': 'Citation Dynamics',
-        'nav_heatmap': 'Citation Heatmap',
-        'nav_most_cited': 'Most Cited Publications',
-        'nav_citing': 'Citing Works Analysis',
-        'nav_topics': 'Topics Analysis',
-        'nav_detailed': 'Detailed Citations',
-        'nav_all_pubs': 'All Publications',
+        'nav_overview': '📊 Overview',
+        'nav_analyzed': '📄 Analyzed Articles',
+        'nav_authors': '👤 Author Analysis',
+        'nav_geo': '🌍 Geographic Analysis',
+        'nav_citations': '📈 Citation Analysis',
+        'nav_dynamics': '📈 Citation Dynamics',
+        'nav_heatmap': '🔥 Citation Heatmap',
+        'nav_most_cited': '🏆 Most Cited Publications',
+        'nav_citing': '📚 Citing Works Analysis',
+        'nav_topics': '🏷️ Topics Analysis',
+        'nav_detailed': '📋 Detailed Citations',
+        'nav_all_pubs': '📚 All Publications',
         
         # Metrics
         'total_publications': 'Total Publications',
@@ -156,7 +167,6 @@ LANG = {
         'top_citing_countries': 'Top Citing Countries',
         'top_citing_journals': 'Top Citing Journals',
         'top_citing_publishers': 'Top Citing Publishers',
-        'top_affiliations': 'Top Affiliations',
         
         # Citation Analysis
         'citation_dynamics': 'Citation Dynamics by Year',
@@ -210,8 +220,8 @@ LANG = {
         'click_to_toggle': 'Click to toggle citations',
         
         # Footer
-        'footer': '© Advanced Journal Analysis Tool | developed by @ daM',
-        'footer_url': 'https://chimicatechnoacta.ru',
+        'footer': '© Advanced Journal Analysis Tool / Powered by OpenAlex',
+        'journal_url': 'https://openalex.org/',
         'data_source': 'Data source: OpenAlex',
         'generated': 'Generated',
         
@@ -224,7 +234,6 @@ LANG = {
         'download_report': '📥 Download HTML Report',
         'report_preview': '📋 Report Preview',
         'no_data': '👈 Run analysis first',
-        'total_analyzed': 'Total analyzed: {count} articles',
         
         # Additional Metrics
         'citation_velocity': 'Citation Velocity',
@@ -272,18 +281,18 @@ LANG = {
         'report_ready': '📄 Отчет готов к скачиванию',
         
         # HTML Report Navigation
-        'nav_overview': 'Обзор',
-        'nav_analyzed': 'Анализируемые статьи',
-        'nav_authors': 'Авторский анализ',
-        'nav_geo': 'Географический анализ',
-        'nav_citations': 'Цитирование',
-        'nav_dynamics': 'Динамика цитирования',
-        'nav_heatmap': 'Тепловая карта цитирования',
-        'nav_most_cited': 'Самые цитируемые статьи',
-        'nav_citing': 'Анализ цитирующих работ',
-        'nav_topics': 'Тематический анализ',
-        'nav_detailed': 'Детальное цитирование',
-        'nav_all_pubs': 'Все публикации',
+        'nav_overview': '📊 Обзор',
+        'nav_analyzed': '📄 Анализируемые статьи',
+        'nav_authors': '👤 Авторский анализ',
+        'nav_geo': '🌍 Географический анализ',
+        'nav_citations': '📈 Цитирование',
+        'nav_dynamics': '📈 Динамика цитирования',
+        'nav_heatmap': '🔥 Тепловая карта цитирования',
+        'nav_most_cited': '🏆 Самые цитируемые статьи',
+        'nav_citing': '📚 Анализ цитирующих работ',
+        'nav_topics': '🏷️ Тематический анализ',
+        'nav_detailed': '📋 Детальное цитирование',
+        'nav_all_pubs': '📚 Все публикации',
         
         # Metrics
         'total_publications': 'Всего публикаций',
@@ -343,7 +352,6 @@ LANG = {
         'top_citing_countries': 'Топ цитирующих стран',
         'top_citing_journals': 'Топ цитирующих журналов',
         'top_citing_publishers': 'Топ цитирующих издательств',
-        'top_affiliations': 'Топ аффилиаций',
         
         # Citation Analysis
         'citation_dynamics': 'Динамика цитирований по годам',
@@ -397,8 +405,8 @@ LANG = {
         'click_to_toggle': 'Нажмите для показа цитирований',
         
         # Footer
-        'footer': '© Advanced Journal Analysis Tool | developed by @ daM',
-        'footer_url': 'https://chimicatechnoacta.ru',
+        'footer': '© Advanced Journal Analysis Tool / Работает на OpenAlex',
+        'journal_url': 'https://openalex.org/',
         'data_source': 'Источник данных: OpenAlex',
         'generated': 'Сгенерировано',
         
@@ -411,7 +419,6 @@ LANG = {
         'download_report': '📥 Скачать HTML отчет',
         'report_preview': '📋 Предпросмотр отчета',
         'no_data': '👈 Сначала выполните анализ',
-        'total_analyzed': 'Всего проанализировано: {count} статей',
         
         # Additional Metrics
         'citation_velocity': 'Скорость цитирования',
@@ -726,54 +733,6 @@ def get_citing_dois_optimized(oa_id: str, max_citing: int = MAX_CITING_PER_PAPER
     
     return citing[:max_citing]
 
-def get_journal_info_by_issn(issn: str) -> Dict:
-    """Get journal name and other info by ISSN from OpenAlex"""
-    normalized = normalize_issn(issn)
-    
-    # Try to get journal info
-    url = "https://api.openalex.org/sources"
-    params = {
-        "filter": f"issn:{normalized}",
-        "select": "id,display_name,abbreviated_name,issn,type,publisher,h_index,works_count,cited_by_count"
-    }
-    
-    data = smart_get(url, params)
-    
-    if data and data.get('results'):
-        source = data['results'][0]
-        return {
-            'name': source.get('display_name', ''),
-            'abbreviated_name': source.get('abbreviated_name', ''),
-            'publisher': source.get('publisher', ''),
-            'type': source.get('type', ''),
-            'h_index': source.get('h_index', 0),
-            'works_count': source.get('works_count', 0),
-            'cited_by_count': source.get('cited_by_count', 0)
-        }
-    
-    return {'name': '', 'abbreviated_name': '', 'publisher': '', 'type': ''}
-
-def get_journal_abbreviation(issn: str) -> str:
-    """Get journal abbreviation from ISSN"""
-    info = get_journal_info_by_issn(issn)
-    abbrev = info.get('abbreviated_name', '')
-    if abbrev:
-        # Clean abbreviation: remove dots, spaces, take first part
-        clean_abbrev = re.sub(r'[^A-Za-z0-9]', '', abbrev).upper()
-        if clean_abbrev:
-            return clean_abbrev[:10]  # Limit to 10 chars
-    
-    # If no abbreviation, use first letters of words in name
-    name = info.get('name', '')
-    if name:
-        words = name.split()
-        abbrev = ''.join(w[0].upper() for w in words if w and w[0].isalpha())[:10]
-        if abbrev:
-            return abbrev
-    
-    # Fallback: use ISSN
-    return re.sub(r'[^A-Za-z0-9]', '', normalized)[:8]
-
 def full_parallel_analysis(issn: str, period: str, max_workers: int = MAX_WORKERS, progress_callback=None) -> Dict:
     """
     Full parallel analysis of a journal
@@ -788,11 +747,6 @@ def full_parallel_analysis(issn: str, period: str, max_workers: int = MAX_WORKER
         Dict with all analysis results
     """
     normalized = normalize_issn(issn)
-    
-    # Get journal info
-    journal_info = get_journal_info_by_issn(normalized)
-    journal_name = journal_info.get('name', '')
-    journal_abbrev = get_journal_abbreviation(normalized)
     
     if progress_callback:
         progress_callback(0, 100, translate('fetching_articles', 'en'))
@@ -910,9 +864,7 @@ def full_parallel_analysis(issn: str, period: str, max_workers: int = MAX_WORKER
         'years': years,
         'articles': articles,
         'citing_map': citing_map,
-        'timestamp': datetime.now().isoformat(),
-        'journal_name': journal_name,
-        'journal_abbrev': journal_abbrev
+        'timestamp': datetime.now().isoformat()
     }
     
     # Calculate metrics
@@ -1276,11 +1228,7 @@ class JournalAnalyzer:
         for i, article in enumerate(sorted_articles[:limit], 1):
             year = article.get('publication_year')
             citations = article.get('cited_by_count', 0)
-            # Calculate years since publication with proper age
-            if year:
-                years_since = datetime.now().year - year + 1  # +1 to avoid zero
-            else:
-                years_since = 1
+            years_since = datetime.now().year - year if year else 1
             
             most_cited.append({
                 'rank': i,
@@ -1478,19 +1426,13 @@ class JournalAnalyzer:
         all_pubs = []
         
         for article in self.articles:
-            year = article.get('publication_year')
-            if year:
-                years_since = datetime.now().year - year + 1
-            else:
-                years_since = 1
-            
             all_pubs.append({
                 'title': article.get('title', 'No title'),
-                'year': year,
+                'year': article.get('publication_year'),
                 'authors': article.get('authors', []),
                 'affiliations': article.get('affiliations', []),
                 'citations': article.get('cited_by_count', 0),
-                'citations_per_year': article.get('cited_by_count', 0) / max(years_since, 1),
+                'citations_per_year': article.get('cited_by_count', 0) / max(1, datetime.now().year - article.get('publication_year', datetime.now().year) + 1),
                 'doi': article.get('doi', ''),
                 'journal': article.get('journal_name', 'Unknown'),
                 'oa_status': article.get('oa_status', 'unknown')
@@ -1532,8 +1474,6 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
     topics_data = result.get('topics_analysis', {})
     detailed_citations = result.get('detailed_citations', {})
     all_publications = result.get('all_publications', [])
-    journal_name = result.get('journal_name', '')
-    journal_abbrev = result.get('journal_abbrev', '')
     
     # Build HTML
     html = f"""
@@ -1628,50 +1568,31 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
             .header {{
                 background: linear-gradient(135deg, {primary} 0%, {secondary} 100%);
                 color: white;
-                padding: 25px 40px;
+                padding: 35px 40px;
                 border-radius: 15px;
                 margin-bottom: 30px;
+                text-align: center;
                 box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                flex-wrap: wrap;
-            }}
-            .header-left {{
-                display: flex;
-                align-items: center;
-                gap: 20px;
-            }}
-            .header-right {{
-                display: flex;
-                align-items: center;
-                gap: 20px;
             }}
             .header h1 {{
                 color: white;
                 margin: 0;
-                font-size: 28px;
-                font-weight: 300;
+                font-size: 30px;
             }}
             .header .subtitle {{
                 opacity: 0.9;
-                margin-top: 4px;
-                font-size: 15px;
+                margin-top: 8px;
+                font-size: 16px;
             }}
             .header .date {{
                 opacity: 0.85;
-                margin-top: 2px;
+                margin-top: 5px;
                 font-size: 13px;
             }}
             .header-logo {{
-                max-height: 100px;
-                max-width: 250px;
-                object-fit: contain;
-            }}
-            .header-journal-logo {{
-                max-height: 100px;
-                max-width: 250px;
-                object-fit: contain;
+                max-height: 120px;
+                max-width: 300px;
+                margin-bottom: 10px;
             }}
             
             /* Sections */
@@ -1795,14 +1716,12 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                 gap: 10px;
             }}
             .rank-bar-label {{
-                min-width: 200px;
-                max-width: 250px;
+                min-width: 120px;
                 font-size: 12px;
                 color: #333;
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
-                flex-shrink: 0;
             }}
             .rank-bar-track {{
                 flex: 1;
@@ -1811,7 +1730,6 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                 border-radius: 10px;
                 overflow: hidden;
                 position: relative;
-                min-width: 60px;
             }}
             .rank-bar-fill {{
                 height: 100%;
@@ -1825,7 +1743,6 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                 font-weight: 600;
                 color: {primary};
                 text-align: right;
-                flex-shrink: 0;
             }}
             
             /* Tables */
@@ -2029,7 +1946,7 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                 border-top: 2px solid #e8ecf1;
                 text-align: center;
                 color: #7f8c8d;
-                font-size: 13px;
+                font-size: 12px;
             }}
             .footer a {{
                 color: {primary};
@@ -2037,10 +1954,6 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
             }}
             .footer a:hover {{
                 text-decoration: underline;
-            }}
-            .footer .footer-url {{
-                font-size: 14px;
-                font-weight: 500;
             }}
             
             /* Responsive */
@@ -2053,15 +1966,6 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                 .main-content {{ margin-left: 0; padding: 15px; }}
                 .metrics-grid {{ grid-template-columns: repeat(2, 1fr); }}
                 .filter-row > div {{ min-width: 120px; }}
-                .header {{
-                    flex-direction: column;
-                    text-align: center;
-                    gap: 15px;
-                }}
-                .header-left, .header-right {{
-                    flex-direction: column;
-                    align-items: center;
-                }}
             }}
             
             /* Word wrap for long titles */
@@ -2140,6 +2044,9 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                 font-size: 11px;
                 font-weight: 600;
             }}
+            .velocity-high {{ background: #d4edda; color: #155724; }}
+            .velocity-medium {{ background: #fff3cd; color: #856404; }}
+            .velocity-low {{ background: #f8d7da; color: #721c24; }}
             
             /* Progress bar for cumulative citations */
             .cumulative-progress {{
@@ -2234,14 +2141,14 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                 <a href="#overview" class="nav-item"><span class="nav-icon">📊</span> {t('nav_overview')}</a>
                 <a href="#analyzed" class="nav-item"><span class="nav-icon">📄</span> {t('nav_analyzed')}</a>
                 <div class="nav-sub">
-                    <a href="#author_analysis" class="nav-item"><span class="nav-icon">👤</span> {t('nav_authors')}</a>
-                    <a href="#geo_analysis" class="nav-item"><span class="nav-icon">🌍</span> {t('nav_geo')}</a>
+                    <a href="#author_analysis" class="nav-item">👤 {t('nav_authors')}</a>
+                    <a href="#geo_analysis" class="nav-item">🌍 {t('nav_geo')}</a>
                 </div>
                 <a href="#citation_analysis" class="nav-item"><span class="nav-icon">📈</span> {t('nav_citations')}</a>
                 <div class="nav-sub">
-                    <a href="#citation_dynamics" class="nav-item"><span class="nav-icon">📈</span> {t('nav_dynamics')}</a>
-                    <a href="#heatmap" class="nav-item"><span class="nav-icon">🔥</span> {t('nav_heatmap')}</a>
-                    <a href="#most_cited" class="nav-item"><span class="nav-icon">🏆</span> {t('nav_most_cited')}</a>
+                    <a href="#citation_dynamics" class="nav-item">📈 {t('nav_dynamics')}</a>
+                    <a href="#heatmap" class="nav-item">🔥 {t('nav_heatmap')}</a>
+                    <a href="#most_cited" class="nav-item">🏆 {t('nav_most_cited')}</a>
                 </div>
                 <a href="#citing_works" class="nav-item"><span class="nav-icon">📚</span> {t('nav_citing')}</a>
                 <a href="#topics_analysis" class="nav-item"><span class="nav-icon">🏷️</span> {t('nav_topics')}</a>
@@ -2253,18 +2160,10 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
             <div class="main-content">
                 <!-- Header -->
                 <div class="header">
-                    <div class="header-left">
-                        {f'<img src="data:image/png;base64,{logo_base64}" class="header-journal-logo" alt="Journal Logo">' if logo_base64 else ''}
-                        <div>
-                            <h1>{journal_name if journal_name else result.get('issn', '')}</h1>
-                            <div class="subtitle">ISSN: {result.get('issn', '')} | Period: {result.get('period', '')}</div>
-                            <div class="date">{t('generated')}: {datetime.now().strftime('%d.%m.%Y')}</div>
-                        </div>
-                    </div>
-                    <div class="header-right">
-                        <!-- Program logo on the right side -->
-                        <img src="data:image/png;base64,{logo_base64 if logo_base64 else ''}" class="header-logo" alt="Program Logo">
-                    </div>
+                    {f'<img src="data:image/png;base64,{logo_base64}" class="header-logo" alt="Journal Logo">' if logo_base64 else ''}
+                    <h1>{t('app_title')}</h1>
+                    <div class="subtitle">ISSN: {result.get('issn', '')} | Period: {result.get('period', '')}</div>
+                    <div class="date">{t('generated')}: {datetime.now().strftime('%d.%m.%Y %H:%M')}</div>
                 </div>
     """
     
@@ -2442,14 +2341,14 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
     html += f"""
                 <div id="analyzed" class="section">
                     <div class="section-title"><span class="icon">📄</span> {t('nav_analyzed')}</div>
-                    <p style="color: #555; margin-bottom: 15px;">{t('total_analyzed', count=len(articles))}</p>
+                    <p style="color: #555; margin-bottom: 15px;">Total analyzed: {len(articles)} articles</p>
     """
     
-    # Author Analysis with progress bars - ALL authors without limit
+    # Author Analysis with progress bars
     html += f"""
                     <div id="author_analysis" class="section" style="padding: 15px 20px; margin: 10px 0;">
                         <h4 style="color: {primary}; margin-bottom: 10px;">👤 {t('nav_authors')}</h4>
-                        <div class="table-container" style="max-height: 600px; overflow-y: auto;">
+                        <div class="table-container" style="max-height: 400px; overflow-y: auto;">
                             <table>
                                 <thead>
                                     <tr>
@@ -2469,8 +2368,7 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
     max_author_pubs = max([a.get('publications', 0) for a in authors]) if authors else 1
     max_author_citations = max([a.get('citations', 0) for a in authors]) if authors else 1
     
-    # Show ALL authors without limit
-    for idx, author in enumerate(authors, 1):
+    for idx, author in enumerate(authors[:30], 1):
         orcid = author.get('orcid', '')
         orcid_display = f'<a href="https://orcid.org/{orcid}" target="_blank">{orcid}</a>' if orcid else '—'
         affiliations_display = ', '.join(author.get('affiliations', [])[:3])
@@ -2855,15 +2753,6 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
     
     max_cited_count = max([item.get('citations', 0) for item in most_cited]) if most_cited else 1
     
-    # Calculate min and max for citations_per_year color scaling
-    cpy_values = [item.get('citations_per_year', 0) for item in most_cited if item.get('citations_per_year', 0) > 0]
-    if cpy_values:
-        min_cpy = min(cpy_values)
-        max_cpy = max(cpy_values)
-    else:
-        min_cpy = 0
-        max_cpy = 1
-    
     for item in most_cited:
         authors_display = ', '.join(item.get('authors', [])[:3])
         if len(item.get('authors', [])) > 3:
@@ -2873,15 +2762,7 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
         pct = (cit_count / max_cited_count * 100) if max_cited_count > 0 else 0
         cpy = item.get('citations_per_year', 0)
         
-        # Color scale from green (high) to red (low) based on cpy value
-        if max_cpy > min_cpy and cpy > 0:
-            normalized = (cpy - min_cpy) / (max_cpy - min_cpy)
-            # Green (0,255,0) at normalized=1, Red (255,0,0) at normalized=0
-            red = int(255 * (1 - normalized))
-            green = int(255 * normalized)
-            cpy_color = f'rgb({red}, {green}, 0)'
-        else:
-            cpy_color = '#28a745'  # default green
+        velocity_class = 'velocity-high' if cpy > 5 else ('velocity-medium' if cpy > 2 else 'velocity-low')
         
         html += f"""
                                     <tr>
@@ -2889,10 +2770,10 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                                         <td class="word-wrap">{item.get('title', 'No title')[:100]}</td>
                                         <td>{item.get('year', '')}</td>
                                         <td>
-                                            {cit_count}
+                                            <span class="badge badge-primary">{cit_count}</span>
                                             <span class="mini-progress"><span class="fill" style="width: {pct}%;"></span></span>
                                         </td>
-                                        <td><span class="velocity-indicator" style="background: {cpy_color}; color: white; padding: 2px 10px; border-radius: 10px;">{cpy:.1f}</span></td>
+                                        <td><span class="velocity-indicator {velocity_class}">{cpy:.1f}</span></td>
                                         <td>{authors_display}</td>
                                         <td><a href="https://doi.org/{item.get('doi', '')}" target="_blank" class="doi-link">{item.get('doi', '')[:20]}...</a></td>
                                     </tr>
@@ -2939,7 +2820,7 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                     </div>
     """
     
-    # Top Citing Authors with progress bars - fixed alignment
+    # Top Citing Authors with progress bars
     top_authors = citing_works.get('top_authors', {})
     if top_authors:
         max_author_citing = max(top_authors.values()) if top_authors else 1
@@ -2952,7 +2833,7 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
             pct = (count / max_author_citing * 100) if max_author_citing > 0 else 0
             html += f"""
                             <div class="rank-bar-container">
-                                <span class="rank-bar-label" style="min-width: 250px; max-width: 300px;">{idx}. {author}</span>
+                                <span class="rank-bar-label">{idx}. {author}</span>
                                 <div class="rank-bar-track">
                                     <div class="rank-bar-fill" style="width: {pct}%;"></div>
                                 </div>
@@ -2964,7 +2845,7 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                     </div>
         """
     
-    # Top Citing Affiliations with progress bars - fixed alignment
+    # Top Citing Affiliations with progress bars
     top_affs_citing = citing_works.get('top_affiliations', {})
     if top_affs_citing:
         max_aff_citing = max(top_affs_citing.values()) if top_affs_citing else 1
@@ -2977,7 +2858,7 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
             pct = (count / max_aff_citing * 100) if max_aff_citing > 0 else 0
             html += f"""
                             <div class="rank-bar-container">
-                                <span class="rank-bar-label" style="min-width: 250px; max-width: 300px;">{idx}. {aff}</span>
+                                <span class="rank-bar-label">{idx}. {aff}</span>
                                 <div class="rank-bar-track">
                                     <div class="rank-bar-fill" style="width: {pct}%;"></div>
                                 </div>
@@ -2989,7 +2870,7 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                     </div>
         """
     
-    # Top Citing Countries with progress bars - fixed alignment
+    # Top Citing Countries with progress bars
     top_countries_citing = citing_works.get('top_countries', {})
     if top_countries_citing:
         max_country_citing = max(top_countries_citing.values()) if top_countries_citing else 1
@@ -3002,7 +2883,7 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
             pct = (count / max_country_citing * 100) if max_country_citing > 0 else 0
             html += f"""
                             <div class="rank-bar-container">
-                                <span class="rank-bar-label" style="min-width: 250px; max-width: 300px;">{idx}. {country}</span>
+                                <span class="rank-bar-label">{idx}. {country}</span>
                                 <div class="rank-bar-track">
                                     <div class="rank-bar-fill" style="width: {pct}%;"></div>
                                 </div>
@@ -3014,7 +2895,7 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                     </div>
         """
     
-    # Top Citing Journals with progress bars - fixed alignment
+    # Top Citing Journals with progress bars
     top_journals_citing = citing_works.get('top_journals', {})
     if top_journals_citing:
         max_journal_citing = max(top_journals_citing.values()) if top_journals_citing else 1
@@ -3027,7 +2908,7 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
             pct = (count / max_journal_citing * 100) if max_journal_citing > 0 else 0
             html += f"""
                             <div class="rank-bar-container">
-                                <span class="rank-bar-label" style="min-width: 250px; max-width: 300px;">{idx}. {journal}</span>
+                                <span class="rank-bar-label">{idx}. {journal}</span>
                                 <div class="rank-bar-track">
                                     <div class="rank-bar-fill" style="width: {pct}%;"></div>
                                 </div>
@@ -3039,7 +2920,7 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                     </div>
         """
     
-    # Top Citing Publishers with progress bars - fixed alignment
+    # Top Citing Publishers with progress bars
     top_publishers_citing = citing_works.get('top_publishers', {})
     if top_publishers_citing:
         max_publisher_citing = max(top_publishers_citing.values()) if top_publishers_citing else 1
@@ -3052,7 +2933,7 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
             pct = (count / max_publisher_citing * 100) if max_publisher_citing > 0 else 0
             html += f"""
                             <div class="rank-bar-container">
-                                <span class="rank-bar-label" style="min-width: 250px; max-width: 300px;">{idx}. {publisher}</span>
+                                <span class="rank-bar-label">{idx}. {publisher}</span>
                                 <div class="rank-bar-track">
                                     <div class="rank-bar-fill" style="width: {pct}%;"></div>
                                 </div>
@@ -3123,7 +3004,7 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                     </div>
         """
     
-    # Top Concepts, Subtopics, Fields, Domains with progress bars - fixed alignment
+    # Top Concepts, Subtopics, Fields, Domains with progress bars
     concept_sections = [
         ('top_concepts', 'Concept'),
         ('top_subtopics', 'Subtopic'),
@@ -3144,7 +3025,7 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                 pct = (count / max_data * 100) if max_data > 0 else 0
                 html += f"""
                             <div class="rank-bar-container">
-                                <span class="rank-bar-label" style="min-width: 250px; max-width: 300px;">{idx}. {name}</span>
+                                <span class="rank-bar-label">{idx}. {name}</span>
                                 <div class="rank-bar-track">
                                     <div class="rank-bar-fill" style="width: {pct}%;"></div>
                                 </div>
@@ -3177,13 +3058,12 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
             reverse=True
         )
         
-        max_cit_detailed = max([d.get('total_citations', 0) for _, d in sorted_detailed]) if sorted_detailed else 1
-        
         for doi, data in sorted_detailed:
             pub_id = doi.replace('/', '_').replace('.', '_')
             total_cit = data.get('total_citations', 0)
             
             # Progress bar for citation count relative to max
+            max_cit_detailed = max([d.get('total_citations', 0) for _, d in sorted_detailed]) if sorted_detailed else 1
             pct = (total_cit / max_cit_detailed * 100) if max_cit_detailed > 0 else 0
             
             html += f"""
@@ -3306,15 +3186,6 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
     
     max_citations_all = max([p.get('citations', 0) for p in all_publications]) if all_publications else 1
     
-    # Calculate min and max for citations_per_year color scaling in All Publications
-    cpy_all_values = [p.get('citations_per_year', 0) for p in all_publications if p.get('citations_per_year', 0) > 0]
-    if cpy_all_values:
-        min_cpy_all = min(cpy_all_values)
-        max_cpy_all = max(cpy_all_values)
-    else:
-        min_cpy_all = 0
-        max_cpy_all = 1
-    
     for idx, pub in enumerate(all_publications, 1):
         authors_display = ', '.join(pub.get('authors', [])[:3])
         if len(pub.get('authors', [])) > 3:
@@ -3333,14 +3204,7 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
         pct = (citations_value / max_citations_all * 100) if max_citations_all > 0 else 0
         cpy = pub.get('citations_per_year', 0)
         
-        # Color scale from green (high) to red (low) based on cpy value
-        if max_cpy_all > min_cpy_all and cpy > 0:
-            normalized = (cpy - min_cpy_all) / (max_cpy_all - min_cpy_all)
-            red = int(255 * (1 - normalized))
-            green = int(255 * normalized)
-            cpy_color = f'rgb({red}, {green}, 0)'
-        else:
-            cpy_color = '#28a745'  # default green
+        velocity_class = 'velocity-high' if cpy > 5 else ('velocity-medium' if cpy > 2 else 'velocity-low')
         
         html += f"""
                                     <tr data-year="{year_value}" data-authors="{authors_value}" data-affiliations="{affiliations_value}" data-title="{title_value}" data-citations="{citations_value}" data-doi="{doi_value}">
@@ -3350,10 +3214,10 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                                         <td>{authors_display}</td>
                                         <td>{affs_display}</td>
                                         <td>
-                                            {citations_value}
+                                            <span class="badge badge-primary">{citations_value}</span>
                                             <span class="mini-progress"><span class="fill" style="width: {pct}%;"></span></span>
                                         </td>
-                                        <td><span class="velocity-indicator" style="background: {cpy_color}; color: white; padding: 2px 10px; border-radius: 10px;">{cpy:.1f}</span></td>
+                                        <td><span class="velocity-indicator {velocity_class}">{cpy:.1f}</span></td>
                                         <td><a href="https://doi.org/{pub.get('doi', '')}" target="_blank" class="doi-link">{pub.get('doi', '')[:30]}...</a></td>
                                     </tr>
         """
@@ -3369,8 +3233,8 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
     html += f"""
                 <div class="footer">
                     <p>{t('footer')}</p>
-                    <p class="footer-url"><a href="{t('footer_url')}" target="_blank">{t('footer_url')}</a></p>
-                    <p style="font-size: 11px; margin-top: 5px;">{t('data_source')} | {t('generated')}: {datetime.now().strftime('%d.%m.%Y')}</p>
+                    <p><a href="{t('journal_url')}" target="_blank">{t('journal_url')}</a></p>
+                    <p style="font-size: 11px; margin-top: 5px;">{t('data_source')} | {t('generated')}: {datetime.now().strftime('%d.%m.%Y %H:%M')}</p>
                 </div>
             </div>
         </div>
@@ -3469,7 +3333,6 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
     """
     
     return html
-
 # ============================================
 # STREAMLIT APPLICATION
 # ============================================
@@ -3506,15 +3369,6 @@ def main():
     
     def t(key: str, **kwargs) -> str:
         return translate(key, current_lang, **kwargs)
-    
-    # Load program logo from file
-    program_logo_base64 = None
-    try:
-        if os.path.exists('logo.png'):
-            with open('logo.png', 'rb') as f:
-                program_logo_base64 = base64.b64encode(f.read()).decode()
-    except Exception as e:
-        pass
     
     # Sidebar
     with st.sidebar:
@@ -3616,17 +3470,8 @@ def main():
         </div>
         """, unsafe_allow_html=True)
     
-    # Main content - show logo instead of title
-    if program_logo_base64:
-        st.markdown(
-            f'<div style="text-align: center; margin-bottom: 10px;">'
-            f'<img src="data:image/png;base64,{program_logo_base64}" style="max-height: 80px; max-width: 400px;">'
-            f'</div>',
-            unsafe_allow_html=True
-        )
-    else:
-        st.markdown(f"## {t('app_title')}")
-    
+    # Main content
+    st.markdown(f"## {t('app_title')}")
     st.markdown("---")
     
     # Input section
@@ -3735,15 +3580,11 @@ def main():
                 lang=current_lang
             )
             
-            # Get journal abbreviation for filename
-            journal_abbrev = result.get('journal_abbrev', result.get('issn', ''))
-            period_str = result.get('period', '').replace(',', '_').replace('-', '_')
-            
-            # Download button with abbreviated filename
+            # Download button
             st.download_button(
                 label=t('download_report'),
                 data=html_report.encode('utf-8'),
-                file_name=f"journal_analysis_{journal_abbrev}_{period_str}.html",
+                file_name=f"journal_analysis_{result.get('issn', '')}_{result.get('period', '')}.html",
                 mime="text/html",
                 width='stretch'
             )
@@ -3758,3 +3599,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
