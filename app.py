@@ -2807,17 +2807,24 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
         if len(pub.get('affiliations', [])) > 2:
             affs_display += f' +{len(pub.get("affiliations", []))-2} more'
         
+        doi_value = (pub.get('doi') or '').lower()
+        title_value = (pub.get('title') or '').lower()
+        year_value = pub.get('year', '')
+        authors_value = ', '.join(pub.get('authors', []))
+        affiliations_value = ', '.join(pub.get('affiliations', []))
+        citations_value = pub.get('citations', 0)
+        
         html += f"""
-                                <tr data-year="{pub.get('year', '')}" data-authors="{', '.join(pub.get('authors', []))}" data-affiliations="{', '.join(pub.get('affiliations', []))}" data-title="{pub.get('title', '').lower()}" data-citations="{pub.get('citations', 0)}" data-doi="{pub.get('doi', '').lower()}">
-                                    <td>{idx}</td>
-                                    <td class="word-wrap">{html_module.escape(pub.get('title', 'No title')[:120])}</td>
-                                    <td>{pub.get('year', '')}</td>
-                                    <td>{authors_display}</td>
-                                    <td>{affs_display}</td>
-                                    <td><span class="badge badge-primary">{pub.get('citations', 0)}</span></td>
-                                    <td>{pub.get('citations_per_year', 0):.1f}</td>
-                                    <td><a href="https://doi.org/{pub.get('doi', '')}" target="_blank" class="doi-link">{pub.get('doi', '')[:30]}...</a></td>
-                                </tr>
+                                    <tr data-year="{year_value}" data-authors="{authors_value}" data-affiliations="{affiliations_value}" data-title="{title_value}" data-citations="{citations_value}" data-doi="{doi_value}">
+                                        <td>{idx}</td>
+                                        <td class="word-wrap">{html_module.escape(pub.get('title', 'No title')[:120])}</td>
+                                        <td>{pub.get('year', '')}</td>
+                                        <td>{authors_display}</td>
+                                        <td>{affs_display}</td>
+                                        <td><span class="badge badge-primary">{pub.get('citations', 0)}</span></td>
+                                        <td>{pub.get('citations_per_year', 0):.1f}</td>
+                                        <td><a href="https://doi.org/{pub.get('doi', '')}" target="_blank" class="doi-link">{pub.get('doi', '')[:30]}...</a></td>
+                                    </tr>
         """
     
     html += """
