@@ -1445,7 +1445,7 @@ class MetricsCalculator:
                 'title': article.get('title', 'No title'),
                 'year': article.get('publication_year'),
                 'citations': article.get('cited_by_count', 0),
-                'citations_per_year': article.get('cited_by_count', 0) / (2024 - article.get('publication_year', 2024) + 1) if article.get('publication_year') else 0,
+                'citations_per_year': article.get('cited_by_count', 0) / max(1, 2024 - article.get('publication_year', 2024) + 1) if article.get('publication_year') else 0,
                 'authors': authors_str,
                 'doi': article.get('doi', '')
             })
@@ -1597,7 +1597,7 @@ class MetricsCalculator:
                 'authors': ', '.join(article.get('authors', [])[:5]) + (f" +{len(article.get('authors', [])) - 5} more" if len(article.get('authors', [])) > 5 else ''),
                 'affiliations': ', '.join(article.get('affiliations', [])[:3]) + (f" +{len(article.get('affiliations', [])) - 3} more" if len(article.get('affiliations', [])) > 3 else ''),
                 'citations': article.get('cited_by_count', 0),
-                'citations_per_year': article.get('cited_by_count', 0) / (2024 - article.get('publication_year', 2024) + 1) if article.get('publication_year') else 0,
+                'citations_per_year': article.get('cited_by_count', 0) / max(1, 2024 - article.get('publication_year', 2024) + 1) if article.get('publication_year') else 0,
                 'doi': article.get('doi', ''),
                 'journal': article.get('journal_name', 'Unknown'),
                 'authors_list': article.get('authors', []),
