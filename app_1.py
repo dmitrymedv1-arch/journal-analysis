@@ -752,16 +752,18 @@ def full_parallel_analysis(issn: str, period: str, max_workers: int = MAX_WORKER
     if progress_callback:
         progress_callback(0, 100, translate('fetching_articles', 'en'))
     
-    # Parse period
+    # Parse period - УЛУЧШЕННАЯ ВЕРСИЯ из проверочного кода
     if ',' in period:
         years = [int(y.strip()) for y in period.split(',') if y.strip().isdigit()]
-        year_filter = "|".join(f"publication_year:{y}" for y in years)
+        if len(years) == 1:
+            year_filter = f"publication_year:{years[0]}"
+        else:
+            year_filter = "|".join(f"publication_year:{y}" for y in years)
     elif '-' in period:
         parts = [x.strip() for x in period.split('-')]
         if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
             start_year = int(parts[0])
             end_year = int(parts[1])
-            # Используем диапазон с дефисом для OpenAlex
             year_filter = f"publication_year:{start_year}-{end_year}"
             years = list(range(start_year, end_year + 1))
         else:
@@ -774,47 +776,105 @@ def full_parallel_analysis(issn: str, period: str, max_workers: int = MAX_WORKER
     if not years or not year_filter:
         return {'error': 'Invalid period format'}
     
-    # 1. Fetch all articles from the journal
+    # 1. Fetch all articles from the journal - С УЛУЧШЕННЫМ КОНТРОЛЕМ
     articles = []
     cursor = "*"
     base_url = "https://api.openalex.org/works"
     
+    # Отслеживаем количество для логирования
+    total_fetched = 0
+    empty_results_count = 0
+    MAX_EMPTY_RESULTS = 3  # Защита от бесконечного цикла
+    
+    if progress_callback:
+        progress_callback(5, 100, translate('fetching_articles', 'en'))
+    
     while True:
+        # Используем ПРАВИЛЬНЫЙ фильтр
+        filter_str = f"primary_location.source.issn:{normalized},{year_filter}"
+        
+        if SHOW_DEBUG_LOGS:
+            print(f"🔍 Request filter: {filter_str}")
+        
         data = smart_get(base_url, {
-            "filter": f"primary_location.source.issn:{normalized},{year_filter}",
+            "filter": filter_str,
             "per_page": 200,
             "select": "id,doi,title,publication_year,publication_date,cited_by_count,type,open_access,primary_location,authorships,topics,concepts",
             "cursor": cursor
         })
         
-        if not data or not data.get("results"):
+        # Проверка на пустой ответ
+        if not data:
+            if SHOW_DEBUG_LOGS:
+                print("⚠️ No data received from OpenAlex")
+            empty_results_count += 1
+            if empty_results_count >= MAX_EMPTY_RESULTS:
+                break
+            time.sleep(1)
+            continue
+        
+        results = data.get("results", [])
+        
+        # Если результатов нет - прерываем цикл
+        if not results:
+            if SHOW_DEBUG_LOGS:
+                print("📭 No more results")
             break
         
-        for work in data["results"]:
+        # Обработка полученных статей
+        for work in results:
             parsed = parse_openalex_work(work)
             articles.append(parsed)
+            total_fetched += 1
         
+        if progress_callback and total_fetched % 50 == 0:
+            progress_callback(5 + min(15, int(total_fetched / 20)), 100, 
+                            translate('articles_found', 'en', count=total_fetched))
+        
+        # Проверка на cursor
         cursor = data.get("meta", {}).get("next_cursor")
         if not cursor:
+            break
+        
+        # Защита от бесконечного цикла - если cursor не меняется
+        if cursor == data.get("meta", {}).get("cursor", ""):
+            if SHOW_DEBUG_LOGS:
+                print("⚠️ Cursor not changing, breaking")
             break
     
     if not articles:
         return {'error': 'No articles found for this ISSN and period'}
     
+    if SHOW_DEBUG_LOGS:
+        print(f"✅ Total articles fetched: {len(articles)}")
+    
     if progress_callback:
         progress_callback(20, 100, translate('articles_found', 'en', count=len(articles)))
     
-    # 2. Fetch citing works in parallel
+    # 2. Fetch citing works in parallel - ОПТИМИЗИРОВАННАЯ ВЕРСИЯ
     citing_map = {}
     futures = {}
     
     if progress_callback:
         progress_callback(25, 100, translate('fetching_citations', 'en'))
     
+    # Собираем только те статьи, у которых есть цитирования
+    articles_to_fetch = []
+    for article in articles:
+        if article.get('cited_by_count', 0) > 0 and article.get('id'):
+            # Проверяем, что DOI существует
+            if article.get('doi'):
+                articles_to_fetch.append(article)
+    
+    if SHOW_DEBUG_LOGS:
+        print(f"📊 Articles with citations to fetch: {len(articles_to_fetch)}")
+    
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        for article in articles:
-            if article.get('cited_by_count', 0) > 0 and article.get('id'):
-                future = executor.submit(get_citing_dois, article['id'])
+        for article in articles_to_fetch:
+            # Используем OpenAlex ID для запроса
+            oa_id = article['id']
+            if oa_id:
+                future = executor.submit(get_citing_dois_optimized, oa_id)
                 futures[future] = article['doi']
         
         completed = 0
