@@ -2817,7 +2817,7 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
         html += f"""
                                     <tr data-year="{year_value}" data-authors="{authors_value}" data-affiliations="{affiliations_value}" data-title="{title_value}" data-citations="{citations_value}" data-doi="{doi_value}">
                                         <td>{idx}</td>
-                                        <td class="word-wrap">{html_module.escape(pub.get('title', 'No title')[:120])}</td>
+                                        <td class="word-wrap">{html_module.escape((pub.get('title') or 'No title')[:120])}</td>
                                         <td>{pub.get('year', '')}</td>
                                         <td>{authors_display}</td>
                                         <td>{affs_display}</td>
