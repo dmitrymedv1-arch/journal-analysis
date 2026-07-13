@@ -3713,13 +3713,15 @@ def generate_html_report_journal(results: Dict, images: Dict[str, str],
                         </thead>
                         <tbody>
                             {''.join([
-                                f'<tr>'
-                                f'<td><strong>{row["pub_year"]}</strong></td>'
+                                '<tr>'
+                                + f'<td><strong>{row["pub_year"]}</strong></td>'
                                 + ''.join([
-                                    f'<td class="heatmap-cell" style="background:rgba({int(hex_to_rgb(primary)[0])}, {int(hex_to_rgb(primary)[1])}, {int(hex_to_rgb(primary)[2])}, {row[str(cit_year)]/max_heatmap_val if max_heatmap_val > 0 else 0:.2f}); color:{"white" if row[str(cit_year)]/max_heatmap_val > 0.5 else "#333"};">{row[str(cit_year)] if row[str(cit_year)] > 0 else "-"}</td>'
+                                    (lambda val, cit_year_val: 
+                                        f'<td class="heatmap-cell" style="background:rgba({int(hex_to_rgb(primary)[0])}, {int(hex_to_rgb(primary)[1])}, {int(hex_to_rgb(primary)[2])}, {val/max_heatmap_val if max_heatmap_val > 0 else 0:.2f}); color:{("white" if val/max_heatmap_val > 0.5 else "#333")};">{val if val > 0 else "-"}</td>'
+                                    )(row[str(cit_year)], cit_year)
                                     for cit_year in cit_years
                                 ])
-                                f'</tr>'
+                                + '</tr>'
                                 for row in heatmap_rows
                             ])}
                         </tbody>
