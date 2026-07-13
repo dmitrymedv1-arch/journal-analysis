@@ -769,7 +769,7 @@ def full_parallel_analysis(issn: str, period: str, max_workers: int = MAX_WORKER
     cursor = "*"
     base_url = "https://api.openalex.org/works"
     
-    year_filter = "|".join(f"publication_year:{y}" for y in years)
+    year_filter = f"publication_year:{start_year}-{end_year}"
     
     while True:
         data = smart_get(base_url, {
