@@ -586,7 +586,10 @@ def parse_openalex_work(work: dict) -> dict:
     
     # Basic info
     parsed['id'] = work.get('id', '')
-    parsed['doi'] = work.get('doi', '').replace('https://doi.org/', '')
+    
+    doi = work.get('doi')
+    parsed['doi'] = doi.replace('https://doi.org/', '') if doi else ''
+
     parsed['title'] = work.get('title', 'No title')
     parsed['publication_year'] = work.get('publication_year')
     parsed['publication_date'] = work.get('publication_date', '')
@@ -607,33 +610,54 @@ def parse_openalex_work(work: dict) -> dict:
     parsed['issn'] = source.get('issn', [])
     parsed['source_type'] = source.get('type', 'unknown')
     
-    # Authors
+    # Authors - используем raw_author_name для латиницы
     authors = []
     author_orcids = []
     author_affiliations = []
     author_countries = []
+    authors_with_countries = []  # Новое поле: список (автор, страна)
+    authorships_data = []  # Сохраняем все authorships для детального анализа
     
     for authorship in work.get('authorships', []):
         author = authorship.get('author', {})
-        author_name = author.get('display_name', '')
+        # Приоритет: raw_author_name (латиница) > display_name
+        author_name = authorship.get('raw_author_name', '') or author.get('display_name', '')
         author_orcid = author.get('orcid', '')
+        
+        # Получаем страну для этого автора
+        author_country = None
+        author_institutions = []
+        for inst in authorship.get('institutions', []):
+            inst_name = inst.get('display_name', '')
+            country_code = inst.get('country_code', '')
+            if inst_name:
+                author_institutions.append(inst_name)
+                author_affiliations.append(inst_name)
+            if country_code:
+                author_country = country_code
+                author_countries.append(country_code)
         
         if author_name:
             authors.append(author_name)
             if author_orcid:
                 author_orcids.append(author_orcid)
+            if author_country:
+                authors_with_countries.append((author_name, author_country))
         
-        # Institutions
-        for inst in authorship.get('institutions', []):
-            inst_name = inst.get('display_name', '')
-            country_code = inst.get('country_code', '')
-            if inst_name:
-                author_affiliations.append(inst_name)
-            if country_code:
-                author_countries.append(country_code)
+        # Сохраняем данные об авторах для детального анализа
+        authorships_data.append({
+            'author_name': author_name,
+            'author_orcid': author_orcid,
+            'country': author_country,
+            'institutions': author_institutions,
+            'is_corresponding': authorship.get('is_corresponding', False),
+            'author_position': authorship.get('author_position', '')
+        })
     
     parsed['authors'] = authors
     parsed['author_orcids'] = author_orcids
+    parsed['authors_with_countries'] = authors_with_countries  # Новое поле
+    parsed['authorships_data'] = authorships_data  # Сохраняем для детального анализа
     parsed['author_count'] = len(authors)
     parsed['affiliations'] = list(set(author_affiliations))
     parsed['countries'] = list(set(author_countries))
@@ -731,24 +755,29 @@ def full_parallel_analysis(issn: str, period: str, max_workers: int = MAX_WORKER
     # Parse period
     if ',' in period:
         years = [int(y.strip()) for y in period.split(',') if y.strip().isdigit()]
+        year_filter = "|".join(f"publication_year:{y}" for y in years)
     elif '-' in period:
         parts = [x.strip() for x in period.split('-')]
         if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
-            years = list(range(int(parts[0]), int(parts[1]) + 1))
+            start_year = int(parts[0])
+            end_year = int(parts[1])
+            # Используем диапазон с дефисом для OpenAlex
+            year_filter = f"publication_year:{start_year}-{end_year}"
+            years = list(range(start_year, end_year + 1))
         else:
             years = [int(period)] if period.isdigit() else []
+            year_filter = f"publication_year:{years[0]}" if years else ""
     else:
         years = [int(period)] if period.isdigit() else []
+        year_filter = f"publication_year:{years[0]}" if years else ""
     
-    if not years:
+    if not years or not year_filter:
         return {'error': 'Invalid period format'}
     
     # 1. Fetch all articles from the journal
     articles = []
     cursor = "*"
     base_url = "https://api.openalex.org/works"
-    
-    year_filter = "|".join(f"publication_year:{y}" for y in years)
     
     while True:
         data = smart_get(base_url, {
@@ -1020,6 +1049,14 @@ class JournalAnalyzer:
         affiliations_counter = Counter()
         countries_counter = Counter()
         
+        # Для подсчета уникальных стран на публикацию (Collaboration Level)
+        # Каждая страна считается 1 раз для каждой публикации
+        unique_countries_per_publication = Counter()
+        
+        # Для подсчета авторов по странам (Individual Distribution)
+        # Каждый автор считается отдельно
+        authors_per_country = Counter()
+        
         for article in self.articles:
             authors = article.get('authors', [])
             orcids = article.get('author_orcids', [])
@@ -1027,6 +1064,7 @@ class JournalAnalyzer:
             countries = article.get('countries', [])
             citations = article.get('cited_by_count', 0)
             
+            # Статистика по авторам
             for idx, author in enumerate(authors):
                 if author not in author_stats:
                     author_stats[author]['name'] = author
@@ -1037,11 +1075,27 @@ class JournalAnalyzer:
                 author_stats[author]['affiliations'].update(affiliations)
                 author_stats[author]['countries'].update(countries)
             
+            # Топ аффилиаций
             for aff in affiliations:
                 affiliations_counter[aff] += 1
             
+            # Уникальные страны на публикацию (Collaboration Level)
+            # Каждая страна считается 1 раз для этой публикации
+            unique_countries = set(countries)
+            for country in unique_countries:
+                if country:
+                    unique_countries_per_publication[country] += 1
+            
+            # Авторы по странам (Individual Distribution)
+            # Используем authors_with_countries для подсчета каждого автора
+            for author_name, country in article.get('authors_with_countries', []):
+                if country:
+                    authors_per_country[country] += 1
+            
+            # Также считаем страны через countries (для обратной совместимости)
             for country in countries:
-                countries_counter[country] += 1
+                if country:
+                    countries_counter[country] += 1
         
         # Convert to list and sort
         author_list = []
@@ -1060,7 +1114,9 @@ class JournalAnalyzer:
         return {
             'authors': author_list,
             'top_affiliations': dict(affiliations_counter.most_common(20)),
-            'top_countries': dict(countries_counter.most_common(20))
+            'top_countries': dict(countries_counter.most_common(20)),
+            'unique_countries_per_publication': dict(unique_countries_per_publication.most_common(20)),
+            'authors_per_country': dict(authors_per_country.most_common(20))
         }
     
     def get_citation_dynamics(self) -> pd.DataFrame:
@@ -2075,71 +2131,68 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                         <h4 style="color: {primary}; margin-bottom: 10px;">🌍 {t('nav_geo')}</h4>
     """
     
-    # Unique Countries per Publication
+    # Unique Countries per Publication (Collaboration Level)
     html += f"""
-                        <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 6px;">
-                            <h5 style="color: #555; margin-bottom: 8px;">📊 {t('unique_countries_per_publication')}</h5>
-                            <div class="table-container">
-                                <table>
-                                    <thead><tr><th>{t('rank')}</th><th>{t('countries')}</th><th>{t('publications')}</th></tr></thead>
-                                    <tbody>
-    """
+                            <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 6px;">
+                                <h5 style="color: #555; margin-bottom: 8px;">📊 {t('unique_countries_per_publication')}</h5>
+                                <div class="table-container">
+                                    <table>
+                                        <thead><tr><th>{t('rank')}</th><th>{t('countries')}</th><th>{t('publications')}</th></tr></thead>
+                                        <tbody>
+        """
     
-    country_pub_counts = Counter()
-    for article in articles:
-        countries = set(article.get('countries', []))
-        for country in countries:
-            country_pub_counts[country] += 1
-    
-    for idx, (country, count) in enumerate(list(country_pub_counts.most_common(20)), 1):
+    # Используем данные из analyzed_data['unique_countries_per_publication']
+    unique_countries_pub = analyzed_data.get('unique_countries_per_publication', {})
+    for idx, (country, count) in enumerate(list(unique_countries_pub.items())[:20], 1):
         html += f"""
-                                        <tr><td>{idx}</td><td>{country or 'Unknown'}</td><td>{count}</td></tr>
+                                            <tr><td>{idx}</td><td>{country or 'Unknown'}</td><td>{count}</td></tr>
         """
     
     html += """
-                                    </tbody>
-                                </table>
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
-                        </div>
     """
     
-    # Authors per Country
+    # Authors per Country (Individual Distribution)
     html += f"""
-                        <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 6px;">
-                            <h5 style="color: #555; margin-bottom: 8px;">📊 {t('authors_per_country')}</h5>
-                            <div class="table-container">
-                                <table>
-                                    <thead><tr><th>{t('rank')}</th><th>{t('countries')}</th><th>{t('authors')}</th></tr></thead>
-                                    <tbody>
-    """
+                            <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 6px;">
+                                <h5 style="color: #555; margin-bottom: 8px;">📊 {t('authors_per_country')}</h5>
+                                <div class="table-container">
+                                    <table>
+                                        <thead><tr><th>{t('rank')}</th><th>{t('countries')}</th><th>{t('authors')}</th></tr></thead>
+                                        <tbody>
+        """
     
-    author_country_counts = Counter()
-    for article in articles:
-        for country in article.get('countries', []):
-            author_country_counts[country] += 1
-    
-    for idx, (country, count) in enumerate(list(author_country_counts.most_common(20)), 1):
+    # Используем данные из analyzed_data['authors_per_country']
+    authors_per_country = analyzed_data.get('authors_per_country', {})
+    for idx, (country, count) in enumerate(list(authors_per_country.items())[:20], 1):
         html += f"""
-                                        <tr><td>{idx}</td><td>{country or 'Unknown'}</td><td>{count}</td></tr>
+                                            <tr><td>{idx}</td><td>{country or 'Unknown'}</td><td>{count}</td></tr>
         """
     
     html += """
-                                    </tbody>
-                                </table>
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
-                        </div>
     """
     
-    # Collaboration Patterns
+    # Collaboration Patterns - используем правильные данные
     html += f"""
-                        <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 6px;">
-                            <h5 style="color: #555; margin-bottom: 8px;">📊 {t('collaboration_patterns')}</h5>
-    """
+                            <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 6px;">
+                                <h5 style="color: #555; margin-bottom: 8px;">📊 {t('collaboration_patterns')}</h5>
+        """
     
     single_country = 0
     international = 0
+    
     for article in articles:
+        # Используем уникальные страны из countries (уже дедуплицированы)
         countries = set(article.get('countries', []))
+        # Убираем пустые значения
+        countries = {c for c in countries if c}
         if len(countries) <= 1:
             single_country += 1
         else:
@@ -2154,39 +2207,42 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
         int_pct = 0
     
     html += f"""
-                            <div style="display: flex; gap: 30px; flex-wrap: wrap;">
-                                <div style="flex: 1; min-width: 150px;">
-                                    <strong>{t('single_country')}:</strong> {single_country} ({single_pct:.1f}%)
-                                    <div class="progress-bar-container" style="height: 12px; width: 100%;">
-                                        <div class="progress-bar" style="width: {single_pct}%; background: #3498db;"></div>
+                                <div style="display: flex; gap: 30px; flex-wrap: wrap;">
+                                    <div style="flex: 1; min-width: 150px;">
+                                        <strong>{t('single_country')}:</strong> {single_country} ({single_pct:.1f}%)
+                                        <div class="progress-bar-container" style="height: 12px; width: 100%;">
+                                            <div class="progress-bar" style="width: {single_pct}%; background: #3498db;"></div>
+                                        </div>
+                                    </div>
+                                    <div style="flex: 1; min-width: 150px;">
+                                        <strong>{t('international')}:</strong> {international} ({int_pct:.1f}%)
+                                        <div class="progress-bar-container" style="height: 12px; width: 100%;">
+                                            <div class="progress-bar" style="width: {int_pct}%; background: #e74c3c;"></div>
+                                        </div>
                                     </div>
                                 </div>
-                                <div style="flex: 1; min-width: 150px;">
-                                    <strong>{t('international')}:</strong> {international} ({int_pct:.1f}%)
-                                    <div class="progress-bar-container" style="height: 12px; width: 100%;">
-                                        <div class="progress-bar" style="width: {int_pct}%; background: #e74c3c;"></div>
-                                    </div>
-                                </div>
-                            </div>
     """
     
     html += """
-                        </div>
+                            </div>
     """
     
     # Collaboration Couples
     html += f"""
-                        <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 6px;">
-                            <h5 style="color: #555; margin-bottom: 8px;">📊 {t('collaboration_couples')}</h5>
-                            <div class="table-container" style="max-height: 300px; overflow-y: auto;">
-                                <table>
-                                    <thead><tr><th>{t('rank')}</th><th>{t('countries')}</th><th>{t('publications')}</th></tr></thead>
-                                    <tbody>
-    """
+                            <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 6px;">
+                                <h5 style="color: #555; margin-bottom: 8px;">📊 {t('collaboration_couples')}</h5>
+                                <div class="table-container" style="max-height: 300px; overflow-y: auto;">
+                                    <table>
+                                        <thead><tr><th>{t('rank')}</th><th>{t('countries')}</th><th>{t('publications')}</th></tr></thead>
+                                        <tbody>
+        """
     
     country_pairs = Counter()
     for article in articles:
+        # Используем уникальные страны из countries
         countries = list(set(article.get('countries', [])))
+        # Убираем пустые значения
+        countries = [c for c in countries if c]
         if len(countries) >= 2:
             for i in range(len(countries)):
                 for j in range(i+1, len(countries)):
@@ -2195,16 +2251,16 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
     
     for idx, (pair, count) in enumerate(list(country_pairs.most_common(20)), 1):
         html += f"""
-                                        <tr><td>{idx}</td><td>{pair[0]} — {pair[1]}</td><td>{count}</td></tr>
+                                            <tr><td>{idx}</td><td>{pair[0]} — {pair[1]}</td><td>{count}</td></tr>
         """
     
     html += """
-                                    </tbody>
-                                </table>
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
     """
     
     # ==================== CITATION ANALYSIS ====================
@@ -2230,7 +2286,9 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
     """
     
     if not citation_dynamics.empty:
-        for _, row in citation_dynamics.iterrows():
+        # Сортируем по Publication Year, затем по Citation Year
+        citation_dynamics_sorted = citation_dynamics.sort_values(['Publication Year', 'Citation Year'])
+        for _, row in citation_dynamics_sorted.iterrows():
             html += f"""
                                     <tr>
                                         <td>{row['Publication Year']}</td>
@@ -2624,10 +2682,17 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
     
     if detailed_citations:
         html += """
-                    <div style="margin: 10px 0;">
-        """
+                        <div style="margin: 10px 0;">
+            """
         
-        for doi, data in detailed_citations.items():
+        # Сортируем detailed_citations по количеству цитирований (от большего к меньшему)
+        sorted_detailed = sorted(
+            detailed_citations.items(),
+            key=lambda x: x[1].get('total_citations', 0),
+            reverse=True
+        )
+        
+        for doi, data in sorted_detailed:
             pub_id = doi.replace('/', '_').replace('.', '_')
             html += f"""
                         <div class="collapser" onclick="toggleCitations('{pub_id}')">
@@ -2643,7 +2708,7 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
             for citing in data.get('citations', []):
                 html += f"""
                             <div class="citation-detail">
-                                <div><strong>{html_module.escape(citing.get('citing_title', 'No title')[:100])}</strong></div>
+                                <div><strong>{html_module.escape((citing.get('citing_title') or 'No title')[:100] if citing.get('citing_title') else 'No title')}</strong></div>
                                 <div class="cite-meta">
                                     <strong>{t('citing_journal')}:</strong> {html_module.escape(citing.get('citing_journal', 'Unknown'))} | 
                                     <strong>{t('citing_year')}:</strong> {citing.get('citing_year', '')} | 
@@ -2742,17 +2807,24 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
         if len(pub.get('affiliations', [])) > 2:
             affs_display += f' +{len(pub.get("affiliations", []))-2} more'
         
+        doi_value = (pub.get('doi') or '').lower()
+        title_value = (pub.get('title') or '').lower()
+        year_value = pub.get('year', '')
+        authors_value = ', '.join(pub.get('authors', []))
+        affiliations_value = ', '.join(pub.get('affiliations', []))
+        citations_value = pub.get('citations', 0)
+        
         html += f"""
-                                <tr data-year="{pub.get('year', '')}" data-authors="{', '.join(pub.get('authors', []))}" data-affiliations="{', '.join(pub.get('affiliations', []))}" data-title="{pub.get('title', '').lower()}" data-citations="{pub.get('citations', 0)}" data-doi="{pub.get('doi', '').lower()}">
-                                    <td>{idx}</td>
-                                    <td class="word-wrap">{html_module.escape(pub.get('title', 'No title')[:120])}</td>
-                                    <td>{pub.get('year', '')}</td>
-                                    <td>{authors_display}</td>
-                                    <td>{affs_display}</td>
-                                    <td><span class="badge badge-primary">{pub.get('citations', 0)}</span></td>
-                                    <td>{pub.get('citations_per_year', 0):.1f}</td>
-                                    <td><a href="https://doi.org/{pub.get('doi', '')}" target="_blank" class="doi-link">{pub.get('doi', '')[:30]}...</a></td>
-                                </tr>
+                                    <tr data-year="{year_value}" data-authors="{authors_value}" data-affiliations="{affiliations_value}" data-title="{title_value}" data-citations="{citations_value}" data-doi="{doi_value}">
+                                        <td>{idx}</td>
+                                        <td class="word-wrap">{html_module.escape((pub.get('title') or 'No title')[:120])}</td>
+                                        <td>{pub.get('year', '')}</td>
+                                        <td>{authors_display}</td>
+                                        <td>{affs_display}</td>
+                                        <td><span class="badge badge-primary">{pub.get('citations', 0)}</span></td>
+                                        <td>{pub.get('citations_per_year', 0):.1f}</td>
+                                        <td><a href="https://doi.org/{pub.get('doi', '')}" target="_blank" class="doi-link">{pub.get('doi', '')[:30]}...</a></td>
+                                    </tr>
         """
     
     html += """
