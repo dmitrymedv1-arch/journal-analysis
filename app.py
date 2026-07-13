@@ -2180,7 +2180,7 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
     single_country = 0
     international = 0
     
-    for article in self.articles:
+    for article in articles:
         # Используем уникальные страны из countries (уже дедуплицированы)
         countries = set(article.get('countries', []))
         # Убираем пустые значения
