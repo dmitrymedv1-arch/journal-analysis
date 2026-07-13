@@ -2278,7 +2278,9 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
     """
     
     if not citation_dynamics.empty:
-        for _, row in citation_dynamics.iterrows():
+        # Сортируем по Publication Year, затем по Citation Year
+        citation_dynamics_sorted = citation_dynamics.sort_values(['Publication Year', 'Citation Year'])
+        for _, row in citation_dynamics_sorted.iterrows():
             html += f"""
                                     <tr>
                                         <td>{row['Publication Year']}</td>
