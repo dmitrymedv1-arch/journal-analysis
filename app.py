@@ -4168,39 +4168,37 @@ def generate_html_report_journal(results: Dict, images: Dict[str, str],
                 </script>
                 
                 {''.join([
-                    f'''
-                    <div class="collapser" onclick="toggleCitations('{doi.replace('/', '_')}')">
-                        <strong>{html.escape(data["title"][:80])}{"..." if len(data["title"])>80 else ""}</strong>
-                        <span class="badge badge-info">{data["year"]}</span>
-                        <span class="citation-count">{data["total_citations"]} citations</span>
-                        <span style="font-size:11px;color:#999;margin-left:10px;">DOI: {data["doi"][:25]}{"..." if len(data["doi"])>25 else ""}</span>
-                        <span class="toggle-hint">Click to toggle citations</span>
-                    </div>
-                    <div id="citations_{doi.replace('/', '_')}" style="display: none; margin-bottom: 10px;">
-                        {''.join([
-                            f'''
-                            <div class="citation-detail">
-                                <div><strong>{html.escape(cite["citing_title"][:100])}{"..." if len(cite["citing_title"])>100 else ""}</strong></div>
-                                <div class="cite-meta">
-                                    <strong>{t("citing_journal")}:</strong> {html.escape(cite["citing_journal"])} | 
-                                    <strong>{t("citing_year")}:</strong> {cite["citing_year"]} | 
-                                    <strong>{t("citing_date")}:</strong> {cite["citing_date"][:10] if cite["citing_date"] else "N/A"} |
-                                    <strong>{t("citation_lag")}:</strong> {cite["citation_lag"]:.2f} years
-                                </div>
-                                <div class="cite-meta">
-                                    <strong>{t("authors")}:</strong> {', '.join([html.escape(a) for a in cite["citing_authors"][:5]])}{"..." if len(cite["citing_authors"])>5 else ""} |
-                                    <strong>{t("countries")}:</strong> {', '.join([get_full_country_name(c) for c in cite["citing_countries"][:3]])}{"..." if len(cite["citing_countries"])>3 else ""} |
-                                    <strong>{t("topics")}:</strong> {', '.join([html.escape(t) for t in cite["citing_topics"][:3]])}{"..." if len(cite["citing_topics"])>3 else ""}
-                                </div>
-                                <div class="cite-meta">
-                                    <a href="https://doi.org/{cite["citing_doi"]}" target="_blank" class="doi-link">DOI: {cite["citing_doi"][:40]}{"..." if len(cite["citing_doi"])>40 else ""}</a>
-                                </div>
-                            </div>
-                            ''' for cite in data["citations"]
-                        ])}
-                    </div>
-                    ''' for doi, data in list(detailed_citations.items())[:50]
-                ]}
+                    '<div class="collapser" onclick="toggleCitations(\'{}\')">'.format(doi.replace('/', '_')) +
+                    '<strong>{}</strong>'.format(html.escape(data["title"][:80]) + ("..." if len(data["title"])>80 else "")) +
+                    '<span class="badge badge-info">{}</span>'.format(data["year"]) +
+                    '<span class="citation-count">{} citations</span>'.format(data["total_citations"]) +
+                    '<span style="font-size:11px;color:#999;margin-left:10px;">DOI: {}{}</span>'.format(data["doi"][:25], "..." if len(data["doi"])>25 else "") +
+                    '<span class="toggle-hint">Click to toggle citations</span>'
+                    '</div>'
+                    '<div id="citations_{}" style="display: none; margin-bottom: 10px;">'.format(doi.replace('/', '_')) +
+                    ''.join([
+                        '<div class="citation-detail">'
+                        '<div><strong>{}</strong></div>'.format(html.escape(cite["citing_title"][:100]) + ("..." if len(cite["citing_title"])>100 else "")) +
+                        '<div class="cite-meta">'
+                        '<strong>{}</strong> {} | '.format(t("citing_journal"), html.escape(cite["citing_journal"])) +
+                        '<strong>{}</strong> {} | '.format(t("citing_year"), cite["citing_year"]) +
+                        '<strong>{}</strong> {} | '.format(t("citing_date"), cite["citing_date"][:10] if cite["citing_date"] else "N/A") +
+                        '<strong>{}</strong> {:.2f} years'.format(t("citation_lag"), cite["citation_lag"])
+                        '</div>'
+                        '<div class="cite-meta">'
+                        '<strong>{}</strong> {} | '.format(t("authors"), ', '.join([html.escape(a) for a in cite["citing_authors"][:5]]) + ("..." if len(cite["citing_authors"])>5 else "")) +
+                        '<strong>{}</strong> {} | '.format(t("countries"), ', '.join([get_full_country_name(c) for c in cite["citing_countries"][:3]]) + ("..." if len(cite["citing_countries"])>3 else "")) +
+                        '<strong>{}</strong> {}'.format(t("topics"), ', '.join([html.escape(t) for t in cite["citing_topics"][:3]]) + ("..." if len(cite["citing_topics"])>3 else ""))
+                        '</div>'
+                        '<div class="cite-meta">'
+                        '<a href="https://doi.org/{}" target="_blank" class="doi-link">DOI: {}{}</a>'.format(cite["citing_doi"], cite["citing_doi"][:40], "..." if len(cite["citing_doi"])>40 else "")
+                        '</div>'
+                        '</div>'
+                        for cite in data["citations"]
+                    ]) +
+                    '</div>'
+                    for doi, data in list(detailed_citations.items())[:50]
+                ])}
                 
                 {f'<p style="font-size:13px;color:#666;margin-top:10px;">Showing {min(50, len(detailed_citations))} of {len(detailed_citations)} publications with citations</p>' if len(detailed_citations) > 50 else ''}
             </div>
