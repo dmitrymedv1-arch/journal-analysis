@@ -2682,10 +2682,17 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
     
     if detailed_citations:
         html += """
-                    <div style="margin: 10px 0;">
-        """
+                        <div style="margin: 10px 0;">
+            """
         
-        for doi, data in detailed_citations.items():
+        # Сортируем detailed_citations по количеству цитирований (от большего к меньшему)
+        sorted_detailed = sorted(
+            detailed_citations.items(),
+            key=lambda x: x[1].get('total_citations', 0),
+            reverse=True
+        )
+        
+        for doi, data in sorted_detailed:
             pub_id = doi.replace('/', '_').replace('.', '_')
             html += f"""
                         <div class="collapser" onclick="toggleCitations('{pub_id}')">
