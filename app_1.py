@@ -610,21 +610,19 @@ def parse_openalex_work(work: dict) -> dict:
     parsed['issn'] = source.get('issn', [])
     parsed['source_type'] = source.get('type', 'unknown')
     
-    # Authors - используем raw_author_name для латиницы
+    # Authors
     authors = []
     author_orcids = []
     author_affiliations = []
     author_countries = []
-    authors_with_countries = []  # Новое поле: список (автор, страна)
-    authorships_data = []  # Сохраняем все authorships для детального анализа
+    authors_with_countries = []
+    authorships_data = []
     
     for authorship in work.get('authorships', []):
         author = authorship.get('author', {})
-        # Приоритет: raw_author_name (латиница) > display_name
         author_name = authorship.get('raw_author_name', '') or author.get('display_name', '')
         author_orcid = author.get('orcid', '')
         
-        # Получаем страну для этого автора
         author_country = None
         author_institutions = []
         for inst in authorship.get('institutions', []):
@@ -644,7 +642,6 @@ def parse_openalex_work(work: dict) -> dict:
             if author_country:
                 authors_with_countries.append((author_name, author_country))
         
-        # Сохраняем данные об авторах для детального анализа
         authorships_data.append({
             'author_name': author_name,
             'author_orcid': author_orcid,
@@ -656,8 +653,8 @@ def parse_openalex_work(work: dict) -> dict:
     
     parsed['authors'] = authors
     parsed['author_orcids'] = author_orcids
-    parsed['authors_with_countries'] = authors_with_countries  # Новое поле
-    parsed['authorships_data'] = authorships_data  # Сохраняем для детального анализа
+    parsed['authors_with_countries'] = authors_with_countries
+    parsed['authorships_data'] = authorships_data
     parsed['author_count'] = len(authors)
     parsed['affiliations'] = list(set(author_affiliations))
     parsed['countries'] = list(set(author_countries))
@@ -699,13 +696,16 @@ def parse_openalex_work(work: dict) -> dict:
     
     return parsed
 
-def get_citing_dois(oa_id: str, max_citing: int = MAX_CITING_PER_PAPER) -> List[Dict]:
-    """Get citing works for a given OpenAlex ID"""
+def get_citing_dois_optimized(oa_id: str, max_citing: int = MAX_CITING_PER_PAPER) -> List[Dict]:
+    """
+    Оптимизированная версия получения цитирующих работ
+    Полностью скопирована из проверочного кода с добавлением полного парсинга
+    """
     citing = []
     cursor = "*"
     base_url = "https://api.openalex.org/works"
     
-    for _ in range(10):  # Максимум 10 страниц
+    for _ in range(8):  # ограничение пагинации
         data = smart_get(base_url, {
             "filter": f"cites:{oa_id}",
             "per_page": 200,
@@ -715,11 +715,10 @@ def get_citing_dois(oa_id: str, max_citing: int = MAX_CITING_PER_PAPER) -> List[
         
         if not data:
             break
-        
         results = data.get("results", [])
         if not results:
             break
-        
+            
         for item in results:
             citing.append(parse_openalex_work(item))
             if len(citing) >= max_citing:
@@ -752,7 +751,7 @@ def full_parallel_analysis(issn: str, period: str, max_workers: int = MAX_WORKER
     if progress_callback:
         progress_callback(0, 100, translate('fetching_articles', 'en'))
     
-    # Parse period - УЛУЧШЕННАЯ ВЕРСИЯ из проверочного кода
+    # ============= ПАРСИНГ ПЕРИОДА (ПОЛНОСТЬЮ ИЗ ПРОВЕРОЧНОГО КОДА) =============
     if ',' in period:
         years = [int(y.strip()) for y in period.split(',') if y.strip().isdigit()]
         if len(years) == 1:
@@ -776,106 +775,62 @@ def full_parallel_analysis(issn: str, period: str, max_workers: int = MAX_WORKER
     if not years or not year_filter:
         return {'error': 'Invalid period format'}
     
-    # 1. Fetch all articles from the journal - С УЛУЧШЕННЫМ КОНТРОЛЕМ
+    # ============= ЗАГРУЗКА СТАТЕЙ (ПОЛНОСТЬЮ ИЗ ПРОВЕРОЧНОГО КОДА) =============
+    base_url = "https://api.openalex.org/works"
     articles = []
     cursor = "*"
-    base_url = "https://api.openalex.org/works"
-    
-    # Отслеживаем количество для логирования
-    total_fetched = 0
-    empty_results_count = 0
-    MAX_EMPTY_RESULTS = 3  # Защита от бесконечного цикла
     
     if progress_callback:
         progress_callback(5, 100, translate('fetching_articles', 'en'))
     
     while True:
-        # Используем ПРАВИЛЬНЫЙ фильтр
-        filter_str = f"primary_location.source.issn:{normalized},{year_filter}"
-        
-        if SHOW_DEBUG_LOGS:
-            print(f"🔍 Request filter: {filter_str}")
-        
         data = smart_get(base_url, {
-            "filter": filter_str,
+            "filter": f"primary_location.source.issn:{normalized},{year_filter}",
             "per_page": 200,
             "select": "id,doi,title,publication_year,publication_date,cited_by_count,type,open_access,primary_location,authorships,topics,concepts",
             "cursor": cursor
         })
         
-        # Проверка на пустой ответ
-        if not data:
-            if SHOW_DEBUG_LOGS:
-                print("⚠️ No data received from OpenAlex")
-            empty_results_count += 1
-            if empty_results_count >= MAX_EMPTY_RESULTS:
-                break
-            time.sleep(1)
-            continue
-        
-        results = data.get("results", [])
-        
-        # Если результатов нет - прерываем цикл
-        if not results:
-            if SHOW_DEBUG_LOGS:
-                print("📭 No more results")
+        if not data or not data.get("results"):
             break
-        
-        # Обработка полученных статей
-        for work in results:
+            
+        for work in data["results"]:
             parsed = parse_openalex_work(work)
             articles.append(parsed)
-            total_fetched += 1
         
-        if progress_callback and total_fetched % 50 == 0:
-            progress_callback(5 + min(15, int(total_fetched / 20)), 100, 
-                            translate('articles_found', 'en', count=total_fetched))
+        if progress_callback and len(articles) % 50 == 0:
+            progress_callback(5 + min(15, int(len(articles) / 20)), 100, 
+                            translate('articles_found', 'en', count=len(articles)))
         
-        # Проверка на cursor
         cursor = data.get("meta", {}).get("next_cursor")
         if not cursor:
-            break
-        
-        # Защита от бесконечного цикла - если cursor не меняется
-        if cursor == data.get("meta", {}).get("cursor", ""):
-            if SHOW_DEBUG_LOGS:
-                print("⚠️ Cursor not changing, breaking")
             break
     
     if not articles:
         return {'error': 'No articles found for this ISSN and period'}
     
-    if SHOW_DEBUG_LOGS:
-        print(f"✅ Total articles fetched: {len(articles)}")
-    
     if progress_callback:
         progress_callback(20, 100, translate('articles_found', 'en', count=len(articles)))
     
-    # 2. Fetch citing works in parallel - ОПТИМИЗИРОВАННАЯ ВЕРСИЯ
-    citing_map = {}
-    futures = {}
-    
+    # ============= ПАРАЛЛЕЛЬНЫЙ СБОР ЦИТИРУЮЩИХ (ПОЛНОСТЬЮ ИЗ ПРОВЕРОЧНОГО КОДА) =============
     if progress_callback:
         progress_callback(25, 100, translate('fetching_citations', 'en'))
     
-    # Собираем только те статьи, у которых есть цитирования
-    articles_to_fetch = []
+    citing_map = {}
+    futures = {}
+    
+    # Создаем список статей для обработки (только те, у которых есть цитирования)
+    articles_to_process = []
     for article in articles:
         if article.get('cited_by_count', 0) > 0 and article.get('id'):
-            # Проверяем, что DOI существует
-            if article.get('doi'):
-                articles_to_fetch.append(article)
-    
-    if SHOW_DEBUG_LOGS:
-        print(f"📊 Articles with citations to fetch: {len(articles_to_fetch)}")
+            articles_to_process.append(article)
     
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        for article in articles_to_fetch:
-            # Используем OpenAlex ID для запроса
+        for article in articles_to_process:
+            # Используем OpenAlex ID
             oa_id = article['id']
-            if oa_id:
-                future = executor.submit(get_citing_dois_optimized, oa_id)
-                futures[future] = article['doi']
+            future = executor.submit(get_citing_dois_optimized, oa_id)
+            futures[future] = article['doi']
         
         completed = 0
         total = len(futures)
@@ -898,7 +853,7 @@ def full_parallel_analysis(issn: str, period: str, max_workers: int = MAX_WORKER
         total_citing = sum(len(c) for c in citing_map.values())
         progress_callback(85, 100, translate('total_citing_works', 'en', count=total_citing))
     
-    # 3. Process results
+    # ============= ОБРАБОТКА РЕЗУЛЬТАТОВ =============
     if progress_callback:
         progress_callback(90, 100, translate('processing_data', 'en'))
     
