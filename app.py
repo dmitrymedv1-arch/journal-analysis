@@ -3354,7 +3354,7 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                 <div class="footer">
                     <p>{t('footer_text')}</p>
                     <p><a href="{t('footer_url')}" target="_blank">{t('footer_url')}</a></p>
-                    <p style="font-size: 11px; margin-top: 5px;">{{t('generated')}: {datetime.now().strftime('%d.%m.%Y')}</p>
+                    <p style="font-size: 11px; margin-top: 5px;">{t('generated')}: {datetime.now().strftime('%d.%m.%Y')}</p>
                 </div>
             </div>
         </div>
