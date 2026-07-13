@@ -3903,7 +3903,6 @@ def main():
         st.markdown(f"""
         <div style="font-size: 11px; color: #666; text-align: center;">
             © Advanced Journal Analysis Tool<br>
-            Powered by OpenAlex
         </div>
         """, unsafe_allow_html=True)
     
