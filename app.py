@@ -752,24 +752,29 @@ def full_parallel_analysis(issn: str, period: str, max_workers: int = MAX_WORKER
     # Parse period
     if ',' in period:
         years = [int(y.strip()) for y in period.split(',') if y.strip().isdigit()]
+        year_filter = "|".join(f"publication_year:{y}" for y in years)
     elif '-' in period:
         parts = [x.strip() for x in period.split('-')]
         if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
-            years = list(range(int(parts[0]), int(parts[1]) + 1))
+            start_year = int(parts[0])
+            end_year = int(parts[1])
+            # Используем диапазон с дефисом для OpenAlex
+            year_filter = f"publication_year:{start_year}-{end_year}"
+            years = list(range(start_year, end_year + 1))
         else:
             years = [int(period)] if period.isdigit() else []
+            year_filter = f"publication_year:{years[0]}" if years else ""
     else:
         years = [int(period)] if period.isdigit() else []
+        year_filter = f"publication_year:{years[0]}" if years else ""
     
-    if not years:
+    if not years or not year_filter:
         return {'error': 'Invalid period format'}
     
     # 1. Fetch all articles from the journal
     articles = []
     cursor = "*"
     base_url = "https://api.openalex.org/works"
-    
-    year_filter = f"publication_year:{start_year}-{end_year}"
     
     while True:
         data = smart_get(base_url, {
