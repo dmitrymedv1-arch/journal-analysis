@@ -224,7 +224,7 @@ LANG = {
         # Footer
         'footer_text': '© Advanced Journal Analysis Tool | developed by @ daM',
         'footer_url': 'https://chimicatechnoacta.ru',
-        '': 'Data source: OpenAlex',
+        'data_source': 'Data source: OpenAlex',
         'generated': 'Generated',
         'journal_url': 'https://openalex.org/',
         
@@ -704,26 +704,20 @@ def parse_openalex_work(work: dict) -> dict:
     
     return parsed
 
-def get_citing_dois_optimized(oa_id: str, max_citing: int = MAX_CITING_PER_PAPER) -> List[str]:
+def get_citing_dois_optimized(oa_id: str, max_citing: int = MAX_CITING_PER_PAPER) -> List[Dict]:
     """
-    Оптимизированная версия получения только DOI цитирующих работ
-    Возвращает список DOI (чистых, без https://doi.org/)
+    Оптимизированная версия получения цитирующих работ
+    Полностью скопирована из проверочного кода с добавлением полного парсинга
     """
-    # Извлекаем чистый ID из полного URL
-    if oa_id.startswith("https://openalex.org/"):
-        clean_id = oa_id.replace("https://openalex.org/", "")
-    else:
-        clean_id = oa_id
-    
-    citing_dois = []
+    citing = []
     cursor = "*"
     base_url = "https://api.openalex.org/works"
     
     for _ in range(8):  # ограничение пагинации
         data = smart_get(base_url, {
-            "filter": f"cites:{clean_id}",
+            "filter": f"cites:{oa_id}",
             "per_page": 200,
-            "select": "doi",
+            "select": "id,doi,title,publication_year,publication_date,cited_by_count,type,open_access,primary_location,authorships,topics,concepts",
             "cursor": cursor
         })
         
@@ -734,341 +728,80 @@ def get_citing_dois_optimized(oa_id: str, max_citing: int = MAX_CITING_PER_PAPER
             break
             
         for item in results:
-            doi = item.get("doi")
-            if doi:
-                citing_dois.append(doi.replace("https://doi.org/", ""))
-            if len(citing_dois) >= max_citing:
+            citing.append(parse_openalex_work(item))
+            if len(citing) >= max_citing:
                 break
         
-        if len(citing_dois) >= max_citing:
+        if len(citing) >= max_citing:
             break
         
         cursor = data.get("meta", {}).get("next_cursor")
         if not cursor:
             break
     
-    return citing_dois[:max_citing]
+    return citing[:max_citing]
 
-def fetch_full_works_by_dois(dois: List[str], max_workers: int = MAX_WORKERS) -> List[Dict]:
-    """
-    Получение полных данных о работах по списку DOI
-    Использует параллельные запросы
-    """
-    if not dois:
-        return []
-    
-    full_works = []
-    futures = {}
-    base_url = "https://api.openalex.org/works"
-    
-    # Разбиваем список DOI на пачки по 50 для batch-запросов
-    batch_size = 50
-    doi_batches = [dois[i:i+batch_size] for i in range(0, len(dois), batch_size)]
-    
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        for batch in doi_batches:
-            # Используем filter с OR для нескольких DOI
-            doi_filter = "|".join(f"doi:{doi}" for doi in batch)
-            future = executor.submit(smart_get, base_url, {
-                "filter": doi_filter,
-                "per_page": batch_size,
-                "select": "id,doi,title,publication_year,publication_date,cited_by_count,type,open_access,primary_location,authorships,topics,concepts"
-            })
-            futures[future] = batch
-    
-    for future in as_completed(futures):
-        try:
-            data = future.result()
-            if data and data.get("results"):
-                for work in data["results"]:
-                    full_works.append(parse_openalex_work(work))
-        except Exception as e:
-            if SHOW_DEBUG_LOGS:
-                print(f"⚠️ Error fetching full works: {e}")
-    
-    return full_works
-
-def get_citing_works_batch(oa_id: str, max_citing: int = MAX_CITING_PER_PAPER, 
-                           max_workers: int = MAX_WORKERS) -> List[Dict]:
-    """
-    Получение цитирующих работ с полными данными в два этапа:
-    1. Сбор DOI цитирующих работ
-    2. Параллельный запрос полных данных по DOI
-    """
-    # Этап 1: Собираем только DOI
-    citing_dois = get_citing_dois_optimized(oa_id, max_citing)
-    
-    if not citing_dois:
-        return []
-    
-    # Этап 2: Получаем полные данные по DOI
-    full_works = fetch_full_works_by_dois(citing_dois, max_workers)
-    
-    return full_works
-
-# ============================================
-# ФУНКЦИИ ДЛЯ УПРАВЛЕНИЯ КЭШЕМ
-# ============================================
-
-def init_analysis_cache(issn: str, period: str) -> Dict:
-    """
-    Инициализация нового кэша для анализа
-    """
-    cache_key = f"{issn}_{period}"
-    
-    cache = {
-        'cache_key': cache_key,
-        'issn': issn,
-        'period': period,
-        'articles': [],
-        'citing_map': {},
-        'processed_dois': set(),
-        'pending_dois': [],
-        'total_dois': 0,
-        'status': 'idle',  # idle | loading_articles | fetching_citations | processing | complete | error
-        'progress': 0,
-        'result': None,
-        'error': None,
-        'timestamp': datetime.now().isoformat(),
-        'journal_name': None,
-        'journal_abbr': None,
-        'years': [],
-        'fetched_articles_count': 0,
-        'fetched_citations_count': 0
-    }
-    
-    return cache
-
-def get_or_create_cache(issn: str, period: str) -> Dict:
-    """
-    Получить существующий кэш или создать новый
-    """
-    cache_key = f"{issn}_{period}"
-    
-    # Проверяем, есть ли актуальный кэш в session_state
-    if ('analysis_cache' in st.session_state and 
-        st.session_state.analysis_cache is not None and
-        st.session_state.analysis_cache.get('cache_key') == cache_key and
-        st.session_state.analysis_cache.get('status') not in ['idle', 'error']):
-        return st.session_state.analysis_cache
-    else:
-        # Создаем новый кэш
-        cache = init_analysis_cache(issn, period)
-        st.session_state.analysis_cache = cache
-        return cache
-
-def save_cache_to_session(cache: Dict):
-    """
-    Сохранить кэш в session_state
-    """
-    cache['timestamp'] = datetime.now().isoformat()
-    st.session_state.analysis_cache = cache
-
-def is_cache_valid(cache: Dict, issn: str, period: str) -> bool:
-    """
-    Проверить валидность кэша
-    """
-    if not cache:
-        return False
-    
-    cache_key = f"{issn}_{period}"
-    return (cache.get('cache_key') == cache_key and 
-            cache.get('status') not in ['idle', 'error'])
-
-def get_cached_articles(cache: Dict) -> List[Dict]:
-    """
-    Получить загруженные статьи из кэша
-    """
-    return cache.get('articles', [])
-
-def get_cached_citations(cache: Dict) -> Dict:
-    """
-    Получить загруженные цитирования из кэша
-    """
-    return cache.get('citing_map', {})
-
-def update_cache_articles(cache: Dict, articles: List[Dict]):
-    """
-    Обновить статьи в кэше
-    """
-    cache['articles'] = articles
-    cache['fetched_articles_count'] = len(articles)
-    save_cache_to_session(cache)
-
-def update_cache_citations(cache: Dict, doi: str, citing_works: List[Dict]):
-    """
-    Обновить цитирования для одного DOI в кэше
-    """
-    cache['citing_map'][doi] = citing_works
-    cache['processed_dois'].add(doi)
-    cache['fetched_citations_count'] += len(citing_works)
-    
-    # Обновляем прогресс
-    if cache['total_dois'] > 0:
-        progress = len(cache['processed_dois']) / cache['total_dois'] * 100
-        cache['progress'] = min(85, 25 + int(progress * 0.6))
-    
-    save_cache_to_session(cache)
-
-def update_cache_status(cache: Dict, status: str, progress: int = None, error: str = None):
-    """
-    Обновить статус кэша
-    """
-    cache['status'] = status
-    if progress is not None:
-        cache['progress'] = progress
-    if error is not None:
-        cache['error'] = error
-    save_cache_to_session(cache)
-
-def update_cache_result(cache: Dict, result: Dict):
-    """
-    Сохранить финальный результат в кэше
-    """
-    cache['result'] = result
-    cache['status'] = 'complete'
-    cache['progress'] = 100
-    save_cache_to_session(cache)
-
-def clear_cache():
-    """
-    Очистить кэш (вызывается при перезагрузке страницы)
-    """
-    if 'analysis_cache' in st.session_state:
-        del st.session_state.analysis_cache
-
-def get_cache_status_message(cache: Dict, lang: str = 'en') -> str:
-    """
-    Получить сообщение о статусе кэша
-    """
-    status = cache.get('status', 'idle')
-    progress = cache.get('progress', 0)
-    
-    if status == 'idle':
-        return translate('no_data', lang)
-    elif status == 'loading_articles':
-        count = cache.get('fetched_articles_count', 0)
-        return translate('articles_found', lang, count=count)
-    elif status == 'fetching_citations':
-        processed = len(cache.get('processed_dois', set()))
-        total = cache.get('total_dois', 0)
-        return translate('fetching_citations_progress', lang, current=processed, total=total)
-    elif status == 'processing':
-        return translate('processing_data', lang)
-    elif status == 'complete':
-        return translate('analysis_complete', lang)
-    elif status == 'error':
-        return f"❌ Error: {cache.get('error', 'Unknown error')}"
-    else:
-        return status
-                               
 def get_journal_name_by_issn(issn: str) -> Optional[str]:
     """Get journal name by ISSN from OpenAlex"""
     normalized = normalize_issn(issn)
-    # Use direct endpoint for better results
-    url = f"https://api.openalex.org/sources/issn:{normalized}"
-    
-    data = smart_get(url, {}, retries=3, delay=0.2)
-    
-    if data and data.get("display_name"):
-        return data.get("display_name")
-    
-    # Fallback: try search with filter
     base_url = "https://api.openalex.org/sources"
+    
     data = smart_get(base_url, {
         "filter": f"issn:{normalized}",
+        "select": "display_name,issn,abbreviation",
         "per_page": 1
     })
     
     if data and data.get("results"):
         return data["results"][0].get("display_name")
-    
     return None
 
 def get_journal_abbreviation(issn: str) -> Optional[str]:
     """Get journal abbreviation by ISSN from OpenAlex or generate from name"""
     normalized = normalize_issn(issn)
-    # Use direct endpoint for better results
-    url = f"https://api.openalex.org/sources/issn:{normalized}"
+    base_url = "https://api.openalex.org/sources"
     
-    data = smart_get(url, {}, retries=3, delay=0.2)
+    data = smart_get(base_url, {
+        "filter": f"issn:{normalized}",
+        "select": "display_name,issn,abbreviation",
+        "per_page": 1
+    })
     
-    if data:
+    if data and data.get("results"):
+        result = data["results"][0]
         # Try to get abbreviation
-        abbr = data.get("abbreviation")
+        abbr = result.get("abbreviation")
         if abbr:
             return abbr
         # Generate from display name
-        display_name = data.get("display_name", "")
+        display_name = result.get("display_name", "")
         if display_name:
             # Simple abbreviation: take first letters of each word
             words = re.findall(r'\b\w+\b', display_name)
             if words:
                 abbr = ''.join(w[0].upper() for w in words if w[0].isalpha())[:8]
                 return abbr
-    
-    # Fallback: try search with filter
-    base_url = "https://api.openalex.org/sources"
-    data = smart_get(base_url, {
-        "filter": f"issn:{normalized}",
-        "per_page": 1
-    })
-    
-    if data and data.get("results"):
-        result = data["results"][0]
-        abbr = result.get("abbreviation")
-        if abbr:
-            return abbr
-        display_name = result.get("display_name", "")
-        if display_name:
-            words = re.findall(r'\b\w+\b', display_name)
-            if words:
-                abbr = ''.join(w[0].upper() for w in words if w[0].isalpha())[:8]
-                return abbr
-    
     return None
 
-def full_parallel_analysis(issn: str, period: str, max_workers: int = MAX_WORKERS, 
-                           progress_callback=None, use_cache: bool = True) -> Dict:
+def full_parallel_analysis(issn: str, period: str, max_workers: int = MAX_WORKERS, progress_callback=None) -> Dict:
     """
-    Full parallel analysis of a journal with cache support
+    Full parallel analysis of a journal
     
     Args:
         issn: ISSN of the journal
         period: Period string (e.g., "2020-2023" or "2020,2021,2022" or "2020")
         max_workers: Number of parallel threads
         progress_callback: Callback function for progress updates
-        use_cache: Whether to use cached data
     
     Returns:
         Dict with all analysis results
     """
     normalized = normalize_issn(issn)
     
-    # Проверяем кэш
-    if use_cache:
-        cache = get_or_create_cache(normalized, period)
-        
-        # Если анализ уже завершен, возвращаем результат
-        if cache.get('status') == 'complete' and cache.get('result'):
-            if progress_callback:
-                progress_callback(100, 100, translate('analysis_complete', 'en'))
-            return cache['result']
-        
-        # Если есть частичные данные, продолжаем с ними
-        articles = get_cached_articles(cache)
-        citing_map = get_cached_citations(cache)
-        processed_dois = cache.get('processed_dois', set())
-    else:
-        cache = None
-        articles = []
-        citing_map = {}
-        processed_dois = set()
-    
     if progress_callback:
         progress_callback(0, 100, translate('fetching_articles', 'en'))
     
-    # ============= ПАРСИНГ ПЕРИОДА =============
+    # ============= ПАРСИНГ ПЕРИОДА (ПОЛНОСТЬЮ ИЗ ПРОВЕРОЧНОГО КОДА) =============
     if ',' in period:
         years = [int(y.strip()) for y in period.split(',') if y.strip().isdigit()]
         if len(years) == 1:
@@ -1092,143 +825,91 @@ def full_parallel_analysis(issn: str, period: str, max_workers: int = MAX_WORKER
     if not years or not year_filter:
         return {'error': 'Invalid period format'}
     
-    # ============= ЗАГРУЗКА СТАТЕЙ =============
-    if not articles or cache.get('status') in ['idle', 'loading_articles']:
-        if cache:
-            update_cache_status(cache, 'loading_articles', 5)
+    # ============= ЗАГРУЗКА СТАТЕЙ (ПОЛНОСТЬЮ ИЗ ПРОВЕРОЧНОГО КОДА) =============
+    base_url = "https://api.openalex.org/works"
+    articles = []
+    cursor = "*"
+    
+    if progress_callback:
+        progress_callback(5, 100, translate('fetching_articles', 'en'))
+    
+    while True:
+        data = smart_get(base_url, {
+            "filter": f"primary_location.source.issn:{normalized},{year_filter}",
+            "per_page": 200,
+            "select": "id,doi,title,publication_year,publication_date,cited_by_count,type,open_access,primary_location,authorships,topics,concepts",
+            "cursor": cursor
+        })
         
-        base_url = "https://api.openalex.org/works"
-        cursor = "*"
-        new_articles = []
-        
-        if progress_callback:
-            progress_callback(5, 100, translate('fetching_articles', 'en'))
-        
-        while True:
-            data = smart_get(base_url, {
-                "filter": f"primary_location.source.issn:{normalized},{year_filter}",
-                "per_page": 200,
-                "select": "id,doi,title,publication_year,publication_date,cited_by_count,type,open_access,primary_location,authorships,topics,concepts",
-                "cursor": cursor
-            })
+        if not data or not data.get("results"):
+            break
             
-            if not data or not data.get("results"):
-                break
-                
-            for work in data["results"]:
-                parsed = parse_openalex_work(work)
-                if parsed.get('id'):
-                    parsed['clean_id'] = parsed['id'].replace("https://openalex.org/", "")
-                new_articles.append(parsed)
-            
-            if progress_callback:
-                progress_callback(5 + min(15, int(len(new_articles) / 20)), 100, 
-                                translate('articles_found', 'en', count=len(new_articles)))
-            
-            cursor = data.get("meta", {}).get("next_cursor")
-            if not cursor:
-                break
+        for work in data["results"]:
+            parsed = parse_openalex_work(work)
+            articles.append(parsed)
         
-        articles = new_articles
+        if progress_callback and len(articles) % 50 == 0:
+            progress_callback(5 + min(15, int(len(articles) / 20)), 100, 
+                            translate('articles_found', 'en', count=len(articles)))
         
-        if cache:
-            update_cache_articles(cache, articles)
-        
-        if not articles:
-            if cache:
-                update_cache_status(cache, 'error', error='No articles found')
-            return {'error': 'No articles found for this ISSN and period'}
+        cursor = data.get("meta", {}).get("next_cursor")
+        if not cursor:
+            break
+    
+    if not articles:
+        return {'error': 'No articles found for this ISSN and period'}
     
     if progress_callback:
         progress_callback(20, 100, translate('articles_found', 'en', count=len(articles)))
     
-    # ============= ПОЛУЧАЕМ НАЗВАНИЕ ЖУРНАЛА =============
-    journal_name = None
-    journal_abbr = None
-    
-    if cache:
-        journal_name = cache.get('journal_name')
-        journal_abbr = cache.get('journal_abbr')
-    
-    if not journal_name:
-        journal_name = get_journal_name_by_issn(normalized)
-        journal_abbr = get_journal_abbreviation(normalized)
-        if cache:
-            cache['journal_name'] = journal_name
-            cache['journal_abbr'] = journal_abbr
-            save_cache_to_session(cache)
-    
-    # ============= ПАРАЛЛЕЛЬНЫЙ СБОР ЦИТИРУЮЩИХ =============
+    # ============= ПАРАЛЛЕЛЬНЫЙ СБОР ЦИТИРУЮЩИХ (ПОЛНОСТЬЮ ИЗ ПРОВЕРОЧНОГО КОДА) =============
     if progress_callback:
         progress_callback(25, 100, translate('fetching_citations', 'en'))
     
-    # Определяем, какие статьи нужно обработать
+    citing_map = {}
+    futures = {}
+    
+    # Создаем список статей для обработки (только те, у которых есть цитирования)
     articles_to_process = []
     for article in articles:
-        doi = article.get('doi')
-        if not doi:
-            continue
-        if article.get('cited_by_count', 0) > 0 and article.get('clean_id'):
-            # Проверяем, не обработан ли уже этот DOI
-            if doi not in processed_dois:
-                articles_to_process.append(article)
+        if article.get('cited_by_count', 0) > 0 and article.get('id'):
+            articles_to_process.append(article)
     
-    # Если есть необработанные статьи
-    if articles_to_process:
-        if cache:
-            # Обновляем список ожидающих обработки
-            pending_dois = [a.get('doi') for a in articles_to_process]
-            cache['pending_dois'] = pending_dois
-            cache['total_dois'] = len(pending_dois)
-            save_cache_to_session(cache)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        for article in articles_to_process:
+            # Используем OpenAlex ID
+            oa_id = article['id']
+            future = executor.submit(get_citing_dois_optimized, oa_id)
+            futures[future] = article['doi']
         
-        futures = {}
+        completed = 0
+        total = len(futures)
         
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            for article in articles_to_process:
-                clean_id = article['clean_id']
-                future = executor.submit(get_citing_works_batch, clean_id, MAX_CITING_PER_PAPER, max_workers)
-                futures[future] = article['doi']
+        for future in as_completed(futures):
+            doi = futures[future]
+            try:
+                citing_map[doi] = future.result()
+            except Exception as e:
+                if SHOW_DEBUG_LOGS:
+                    print(f"⚠️ Error fetching citing works for {doi}: {e}")
+                citing_map[doi] = []
             
-            completed = 0
-            total = len(futures)
-            
-            for future in as_completed(futures):
-                doi = futures[future]
-                try:
-                    citing_works = future.result()
-                    citing_map[doi] = citing_works
-                    
-                    if cache:
-                        update_cache_citations(cache, doi, citing_works)
-                    
-                except Exception as e:
-                    if SHOW_DEBUG_LOGS:
-                        print(f"⚠️ Error fetching citing works for {doi}: {e}")
-                    citing_map[doi] = []
-                    if cache:
-                        update_cache_citations(cache, doi, [])
-                
-                completed += 1
-                if progress_callback and total > 0:
-                    progress = 25 + int((completed / total) * 60)
-                    progress_callback(progress, 100, translate('fetching_citations_progress', 'en', current=completed, total=total))
-                
-                # Если есть кэш, обновляем прогресс
-                if cache:
-                    cache['progress'] = 25 + int((completed / total) * 60)
-                    save_cache_to_session(cache)
+            completed += 1
+            if progress_callback and total > 0:
+                progress = 25 + int((completed / total) * 60)
+                progress_callback(progress, 100, translate('fetching_citations_progress', 'en', current=completed, total=total))
     
     if progress_callback:
         total_citing = sum(len(c) for c in citing_map.values())
         progress_callback(85, 100, translate('total_citing_works', 'en', count=total_citing))
     
-    if cache:
-        update_cache_status(cache, 'processing', 90)
-    
     # ============= ОБРАБОТКА РЕЗУЛЬТАТОВ =============
     if progress_callback:
         progress_callback(90, 100, translate('processing_data', 'en'))
+    
+    # Get journal name
+    journal_name = get_journal_name_by_issn(normalized)
+    journal_abbr = get_journal_abbreviation(normalized)
     
     # Build comprehensive analysis
     result = {
@@ -1254,9 +935,6 @@ def full_parallel_analysis(issn: str, period: str, max_workers: int = MAX_WORKER
     result['topics_analysis'] = analyzer.get_topics_analysis()
     result['detailed_citations'] = analyzer.get_detailed_citations()
     result['all_publications'] = analyzer.get_all_publications_data()
-    
-    if cache:
-        update_cache_result(cache, result)
     
     if progress_callback:
         progress_callback(100, 100, translate('analysis_complete', 'en'))
@@ -3652,7 +3330,7 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                 <div class="footer">
                     <p>{t('footer_text')}</p>
                     <p><a href="{t('footer_url')}" target="_blank">{t('footer_url')}</a></p>
-                    <p style="font-size: 11px; margin-top: 5px;">{t('generated')}: {datetime.now().strftime('%d.%m.%Y')}</p>
+                    <p style="font-size: 11px; margin-top: 5px;">{t('data_source')} | {t('generated')}: {datetime.now().strftime('%d.%m.%Y')}</p>
                 </div>
             </div>
         </div>
@@ -3777,8 +3455,6 @@ def main():
         st.session_state.journal_logo_base64 = None
     if 'analysis_complete' not in st.session_state:
         st.session_state.analysis_complete = False
-    if 'analysis_cache' not in st.session_state:
-        st.session_state.analysis_cache = None
     
     # Apply theme
     primary = st.session_state.primary_color
@@ -3892,17 +3568,10 @@ def main():
         
         st.markdown("---")
         
-        # Кнопка очистки кэша
-        if st.button("🗑️ Clear Cache", help="Clear cached analysis data"):
-            clear_cache()
-            st.session_state.analysis_result = None
-            st.session_state.analysis_complete = False
-            st.success("Cache cleared!")
-            st.rerun()
-        
         st.markdown(f"""
         <div style="font-size: 11px; color: #666; text-align: center;">
             © Advanced Journal Analysis Tool<br>
+            Powered by OpenAlex
         </div>
         """, unsafe_allow_html=True)
     
@@ -3911,7 +3580,7 @@ def main():
     if program_logo_base64:
         st.markdown(
             f'<div style="text-align: center; margin-bottom: 20px;">'
-            f'<img src="data:image/png;base64,{program_logo_base64}" style="max-height: 150px; max-width: 600px; object-fit: contain;">'
+            f'<img src="data:image/png;base64,{program_logo_base64}" style="max-height: 100px; max-width: 400px; object-fit: contain;">'
             f'</div>',
             unsafe_allow_html=True
         )
@@ -3919,15 +3588,6 @@ def main():
         st.markdown(f"## {t('app_title')}")
     
     st.markdown("---")
-    
-    # Показываем статус кэша
-    cache = st.session_state.analysis_cache
-    if cache and cache.get('status') not in ['idle', 'error']:
-        status_msg = get_cache_status_message(cache, current_lang)
-        progress = cache.get('progress', 0)
-        st.info(f"📦 Cache: {status_msg} (Progress: {progress}%)")
-        if cache.get('status') == 'complete':
-            st.success("✅ Analysis results are cached and ready!")
     
     # Input section
     col1, col2, col3 = st.columns([2, 2, 1])
@@ -3962,24 +3622,13 @@ def main():
         elif not period_input.strip():
             st.error(t('no_period'))
         else:
-            # Проверяем кэш
+            # Check if we have cached result
             cache_key = f"{issn_input.strip()}_{period_input.strip()}"
-            
-            # Если есть завершенный анализ в кэше, используем его
-            if (st.session_state.analysis_cache and 
-                st.session_state.analysis_cache.get('cache_key') == cache_key and
-                st.session_state.analysis_cache.get('status') == 'complete' and
-                st.session_state.analysis_cache.get('result')):
-                
-                st.info("📦 Using cached results")
-                st.session_state.analysis_result = st.session_state.analysis_cache['result']
-                st.session_state.last_issn = issn_input.strip()
-                st.session_state.last_period = period_input.strip()
+            if st.session_state.analysis_result and st.session_state.get('cache_key') == cache_key:
+                st.info("📦 Using cached results from previous analysis")
                 st.session_state.analysis_complete = True
-                st.balloons()
-            
             else:
-                # Запускаем новый анализ
+                # Run analysis
                 status_container = st.status(t('analyzing_articles'), expanded=True)
                 progress_bar = st.progress(0)
                 
@@ -3992,12 +3641,12 @@ def main():
                         issn_input.strip(),
                         period_input.strip(),
                         max_workers=workers,
-                        progress_callback=progress_callback,
-                        use_cache=True
+                        progress_callback=progress_callback
                     )
                 
                 if result and 'error' not in result:
                     st.session_state.analysis_result = result
+                    st.session_state.cache_key = cache_key
                     st.session_state.last_issn = issn_input.strip()
                     st.session_state.last_period = period_input.strip()
                     st.session_state.analysis_complete = True
