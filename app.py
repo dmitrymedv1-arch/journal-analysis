@@ -2230,7 +2230,7 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
         """
     
     country_pairs = Counter()
-    for article in self.articles:
+    for article in articles:
         # Используем уникальные страны из countries
         countries = list(set(article.get('countries', [])))
         # Убираем пустые значения
