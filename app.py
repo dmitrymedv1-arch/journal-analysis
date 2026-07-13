@@ -2643,7 +2643,7 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
             for citing in data.get('citations', []):
                 html += f"""
                             <div class="citation-detail">
-                                <div><strong>{html_module.escape(citing.get('citing_title', 'No title')[:100])}</strong></div>
+                                <div><strong>{html_module.escape((citing.get('citing_title') or 'No title')[:100] if citing.get('citing_title') else 'No title')}</strong></div>
                                 <div class="cite-meta">
                                     <strong>{t('citing_journal')}:</strong> {html_module.escape(citing.get('citing_journal', 'Unknown'))} | 
                                     <strong>{t('citing_year')}:</strong> {citing.get('citing_year', '')} | 
