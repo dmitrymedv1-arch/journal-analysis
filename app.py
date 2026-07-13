@@ -610,21 +610,19 @@ def parse_openalex_work(work: dict) -> dict:
     parsed['issn'] = source.get('issn', [])
     parsed['source_type'] = source.get('type', 'unknown')
     
-    # Authors - используем raw_author_name для латиницы
+    # Authors
     authors = []
     author_orcids = []
     author_affiliations = []
     author_countries = []
-    authors_with_countries = []  # Новое поле: список (автор, страна)
-    authorships_data = []  # Сохраняем все authorships для детального анализа
+    authors_with_countries = []
+    authorships_data = []
     
     for authorship in work.get('authorships', []):
         author = authorship.get('author', {})
-        # Приоритет: raw_author_name (латиница) > display_name
         author_name = authorship.get('raw_author_name', '') or author.get('display_name', '')
         author_orcid = author.get('orcid', '')
         
-        # Получаем страну для этого автора
         author_country = None
         author_institutions = []
         for inst in authorship.get('institutions', []):
@@ -644,7 +642,6 @@ def parse_openalex_work(work: dict) -> dict:
             if author_country:
                 authors_with_countries.append((author_name, author_country))
         
-        # Сохраняем данные об авторах для детального анализа
         authorships_data.append({
             'author_name': author_name,
             'author_orcid': author_orcid,
@@ -656,8 +653,8 @@ def parse_openalex_work(work: dict) -> dict:
     
     parsed['authors'] = authors
     parsed['author_orcids'] = author_orcids
-    parsed['authors_with_countries'] = authors_with_countries  # Новое поле
-    parsed['authorships_data'] = authorships_data  # Сохраняем для детального анализа
+    parsed['authors_with_countries'] = authors_with_countries
+    parsed['authorships_data'] = authorships_data
     parsed['author_count'] = len(authors)
     parsed['affiliations'] = list(set(author_affiliations))
     parsed['countries'] = list(set(author_countries))
@@ -699,13 +696,16 @@ def parse_openalex_work(work: dict) -> dict:
     
     return parsed
 
-def get_citing_dois(oa_id: str, max_citing: int = MAX_CITING_PER_PAPER) -> List[Dict]:
-    """Get citing works for a given OpenAlex ID"""
+def get_citing_dois_optimized(oa_id: str, max_citing: int = MAX_CITING_PER_PAPER) -> List[Dict]:
+    """
+    Оптимизированная версия получения цитирующих работ
+    Полностью скопирована из проверочного кода с добавлением полного парсинга
+    """
     citing = []
     cursor = "*"
     base_url = "https://api.openalex.org/works"
     
-    for _ in range(10):  # Максимум 10 страниц
+    for _ in range(8):  # ограничение пагинации
         data = smart_get(base_url, {
             "filter": f"cites:{oa_id}",
             "per_page": 200,
@@ -715,11 +715,10 @@ def get_citing_dois(oa_id: str, max_citing: int = MAX_CITING_PER_PAPER) -> List[
         
         if not data:
             break
-        
         results = data.get("results", [])
         if not results:
             break
-        
+            
         for item in results:
             citing.append(parse_openalex_work(item))
             if len(citing) >= max_citing:
@@ -752,16 +751,18 @@ def full_parallel_analysis(issn: str, period: str, max_workers: int = MAX_WORKER
     if progress_callback:
         progress_callback(0, 100, translate('fetching_articles', 'en'))
     
-    # Parse period
+    # ============= ПАРСИНГ ПЕРИОДА (ПОЛНОСТЬЮ ИЗ ПРОВЕРОЧНОГО КОДА) =============
     if ',' in period:
         years = [int(y.strip()) for y in period.split(',') if y.strip().isdigit()]
-        year_filter = "|".join(f"publication_year:{y}" for y in years)
+        if len(years) == 1:
+            year_filter = f"publication_year:{years[0]}"
+        else:
+            year_filter = "|".join(f"publication_year:{y}" for y in years)
     elif '-' in period:
         parts = [x.strip() for x in period.split('-')]
         if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
             start_year = int(parts[0])
             end_year = int(parts[1])
-            # Используем диапазон с дефисом для OpenAlex
             year_filter = f"publication_year:{start_year}-{end_year}"
             years = list(range(start_year, end_year + 1))
         else:
@@ -774,10 +775,13 @@ def full_parallel_analysis(issn: str, period: str, max_workers: int = MAX_WORKER
     if not years or not year_filter:
         return {'error': 'Invalid period format'}
     
-    # 1. Fetch all articles from the journal
+    # ============= ЗАГРУЗКА СТАТЕЙ (ПОЛНОСТЬЮ ИЗ ПРОВЕРОЧНОГО КОДА) =============
+    base_url = "https://api.openalex.org/works"
     articles = []
     cursor = "*"
-    base_url = "https://api.openalex.org/works"
+    
+    if progress_callback:
+        progress_callback(5, 100, translate('fetching_articles', 'en'))
     
     while True:
         data = smart_get(base_url, {
@@ -789,10 +793,14 @@ def full_parallel_analysis(issn: str, period: str, max_workers: int = MAX_WORKER
         
         if not data or not data.get("results"):
             break
-        
+            
         for work in data["results"]:
             parsed = parse_openalex_work(work)
             articles.append(parsed)
+        
+        if progress_callback and len(articles) % 50 == 0:
+            progress_callback(5 + min(15, int(len(articles) / 20)), 100, 
+                            translate('articles_found', 'en', count=len(articles)))
         
         cursor = data.get("meta", {}).get("next_cursor")
         if not cursor:
@@ -804,18 +812,25 @@ def full_parallel_analysis(issn: str, period: str, max_workers: int = MAX_WORKER
     if progress_callback:
         progress_callback(20, 100, translate('articles_found', 'en', count=len(articles)))
     
-    # 2. Fetch citing works in parallel
-    citing_map = {}
-    futures = {}
-    
+    # ============= ПАРАЛЛЕЛЬНЫЙ СБОР ЦИТИРУЮЩИХ (ПОЛНОСТЬЮ ИЗ ПРОВЕРОЧНОГО КОДА) =============
     if progress_callback:
         progress_callback(25, 100, translate('fetching_citations', 'en'))
     
+    citing_map = {}
+    futures = {}
+    
+    # Создаем список статей для обработки (только те, у которых есть цитирования)
+    articles_to_process = []
+    for article in articles:
+        if article.get('cited_by_count', 0) > 0 and article.get('id'):
+            articles_to_process.append(article)
+    
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        for article in articles:
-            if article.get('cited_by_count', 0) > 0 and article.get('id'):
-                future = executor.submit(get_citing_dois, article['id'])
-                futures[future] = article['doi']
+        for article in articles_to_process:
+            # Используем OpenAlex ID
+            oa_id = article['id']
+            future = executor.submit(get_citing_dois_optimized, oa_id)
+            futures[future] = article['doi']
         
         completed = 0
         total = len(futures)
@@ -838,7 +853,7 @@ def full_parallel_analysis(issn: str, period: str, max_workers: int = MAX_WORKER
         total_citing = sum(len(c) for c in citing_map.values())
         progress_callback(85, 100, translate('total_citing_works', 'en', count=total_citing))
     
-    # 3. Process results
+    # ============= ОБРАБОТКА РЕЗУЛЬТАТОВ =============
     if progress_callback:
         progress_callback(90, 100, translate('processing_data', 'en'))
     
@@ -1431,7 +1446,7 @@ class JournalAnalyzer:
 
 def generate_html_report(result: Dict, logo_base64: Optional[str] = None, 
                          theme_colors: Optional[Dict] = None, lang: str = 'en') -> str:
-    """Generate HTML report with all analysis results"""
+    """Generate HTML report with all analysis results and rich visualizations"""
     
     if theme_colors is None:
         theme_colors = {
@@ -1636,6 +1651,100 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                 font-family: 'Times New Roman', serif;
             }}
             
+            /* Progress Bar Styles */
+            .progress-bar-container {{
+                margin: 8px 0;
+                background: #e9ecef;
+                border-radius: 20px;
+                overflow: hidden;
+                height: 22px;
+                box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+                position: relative;
+            }}
+            .progress-bar {{
+                height: 100%;
+                background: linear-gradient(90deg, {primary} 0%, {secondary} 100%);
+                border-radius: 20px;
+                transition: width 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+                display: flex;
+                align-items: center;
+                justify-content: flex-end;
+                padding-right: 8px;
+                color: white;
+                font-size: 11px;
+                font-weight: 600;
+                text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+                min-width: 30px;
+                position: relative;
+                overflow: hidden;
+            }}
+            .progress-bar::after {{
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+                animation: shimmer 2s infinite;
+                transform: translateX(-100%);
+            }}
+            @keyframes shimmer {{
+                0% {{ transform: translateX(-100%); }}
+                100% {{ transform: translateX(100%); }}
+            }}
+            .progress-bar-label {{
+                display: flex;
+                justify-content: space-between;
+                font-size: 12px;
+                color: #555;
+                margin-top: 2px;
+            }}
+            .progress-bar-label .name {{
+                font-weight: 500;
+            }}
+            .progress-bar-label .value {{
+                font-weight: 600;
+                color: {primary};
+            }}
+            
+            /* Horizontal bar chart for rankings */
+            .rank-bar-container {{
+                margin: 4px 0;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }}
+            .rank-bar-label {{
+                min-width: 120px;
+                font-size: 12px;
+                color: #333;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }}
+            .rank-bar-track {{
+                flex: 1;
+                height: 18px;
+                background: #e9ecef;
+                border-radius: 10px;
+                overflow: hidden;
+                position: relative;
+            }}
+            .rank-bar-fill {{
+                height: 100%;
+                background: linear-gradient(90deg, {primary} 0%, {secondary} 100%);
+                border-radius: 10px;
+                transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+            }}
+            .rank-bar-value {{
+                min-width: 40px;
+                font-size: 12px;
+                font-weight: 600;
+                color: {primary};
+                text-align: right;
+            }}
+            
             /* Tables */
             .table-container {{
                 overflow-x: auto;
@@ -1690,6 +1799,11 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                 padding: 6px 12px;
                 font-weight: 500;
                 min-width: 50px;
+                transition: transform 0.2s;
+            }}
+            .heatmap-table td:hover {{
+                transform: scale(1.05);
+                box-shadow: 0 2px 8px rgba(0,0,0,0.15);
             }}
             .heatmap-table th {{
                 text-align: center;
@@ -1842,29 +1956,6 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                 text-decoration: underline;
             }}
             
-            /* Progress bars */
-            .progress-bar-container {{
-                margin: 15px 0;
-                background: #e9ecef;
-                border-radius: 20px;
-                overflow: hidden;
-                height: 20px;
-                box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
-            }}
-            .progress-bar {{
-                height: 100%;
-                background: linear-gradient(90deg, {primary} 0%, {secondary} 100%);
-                border-radius: 20px;
-                transition: width 1s ease;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                color: white;
-                font-size: 11px;
-                font-weight: 600;
-                text-shadow: 0 1px 2px rgba(0,0,0,0.3);
-            }}
-            
             /* Responsive */
             @media print {{
                 .sidebar {{ display: none; }}
@@ -1889,6 +1980,156 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                 padding: 5px 10px;
                 background: rgba({primary_rgb[0]}, {primary_rgb[1]}, {primary_rgb[2]}, 0.1);
                 border-radius: 4px;
+            }}
+            
+            /* Colorful badges for OA status */
+            .oa-badge {{
+                display: inline-block;
+                padding: 2px 10px;
+                border-radius: 12px;
+                font-size: 10px;
+                font-weight: 600;
+            }}
+            .oa-gold {{ background: #FFD700; color: #333; }}
+            .oa-hybrid {{ background: #FFA500; color: #333; }}
+            .oa-green {{ background: #2ECC71; color: white; }}
+            .oa-bronze {{ background: #CD7F32; color: white; }}
+            .oa-closed {{ background: #95A5A6; color: white; }}
+            .oa-diamond {{ background: #00CED1; color: white; }}
+            .oa-unknown {{ background: #BDC3C7; color: #333; }}
+            
+            /* Mini progress bars in tables */
+            .mini-progress {{
+                display: inline-block;
+                width: 60px;
+                height: 6px;
+                background: #e9ecef;
+                border-radius: 3px;
+                overflow: hidden;
+                vertical-align: middle;
+                margin-left: 4px;
+            }}
+            .mini-progress .fill {{
+                height: 100%;
+                background: linear-gradient(90deg, {primary}, {secondary});
+                border-radius: 3px;
+                transition: width 0.5s;
+            }}
+            
+            /* Tooltip for heatmap */
+            .heatmap-tooltip {{
+                position: relative;
+                cursor: help;
+            }}
+            .heatmap-tooltip:hover::after {{
+                content: attr(data-tooltip);
+                position: absolute;
+                bottom: 100%;
+                left: 50%;
+                transform: translateX(-50%);
+                background: #333;
+                color: white;
+                padding: 4px 10px;
+                border-radius: 4px;
+                font-size: 11px;
+                white-space: nowrap;
+                z-index: 100;
+            }}
+            
+            /* Citation velocity indicator */
+            .velocity-indicator {{
+                display: inline-block;
+                padding: 2px 8px;
+                border-radius: 10px;
+                font-size: 11px;
+                font-weight: 600;
+            }}
+            .velocity-high {{ background: #d4edda; color: #155724; }}
+            .velocity-medium {{ background: #fff3cd; color: #856404; }}
+            .velocity-low {{ background: #f8d7da; color: #721c24; }}
+            
+            /* Progress bar for cumulative citations */
+            .cumulative-progress {{
+                height: 14px;
+                background: #e9ecef;
+                border-radius: 7px;
+                overflow: hidden;
+                margin: 2px 0;
+            }}
+            .cumulative-progress .fill {{
+                height: 100%;
+                background: linear-gradient(90deg, {primary}40, {primary});
+                border-radius: 7px;
+                transition: width 0.8s;
+            }}
+            
+            .collaboration-badge {{
+                display: inline-block;
+                padding: 2px 8px;
+                border-radius: 10px;
+                font-size: 10px;
+                font-weight: 600;
+            }}
+            .collab-single {{ background: #d1ecf1; color: #0c5460; }}
+            .collab-international {{ background: #f8d7da; color: #721c24; }}
+            
+            .topic-card {{
+                background: #f8f9fa;
+                border-radius: 6px;
+                padding: 8px 12px;
+                margin: 4px 0;
+                border-left: 3px solid {primary};
+                transition: all 0.2s;
+            }}
+            .topic-card:hover {{
+                transform: translateX(3px);
+                box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            }}
+            .topic-card .topic-name {{
+                font-weight: 500;
+                color: #2c3e50;
+            }}
+            .topic-card .topic-meta {{
+                font-size: 11px;
+                color: #7f8c8d;
+                margin-top: 2px;
+            }}
+            
+            .concept-tag {{
+                display: inline-block;
+                padding: 2px 10px;
+                border-radius: 12px;
+                font-size: 10px;
+                font-weight: 500;
+                margin: 2px;
+                background: rgba({primary_rgb[0]}, {primary_rgb[1]}, {primary_rgb[2]}, 0.12);
+                color: {primary};
+                border: 1px solid rgba({primary_rgb[0]}, {primary_rgb[1]}, {primary_rgb[2]}, 0.2);
+            }}
+            .concept-tag:hover {{
+                background: rgba({primary_rgb[0]}, {primary_rgb[1]}, {primary_rgb[2]}, 0.2);
+            }}
+            
+            .publication-card {{
+                background: #f8f9fa;
+                border-radius: 6px;
+                padding: 10px 14px;
+                margin: 4px 0;
+                border-left: 3px solid {secondary};
+                transition: all 0.2s;
+            }}
+            .publication-card:hover {{
+                transform: translateX(3px);
+                box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            }}
+            .publication-card .pub-title {{
+                font-weight: 500;
+                color: #2c3e50;
+            }}
+            .publication-card .pub-meta {{
+                font-size: 11px;
+                color: #7f8c8d;
+                margin-top: 2px;
             }}
         </style>
     </head>
@@ -1927,6 +2168,11 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
     """
     
     # ==================== OVERVIEW ====================
+    # Calculate max values for progress bars
+    max_citations = metrics.get('total_citations', 1)
+    max_publications = metrics.get('total_publications', 1)
+    max_unique_authors = metrics.get('unique_authors', 1)
+    
     html += f"""
                 <div id="overview" class="section">
                     <div class="section-title"><span class="icon">📊</span> {t('nav_overview')}</div>
@@ -1963,6 +2209,9 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                         <div class="metric-card">
                             <div class="metric-value">{metrics.get('oa_percentage', 0):.1f}%</div>
                             <div class="metric-label">{t('open_access')}</div>
+                            <div class="progress-bar-container" style="height: 6px; margin-top: 4px;">
+                                <div class="progress-bar" style="width: {min(metrics.get('oa_percentage', 0), 100)}%; height: 6px;"></div>
+                            </div>
                         </div>
                         <div class="metric-card">
                             <div class="metric-value">{metrics.get('active_years', 0)}</div>
@@ -1971,6 +2220,9 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                         <div class="metric-card">
                             <div class="metric-value">{metrics.get('unique_authors', 0)}</div>
                             <div class="metric-label">{t('unique_authors')}</div>
+                            <div class="progress-bar-container" style="height: 6px; margin-top: 4px;">
+                                <div class="progress-bar" style="width: {min((metrics.get('unique_authors', 0) / max(metrics.get('total_publications', 1), 1)) * 100, 100)}%; height: 6px;"></div>
+                            </div>
                         </div>
                         <div class="metric-card">
                             <div class="metric-value">{metrics.get('unique_affiliations', 0)}</div>
@@ -1995,6 +2247,27 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                         <div class="metric-card">
                             <div class="metric-value">{metrics.get('international_collab_rate', 0):.1f}%</div>
                             <div class="metric-label">{t('international_collab_rate')}</div>
+                            <div class="progress-bar-container" style="height: 6px; margin-top: 4px;">
+                                <div class="progress-bar" style="width: {min(metrics.get('international_collab_rate', 0), 100)}%; height: 6px;"></div>
+                            </div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-value">{metrics.get('citation_velocity', 0):.1f}</div>
+                            <div class="metric-label">{t('citation_velocity')}</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-value">{metrics.get('price_index', 0):.1f}%</div>
+                            <div class="metric-label">{t('price_index')}</div>
+                            <div class="progress-bar-container" style="height: 6px; margin-top: 4px;">
+                                <div class="progress-bar" style="width: {min(metrics.get('price_index', 0), 100)}%; height: 6px;"></div>
+                            </div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-value">{metrics.get('self_citation_rate', 0):.1f}%</div>
+                            <div class="metric-label">{t('self_citation_rate')}</div>
+                            <div class="progress-bar-container" style="height: 6px; margin-top: 4px;">
+                                <div class="progress-bar" style="width: {min(metrics.get('self_citation_rate', 0), 100)}%; height: 6px; background: linear-gradient(90deg, #e74c3c, #c0392b);"></div>
+                            </div>
                         </div>
                         <div class="metric-card">
                             <div class="metric-value">{metrics.get('unique_citing_authors', 0)}</div>
@@ -2032,13 +2305,30 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
         'unknown': t('oa_unknown')
     }
     
+    oa_colors = {
+        'gold': '#FFD700',
+        'hybrid': '#FFA500',
+        'green': '#2ECC71',
+        'bronze': '#CD7F32',
+        'closed': '#95A5A6',
+        'diamond': '#00CED1',
+        'unknown': '#BDC3C7'
+    }
+    
     oa_breakdown = metrics.get('oa_breakdown', {})
+    total_oa = sum(oa_breakdown.values()) if oa_breakdown else 1
+    
     for status, count in oa_breakdown.items():
         label = oa_labels.get(status, status)
+        color = oa_colors.get(status, '#BDC3C7')
+        percentage = (count / total_oa * 100) if total_oa > 0 else 0
         html += f"""
-                        <div class="metric-card">
+                        <div class="metric-card" style="border-left-color: {color};">
                             <div class="metric-value">{count}</div>
                             <div class="metric-label">{label}</div>
+                            <div class="progress-bar-container" style="height: 6px; margin-top: 4px;">
+                                <div class="progress-bar" style="width: {percentage}%; height: 6px; background: {color};"></div>
+                            </div>
                         </div>
         """
     
@@ -2054,7 +2344,7 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                     <p style="color: #555; margin-bottom: 15px;">Total analyzed: {len(articles)} articles</p>
     """
     
-    # Author Analysis
+    # Author Analysis with progress bars
     html += f"""
                     <div id="author_analysis" class="section" style="padding: 15px 20px; margin: 10px 0;">
                         <h4 style="color: {primary}; margin-bottom: 10px;">👤 {t('nav_authors')}</h4>
@@ -2075,6 +2365,9 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
     """
     
     authors = analyzed_data.get('authors', [])
+    max_author_pubs = max([a.get('publications', 0) for a in authors]) if authors else 1
+    max_author_citations = max([a.get('citations', 0) for a in authors]) if authors else 1
+    
     for idx, author in enumerate(authors[:30], 1):
         orcid = author.get('orcid', '')
         orcid_display = f'<a href="https://orcid.org/{orcid}" target="_blank">{orcid}</a>' if orcid else '—'
@@ -2083,6 +2376,11 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
             affiliations_display += f' +{len(author.get("affiliations", []))-3} more'
         countries_display = ', '.join(author.get('countries', [])[:3])
         
+        pub_count = author.get('publications', 0)
+        cit_count = author.get('citations', 0)
+        pub_pct = (pub_count / max_author_pubs * 100) if max_author_pubs > 0 else 0
+        cit_pct = (cit_count / max_author_citations * 100) if max_author_citations > 0 else 0
+        
         html += f"""
                                     <tr>
                                         <td>{idx}</td>
@@ -2090,8 +2388,14 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                                         <td>{orcid_display}</td>
                                         <td>{affiliations_display}</td>
                                         <td>{countries_display}</td>
-                                        <td>{author.get('publications', 0)}</td>
-                                        <td>{author.get('citations', 0)}</td>
+                                        <td>
+                                            {pub_count}
+                                            <span class="mini-progress"><span class="fill" style="width: {pub_pct}%;"></span></span>
+                                        </td>
+                                        <td>
+                                            {cit_count}
+                                            <span class="mini-progress"><span class="fill" style="width: {cit_pct}%;"></span></span>
+                                        </td>
                                     </tr>
         """
     
@@ -2102,7 +2406,7 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                     </div>
     """
     
-    # Top Affiliations
+    # Top Affiliations with progress bars
     html += f"""
                     <div style="margin: 10px 0;">
                         <h4 style="color: {primary}; margin-bottom: 10px;">🏛️ {t('top_affiliations')}</h4>
@@ -2113,9 +2417,19 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
     """
     
     top_affs = analyzed_data.get('top_affiliations', {})
+    max_aff_count = max(top_affs.values()) if top_affs else 1
+    
     for idx, (aff, count) in enumerate(list(top_affs.items())[:20], 1):
+        pct = (count / max_aff_count * 100) if max_aff_count > 0 else 0
         html += f"""
-                                    <tr><td>{idx}</td><td>{aff}</td><td>{count}</td></tr>
+                                    <tr>
+                                        <td>{idx}</td>
+                                        <td>{aff}</td>
+                                        <td>
+                                            {count}
+                                            <span class="mini-progress"><span class="fill" style="width: {pct}%;"></span></span>
+                                        </td>
+                                    </tr>
         """
     
     html += """
@@ -2125,123 +2439,112 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                     </div>
     """
     
-    # Geographic Analysis
+    # Geographic Analysis with progress bars
     html += f"""
                     <div id="geo_analysis" style="margin-top: 20px;">
                         <h4 style="color: {primary}; margin-bottom: 10px;">🌍 {t('nav_geo')}</h4>
     """
     
     # Unique Countries per Publication (Collaboration Level)
-    html += f"""
-                            <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 6px;">
-                                <h5 style="color: #555; margin-bottom: 8px;">📊 {t('unique_countries_per_publication')}</h5>
-                                <div class="table-container">
-                                    <table>
-                                        <thead><tr><th>{t('rank')}</th><th>{t('countries')}</th><th>{t('publications')}</th></tr></thead>
-                                        <tbody>
-        """
-    
-    # Используем данные из analyzed_data['unique_countries_per_publication']
     unique_countries_pub = analyzed_data.get('unique_countries_per_publication', {})
+    max_country_pub = max(unique_countries_pub.values()) if unique_countries_pub else 1
+    
+    html += f"""
+                        <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 6px;">
+                            <h5 style="color: #555; margin-bottom: 8px;">📊 {t('unique_countries_per_publication')}</h5>
+                            <div style="max-height: 300px; overflow-y: auto;">
+    """
+    
     for idx, (country, count) in enumerate(list(unique_countries_pub.items())[:20], 1):
+        pct = (count / max_country_pub * 100) if max_country_pub > 0 else 0
         html += f"""
-                                            <tr><td>{idx}</td><td>{country or 'Unknown'}</td><td>{count}</td></tr>
+                                <div class="rank-bar-container">
+                                    <span class="rank-bar-label">{idx}. {country or 'Unknown'}</span>
+                                    <div class="rank-bar-track">
+                                        <div class="rank-bar-fill" style="width: {pct}%;"></div>
+                                    </div>
+                                    <span class="rank-bar-value">{count}</span>
+                                </div>
         """
     
     html += """
-                                        </tbody>
-                                    </table>
-                                </div>
                             </div>
+                        </div>
     """
     
     # Authors per Country (Individual Distribution)
-    html += f"""
-                            <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 6px;">
-                                <h5 style="color: #555; margin-bottom: 8px;">📊 {t('authors_per_country')}</h5>
-                                <div class="table-container">
-                                    <table>
-                                        <thead><tr><th>{t('rank')}</th><th>{t('countries')}</th><th>{t('authors')}</th></tr></thead>
-                                        <tbody>
-        """
-    
-    # Используем данные из analyzed_data['authors_per_country']
     authors_per_country = analyzed_data.get('authors_per_country', {})
+    max_author_country = max(authors_per_country.values()) if authors_per_country else 1
+    
+    html += f"""
+                        <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 6px;">
+                            <h5 style="color: #555; margin-bottom: 8px;">📊 {t('authors_per_country')}</h5>
+                            <div style="max-height: 300px; overflow-y: auto;">
+    """
+    
     for idx, (country, count) in enumerate(list(authors_per_country.items())[:20], 1):
+        pct = (count / max_author_country * 100) if max_author_country > 0 else 0
         html += f"""
-                                            <tr><td>{idx}</td><td>{country or 'Unknown'}</td><td>{count}</td></tr>
+                                <div class="rank-bar-container">
+                                    <span class="rank-bar-label">{idx}. {country or 'Unknown'}</span>
+                                    <div class="rank-bar-track">
+                                        <div class="rank-bar-fill" style="width: {pct}%;"></div>
+                                    </div>
+                                    <span class="rank-bar-value">{count}</span>
+                                </div>
         """
     
     html += """
-                                        </tbody>
-                                    </table>
-                                </div>
                             </div>
+                        </div>
     """
     
-    # Collaboration Patterns - используем правильные данные
-    html += f"""
-                            <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 6px;">
-                                <h5 style="color: #555; margin-bottom: 8px;">📊 {t('collaboration_patterns')}</h5>
-        """
-    
+    # Collaboration Patterns
     single_country = 0
     international = 0
     
     for article in articles:
-        # Используем уникальные страны из countries (уже дедуплицированы)
         countries = set(article.get('countries', []))
-        # Убираем пустые значения
         countries = {c for c in countries if c}
         if len(countries) <= 1:
             single_country += 1
         else:
             international += 1
     
-    total = single_country + international
-    if total > 0:
-        single_pct = single_country / total * 100
-        int_pct = international / total * 100
+    total_collab = single_country + international
+    if total_collab > 0:
+        single_pct = single_country / total_collab * 100
+        int_pct = international / total_collab * 100
     else:
         single_pct = 0
         int_pct = 0
     
     html += f"""
-                                <div style="display: flex; gap: 30px; flex-wrap: wrap;">
-                                    <div style="flex: 1; min-width: 150px;">
-                                        <strong>{t('single_country')}:</strong> {single_country} ({single_pct:.1f}%)
-                                        <div class="progress-bar-container" style="height: 12px; width: 100%;">
-                                            <div class="progress-bar" style="width: {single_pct}%; background: #3498db;"></div>
-                                        </div>
-                                    </div>
-                                    <div style="flex: 1; min-width: 150px;">
-                                        <strong>{t('international')}:</strong> {international} ({int_pct:.1f}%)
-                                        <div class="progress-bar-container" style="height: 12px; width: 100%;">
-                                            <div class="progress-bar" style="width: {int_pct}%; background: #e74c3c;"></div>
-                                        </div>
+                        <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 6px;">
+                            <h5 style="color: #555; margin-bottom: 8px;">📊 {t('collaboration_patterns')}</h5>
+                            <div style="display: flex; gap: 30px; flex-wrap: wrap;">
+                                <div style="flex: 1; min-width: 200px;">
+                                    <span class="collaboration-badge collab-single">{t('single_country')}</span>
+                                    <strong>{single_country}</strong> ({single_pct:.1f}%)
+                                    <div class="progress-bar-container" style="height: 14px; width: 100%;">
+                                        <div class="progress-bar" style="width: {single_pct}%; background: #3498db; height: 14px;"></div>
                                     </div>
                                 </div>
-    """
-    
-    html += """
+                                <div style="flex: 1; min-width: 200px;">
+                                    <span class="collaboration-badge collab-international">{t('international')}</span>
+                                    <strong>{international}</strong> ({int_pct:.1f}%)
+                                    <div class="progress-bar-container" style="height: 14px; width: 100%;">
+                                        <div class="progress-bar" style="width: {int_pct}%; background: #e74c3c; height: 14px;"></div>
+                                    </div>
+                                </div>
                             </div>
+                        </div>
     """
     
     # Collaboration Couples
-    html += f"""
-                            <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 6px;">
-                                <h5 style="color: #555; margin-bottom: 8px;">📊 {t('collaboration_couples')}</h5>
-                                <div class="table-container" style="max-height: 300px; overflow-y: auto;">
-                                    <table>
-                                        <thead><tr><th>{t('rank')}</th><th>{t('countries')}</th><th>{t('publications')}</th></tr></thead>
-                                        <tbody>
-        """
-    
     country_pairs = Counter()
     for article in articles:
-        # Используем уникальные страны из countries
         countries = list(set(article.get('countries', [])))
-        # Убираем пустые значения
         countries = [c for c in countries if c]
         if len(countries) >= 2:
             for i in range(len(countries)):
@@ -2249,18 +2552,31 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                     pair = tuple(sorted([countries[i], countries[j]]))
                     country_pairs[pair] += 1
     
+    max_pair_count = max(country_pairs.values()) if country_pairs else 1
+    
+    html += f"""
+                        <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 6px;">
+                            <h5 style="color: #555; margin-bottom: 8px;">📊 {t('collaboration_couples')}</h5>
+                            <div style="max-height: 300px; overflow-y: auto;">
+    """
+    
     for idx, (pair, count) in enumerate(list(country_pairs.most_common(20)), 1):
+        pct = (count / max_pair_count * 100) if max_pair_count > 0 else 0
         html += f"""
-                                            <tr><td>{idx}</td><td>{pair[0]} — {pair[1]}</td><td>{count}</td></tr>
+                                <div class="rank-bar-container">
+                                    <span class="rank-bar-label">{idx}. {pair[0]} — {pair[1]}</span>
+                                    <div class="rank-bar-track">
+                                        <div class="rank-bar-fill" style="width: {pct}%;"></div>
+                                    </div>
+                                    <span class="rank-bar-value">{count}</span>
+                                </div>
         """
     
     html += """
-                                        </tbody>
-                                    </table>
-                                </div>
                             </div>
                         </div>
                     </div>
+                </div>
     """
     
     # ==================== CITATION ANALYSIS ====================
@@ -2286,14 +2602,20 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
     """
     
     if not citation_dynamics.empty:
-        # Сортируем по Publication Year, затем по Citation Year
         citation_dynamics_sorted = citation_dynamics.sort_values(['Publication Year', 'Citation Year'])
+        max_dyn_count = citation_dynamics_sorted['Citations Count'].max() if not citation_dynamics_sorted.empty else 1
+        
         for _, row in citation_dynamics_sorted.iterrows():
+            count = row['Citations Count']
+            pct = (count / max_dyn_count * 100) if max_dyn_count > 0 else 0
             html += f"""
                                     <tr>
                                         <td>{row['Publication Year']}</td>
                                         <td>{row['Citation Year']}</td>
-                                        <td>{row['Citations Count']}</td>
+                                        <td>
+                                            {count}
+                                            <span class="mini-progress"><span class="fill" style="width: {pct}%;"></span></span>
+                                        </td>
                                     </tr>
             """
     else:
@@ -2324,10 +2646,14 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
     
     for key, label in lag_labels.items():
         value = lag_stats.get(key, 0)
+        pct = (value / max(lag_stats.values()) * 100) if max(lag_stats.values()) > 0 else 0
         html += f"""
                             <div class="metric-card" style="padding: 8px 12px;">
                                 <div class="metric-value" style="font-size: 18px;">{value:.1f}</div>
                                 <div class="metric-label" style="font-size: 10px;">{label}</div>
+                                <div class="progress-bar-container" style="height: 4px; margin-top: 4px;">
+                                    <div class="progress-bar" style="width: {pct}%; height: 4px;"></div>
+                                </div>
                             </div>
         """
     
@@ -2336,24 +2662,31 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                     </div>
     """
     
-    # Cumulative Citations
+    # Cumulative Citations with progress bars
     html += f"""
                     <div style="margin-bottom: 20px;">
                         <h4 style="color: {primary}; margin-bottom: 10px;">📈 {t('cumulative_citations')}</h4>
-                        <div class="table-container" style="max-height: 300px; overflow-y: auto;">
-                            <table>
-                                <thead><tr><th>{t('year')}</th><th>{t('cumulative_citations')}</th></tr></thead>
-                                <tbody>
+                        <div style="max-height: 300px; overflow-y: auto;">
     """
     
-    for year in sorted(cumulative.keys()):
-        html += f"""
-                                    <tr><td>{year}</td><td>{cumulative[year]:,}</td></tr>
-        """
+    if cumulative:
+        max_cumulative = max(cumulative.values()) if cumulative else 1
+        for year in sorted(cumulative.keys()):
+            count = cumulative[year]
+            pct = (count / max_cumulative * 100) if max_cumulative > 0 else 0
+            html += f"""
+                            <div class="rank-bar-container">
+                                <span class="rank-bar-label" style="min-width: 60px;">{year}</span>
+                                <div class="rank-bar-track">
+                                    <div class="rank-bar-fill" style="width: {pct}%;"></div>
+                                </div>
+                                <span class="rank-bar-value">{count:,}</span>
+                            </div>
+            """
+    else:
+        html += '<p style="color: #555;">No cumulative citation data available</p>'
     
     html += """
-                                </tbody>
-                            </table>
                         </div>
                     </div>
     """
@@ -2367,17 +2700,14 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
     """
     
     if not heatmap_data.empty:
-        # Get all years
         year_cols = [col for col in heatmap_data.columns if col != 'Publication Year']
         max_val = heatmap_data[year_cols].max().max() if year_cols else 1
         
-        # Build header
         html += '<thead><tr><th>Publication Year \\ Citation Year</th>'
         for col in year_cols:
             html += f'<th>{col}</th>'
         html += '</tr></thead><tbody>'
         
-        # Build rows
         for _, row in heatmap_data.iterrows():
             pub_year = row['Publication Year']
             html += f'<tr><td><strong>{pub_year}</strong></td>'
@@ -2386,7 +2716,7 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                 if value > 0:
                     intensity = min(0.9, value / max_val) if max_val > 0 else 0
                     color = f'rgba({primary_rgb[0]}, {primary_rgb[1]}, {primary_rgb[2]}, {0.2 + intensity * 0.7})'
-                    html += f'<td style="background: {color}; font-weight: bold;">{value}</td>'
+                    html += f'<td style="background: {color}; font-weight: bold;" class="heatmap-tooltip" data-tooltip="{pub_year} → {col}: {value} citations">{value}</td>'
                 else:
                     html += '<td style="color: #ccc;">-</td>'
             html += '</tr>'
@@ -2401,7 +2731,7 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                     </div>
     """
     
-    # Most Cited Publications
+    # Most Cited Publications with progress bars
     html += f"""
                     <div id="most_cited">
                         <h4 style="color: {primary}; margin-bottom: 10px;">🏆 {t('most_cited_publications')}</h4>
@@ -2421,18 +2751,29 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                                 <tbody>
     """
     
+    max_cited_count = max([item.get('citations', 0) for item in most_cited]) if most_cited else 1
+    
     for item in most_cited:
         authors_display = ', '.join(item.get('authors', [])[:3])
         if len(item.get('authors', [])) > 3:
             authors_display += f' +{len(item.get("authors", []))-3} more'
+        
+        cit_count = item.get('citations', 0)
+        pct = (cit_count / max_cited_count * 100) if max_cited_count > 0 else 0
+        cpy = item.get('citations_per_year', 0)
+        
+        velocity_class = 'velocity-high' if cpy > 5 else ('velocity-medium' if cpy > 2 else 'velocity-low')
         
         html += f"""
                                     <tr>
                                         <td>{item.get('rank', '')}</td>
                                         <td class="word-wrap">{item.get('title', 'No title')[:100]}</td>
                                         <td>{item.get('year', '')}</td>
-                                        <td><span class="badge badge-primary">{item.get('citations', 0)}</span></td>
-                                        <td>{item.get('citations_per_year', 0):.1f}</td>
+                                        <td>
+                                            <span class="badge badge-primary">{cit_count}</span>
+                                            <span class="mini-progress"><span class="fill" style="width: {pct}%;"></span></span>
+                                        </td>
+                                        <td><span class="velocity-indicator {velocity_class}">{cpy:.1f}</span></td>
                                         <td>{authors_display}</td>
                                         <td><a href="https://doi.org/{item.get('doi', '')}" target="_blank" class="doi-link">{item.get('doi', '')[:20]}...</a></td>
                                     </tr>
@@ -2479,112 +2820,127 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                     </div>
     """
     
-    # Top Citing Authors
+    # Top Citing Authors with progress bars
     top_authors = citing_works.get('top_authors', {})
     if top_authors:
+        max_author_citing = max(top_authors.values()) if top_authors else 1
         html += f"""
                     <div style="margin: 15px 0;">
                         <h4 style="color: {primary}; margin-bottom: 8px;">👤 {t('top_citing_authors')}</h4>
-                        <div class="table-container" style="max-height: 300px; overflow-y: auto;">
-                            <table>
-                                <thead><tr><th>{t('rank')}</th><th>{t('authors')}</th><th>{t('citations')}</th></tr></thead>
-                                <tbody>
+                        <div style="max-height: 300px; overflow-y: auto;">
         """
         for idx, (author, count) in enumerate(list(top_authors.items())[:20], 1):
+            pct = (count / max_author_citing * 100) if max_author_citing > 0 else 0
             html += f"""
-                                    <tr><td>{idx}</td><td>{author}</td><td>{count}</td></tr>
+                            <div class="rank-bar-container">
+                                <span class="rank-bar-label">{idx}. {author}</span>
+                                <div class="rank-bar-track">
+                                    <div class="rank-bar-fill" style="width: {pct}%;"></div>
+                                </div>
+                                <span class="rank-bar-value">{count}</span>
+                            </div>
             """
         html += """
-                                </tbody>
-                            </table>
                         </div>
                     </div>
         """
     
-    # Top Citing Affiliations
+    # Top Citing Affiliations with progress bars
     top_affs_citing = citing_works.get('top_affiliations', {})
     if top_affs_citing:
+        max_aff_citing = max(top_affs_citing.values()) if top_affs_citing else 1
         html += f"""
                     <div style="margin: 15px 0;">
                         <h4 style="color: {primary}; margin-bottom: 8px;">🏛️ {t('top_citing_affiliations')}</h4>
-                        <div class="table-container" style="max-height: 300px; overflow-y: auto;">
-                            <table>
-                                <thead><tr><th>{t('rank')}</th><th>{t('affiliations')}</th><th>{t('citations')}</th></tr></thead>
-                                <tbody>
+                        <div style="max-height: 300px; overflow-y: auto;">
         """
         for idx, (aff, count) in enumerate(list(top_affs_citing.items())[:20], 1):
+            pct = (count / max_aff_citing * 100) if max_aff_citing > 0 else 0
             html += f"""
-                                    <tr><td>{idx}</td><td>{aff}</td><td>{count}</td></tr>
+                            <div class="rank-bar-container">
+                                <span class="rank-bar-label">{idx}. {aff}</span>
+                                <div class="rank-bar-track">
+                                    <div class="rank-bar-fill" style="width: {pct}%;"></div>
+                                </div>
+                                <span class="rank-bar-value">{count}</span>
+                            </div>
             """
         html += """
-                                </tbody>
-                            </table>
                         </div>
                     </div>
         """
     
-    # Top Citing Countries
+    # Top Citing Countries with progress bars
     top_countries_citing = citing_works.get('top_countries', {})
     if top_countries_citing:
+        max_country_citing = max(top_countries_citing.values()) if top_countries_citing else 1
         html += f"""
                     <div style="margin: 15px 0;">
                         <h4 style="color: {primary}; margin-bottom: 8px;">🌍 {t('top_citing_countries')}</h4>
-                        <div class="table-container" style="max-height: 300px; overflow-y: auto;">
-                            <table>
-                                <thead><tr><th>{t('rank')}</th><th>{t('countries')}</th><th>{t('citations')}</th></tr></thead>
-                                <tbody>
+                        <div style="max-height: 300px; overflow-y: auto;">
         """
         for idx, (country, count) in enumerate(list(top_countries_citing.items())[:20], 1):
+            pct = (count / max_country_citing * 100) if max_country_citing > 0 else 0
             html += f"""
-                                    <tr><td>{idx}</td><td>{country}</td><td>{count}</td></tr>
+                            <div class="rank-bar-container">
+                                <span class="rank-bar-label">{idx}. {country}</span>
+                                <div class="rank-bar-track">
+                                    <div class="rank-bar-fill" style="width: {pct}%;"></div>
+                                </div>
+                                <span class="rank-bar-value">{count}</span>
+                            </div>
             """
         html += """
-                                </tbody>
-                            </table>
                         </div>
                     </div>
         """
     
-    # Top Citing Journals
+    # Top Citing Journals with progress bars
     top_journals_citing = citing_works.get('top_journals', {})
     if top_journals_citing:
+        max_journal_citing = max(top_journals_citing.values()) if top_journals_citing else 1
         html += f"""
                     <div style="margin: 15px 0;">
                         <h4 style="color: {primary}; margin-bottom: 8px;">📖 {t('top_citing_journals')}</h4>
-                        <div class="table-container" style="max-height: 300px; overflow-y: auto;">
-                            <table>
-                                <thead><tr><th>{t('rank')}</th><th>{t('journal')}</th><th>{t('citations')}</th></tr></thead>
-                                <tbody>
+                        <div style="max-height: 300px; overflow-y: auto;">
         """
         for idx, (journal, count) in enumerate(list(top_journals_citing.items())[:20], 1):
+            pct = (count / max_journal_citing * 100) if max_journal_citing > 0 else 0
             html += f"""
-                                    <tr><td>{idx}</td><td>{journal}</td><td>{count}</td></tr>
+                            <div class="rank-bar-container">
+                                <span class="rank-bar-label">{idx}. {journal}</span>
+                                <div class="rank-bar-track">
+                                    <div class="rank-bar-fill" style="width: {pct}%;"></div>
+                                </div>
+                                <span class="rank-bar-value">{count}</span>
+                            </div>
             """
         html += """
-                                </tbody>
-                            </table>
                         </div>
                     </div>
         """
     
-    # Top Citing Publishers
+    # Top Citing Publishers with progress bars
     top_publishers_citing = citing_works.get('top_publishers', {})
     if top_publishers_citing:
+        max_publisher_citing = max(top_publishers_citing.values()) if top_publishers_citing else 1
         html += f"""
                     <div style="margin: 15px 0;">
                         <h4 style="color: {primary}; margin-bottom: 8px;">🏢 {t('top_citing_publishers')}</h4>
-                        <div class="table-container" style="max-height: 300px; overflow-y: auto;">
-                            <table>
-                                <thead><tr><th>{t('rank')}</th><th>{t('publisher')}</th><th>{t('citations')}</th></tr></thead>
-                                <tbody>
+                        <div style="max-height: 300px; overflow-y: auto;">
         """
         for idx, (publisher, count) in enumerate(list(top_publishers_citing.items())[:20], 1):
+            pct = (count / max_publisher_citing * 100) if max_publisher_citing > 0 else 0
             html += f"""
-                                    <tr><td>{idx}</td><td>{publisher}</td><td>{count}</td></tr>
+                            <div class="rank-bar-container">
+                                <span class="rank-bar-label">{idx}. {publisher}</span>
+                                <div class="rank-bar-track">
+                                    <div class="rank-bar-fill" style="width: {pct}%;"></div>
+                                </div>
+                                <span class="rank-bar-value">{count}</span>
+                            </div>
             """
         html += """
-                                </tbody>
-                            </table>
                         </div>
                     </div>
         """
@@ -2601,6 +2957,8 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
     
     topics_list = topics_data.get('topics', [])
     if topics_list:
+        max_total_norm = max([item.get('total_norm', 0) for item in topics_list]) if topics_list else 1
+        
         html += f"""
                     <h4 style="color: {primary}; margin-bottom: 10px;">{t('topics_analysis')}</h4>
                     <div class="table-container" style="max-height: 500px; overflow-y: auto;">
@@ -2621,6 +2979,9 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
         """
         
         for item in topics_list[:30]:
+            total_norm = item.get('total_norm', 0)
+            pct = (total_norm / max_total_norm * 100) if max_total_norm > 0 else 0
+            
             html += f"""
                                 <tr>
                                     <td>{item.get('topic', '')}</td>
@@ -2628,7 +2989,10 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                                     <td>{item.get('citing_count', 0)}</td>
                                     <td>{item.get('analyzed_norm', 0):.3f}</td>
                                     <td>{item.get('citing_norm', 0):.3f}</td>
-                                    <td><strong>{item.get('total_norm', 0):.3f}</strong></td>
+                                    <td>
+                                        <strong>{total_norm:.3f}</strong>
+                                        <span class="mini-progress"><span class="fill" style="width: {pct}%;"></span></span>
+                                    </td>
                                     <td>{item.get('first_year', '')}</td>
                                     <td>{item.get('peak_year', '')}</td>
                                 </tr>
@@ -2640,7 +3004,7 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                     </div>
         """
     
-    # Top Concepts, Subtopics, Fields, Domains
+    # Top Concepts, Subtopics, Fields, Domains with progress bars
     concept_sections = [
         ('top_concepts', 'Concept'),
         ('top_subtopics', 'Subtopic'),
@@ -2651,21 +3015,24 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
     for section_key, label in concept_sections:
         data = topics_data.get(section_key, {})
         if data:
+            max_data = max(data.values()) if data else 1
             html += f"""
                     <div style="margin: 15px 0;">
                         <h4 style="color: {primary}; margin-bottom: 8px;">📊 Top {label}s</h4>
-                        <div class="table-container" style="max-height: 300px; overflow-y: auto;">
-                            <table>
-                                <thead><tr><th>{t('rank')}</th><th>{label}</th><th>{t('citations')}</th></tr></thead>
-                                <tbody>
+                        <div style="max-height: 300px; overflow-y: auto;">
             """
             for idx, (name, count) in enumerate(list(data.items())[:20], 1):
+                pct = (count / max_data * 100) if max_data > 0 else 0
                 html += f"""
-                                    <tr><td>{idx}</td><td>{name}</td><td>{count}</td></tr>
+                            <div class="rank-bar-container">
+                                <span class="rank-bar-label">{idx}. {name}</span>
+                                <div class="rank-bar-track">
+                                    <div class="rank-bar-fill" style="width: {pct}%;"></div>
+                                </div>
+                                <span class="rank-bar-value">{count}</span>
+                            </div>
                 """
             html += """
-                                </tbody>
-                            </table>
                         </div>
                     </div>
             """
@@ -2685,7 +3052,6 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                         <div style="margin: 10px 0;">
             """
         
-        # Сортируем detailed_citations по количеству цитирований (от большего к меньшему)
         sorted_detailed = sorted(
             detailed_citations.items(),
             key=lambda x: x[1].get('total_citations', 0),
@@ -2694,11 +3060,18 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
         
         for doi, data in sorted_detailed:
             pub_id = doi.replace('/', '_').replace('.', '_')
+            total_cit = data.get('total_citations', 0)
+            
+            # Progress bar for citation count relative to max
+            max_cit_detailed = max([d.get('total_citations', 0) for _, d in sorted_detailed]) if sorted_detailed else 1
+            pct = (total_cit / max_cit_detailed * 100) if max_cit_detailed > 0 else 0
+            
             html += f"""
                         <div class="collapser" onclick="toggleCitations('{pub_id}')">
                             <strong>{html_module.escape(data.get('title', 'No title')[:80])}</strong>
                             <span class="badge badge-info">{data.get('year', '')}</span>
-                            <span class="citation-count">{data.get('total_citations', 0)} citations</span>
+                            <span class="citation-count">{total_cit} citations</span>
+                            <span class="mini-progress" style="width: 80px;"><span class="fill" style="width: {pct}%;"></span></span>
                             <span style="font-size: 11px; color: #666; margin-left: 5px;">DOI: {doi[:30]}...</span>
                             <span style="font-size: 11px; color: #666; margin-left: auto;">▼ {t('click_to_toggle')}</span>
                         </div>
@@ -2706,22 +3079,34 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
             """
             
             for citing in data.get('citations', []):
+                citing_title = html_module.escape((citing.get('citing_title') or 'No title')[:100] if citing.get('citing_title') else 'No title')
+                citing_journal = html_module.escape(citing.get('citing_journal', 'Unknown'))
+                citing_year = citing.get('citing_year', '')
+                citing_date = citing.get('citing_date', '')[:10] if citing.get('citing_date') else ''
+                citation_lag = citing.get('citation_lag', 'N/A')
+                citing_doi = citing.get('citing_doi', '')
+                citing_authors = ', '.join(citing.get('citing_authors', [])[:5])
+                if len(citing.get('citing_authors', [])) > 5:
+                    citing_authors += ' + more'
+                citing_countries = ', '.join(citing.get('citing_countries', [])[:3])
+                citing_topics = ', '.join(citing.get('citing_topics', [])[:3])
+                
                 html += f"""
                             <div class="citation-detail">
-                                <div><strong>{html_module.escape((citing.get('citing_title') or 'No title')[:100] if citing.get('citing_title') else 'No title')}</strong></div>
+                                <div><strong>{citing_title}</strong></div>
                                 <div class="cite-meta">
-                                    <strong>{t('citing_journal')}:</strong> {html_module.escape(citing.get('citing_journal', 'Unknown'))} | 
-                                    <strong>{t('citing_year')}:</strong> {citing.get('citing_year', '')} | 
-                                    <strong>{t('citing_date')}:</strong> {citing.get('citing_date', '')[:10]} |
-                                    <strong>{t('citation_lag')}:</strong> {citing.get('citation_lag', 'N/A')} years
+                                    <strong>{t('citing_journal')}:</strong> {citing_journal} | 
+                                    <strong>{t('citing_year')}:</strong> {citing_year} | 
+                                    <strong>{t('citing_date')}:</strong> {citing_date} |
+                                    <strong>{t('citation_lag')}:</strong> {citation_lag} years
                                 </div>
                                 <div class="cite-meta">
-                                    <strong>{t('authors')}:</strong> {', '.join(citing.get('citing_authors', [])[:5])}{' + more' if len(citing.get('citing_authors', [])) > 5 else ''} |
-                                    <strong>{t('countries')}:</strong> {', '.join(citing.get('citing_countries', [])[:3])} |
-                                    <strong>{t('topics')}:</strong> {', '.join(citing.get('citing_topics', [])[:3])}
+                                    <strong>{t('authors')}:</strong> {citing_authors} |
+                                    <strong>{t('countries')}:</strong> {citing_countries} |
+                                    <strong>{t('topics')}:</strong> {citing_topics}
                                 </div>
                                 <div class="cite-meta">
-                                    <a href="https://doi.org/{citing.get('citing_doi', '')}" target="_blank" class="doi-link">DOI: {citing.get('citing_doi', '')}</a>
+                                    <a href="https://doi.org/{citing_doi}" target="_blank" class="doi-link">DOI: {citing_doi}</a>
                                 </div>
                             </div>
                 """
@@ -2799,6 +3184,8 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                             <tbody>
     """
     
+    max_citations_all = max([p.get('citations', 0) for p in all_publications]) if all_publications else 1
+    
     for idx, pub in enumerate(all_publications, 1):
         authors_display = ', '.join(pub.get('authors', [])[:3])
         if len(pub.get('authors', [])) > 3:
@@ -2814,6 +3201,11 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
         affiliations_value = ', '.join(pub.get('affiliations', []))
         citations_value = pub.get('citations', 0)
         
+        pct = (citations_value / max_citations_all * 100) if max_citations_all > 0 else 0
+        cpy = pub.get('citations_per_year', 0)
+        
+        velocity_class = 'velocity-high' if cpy > 5 else ('velocity-medium' if cpy > 2 else 'velocity-low')
+        
         html += f"""
                                     <tr data-year="{year_value}" data-authors="{authors_value}" data-affiliations="{affiliations_value}" data-title="{title_value}" data-citations="{citations_value}" data-doi="{doi_value}">
                                         <td>{idx}</td>
@@ -2821,8 +3213,11 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
                                         <td>{pub.get('year', '')}</td>
                                         <td>{authors_display}</td>
                                         <td>{affs_display}</td>
-                                        <td><span class="badge badge-primary">{pub.get('citations', 0)}</span></td>
-                                        <td>{pub.get('citations_per_year', 0):.1f}</td>
+                                        <td>
+                                            <span class="badge badge-primary">{citations_value}</span>
+                                            <span class="mini-progress"><span class="fill" style="width: {pct}%;"></span></span>
+                                        </td>
+                                        <td><span class="velocity-indicator {velocity_class}">{cpy:.1f}</span></td>
                                         <td><a href="https://doi.org/{pub.get('doi', '')}" target="_blank" class="doi-link">{pub.get('doi', '')[:30]}...</a></td>
                                     </tr>
         """
@@ -2922,6 +3317,15 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
             // Auto-filter on load
             document.addEventListener('DOMContentLoaded', function() {{
                 filterAllPublications();
+                
+                // Animate progress bars on load
+                document.querySelectorAll('.progress-bar, .rank-bar-fill, .mini-progress .fill').forEach(function(el) {{
+                    var width = el.style.width;
+                    el.style.width = '0%';
+                    setTimeout(function() {{
+                        el.style.width = width;
+                    }}, 100);
+                }});
             }});
         </script>
     </body>
@@ -2929,7 +3333,6 @@ def generate_html_report(result: Dict, logo_base64: Optional[str] = None,
     """
     
     return html
-
 # ============================================
 # STREAMLIT APPLICATION
 # ============================================
