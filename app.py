@@ -615,7 +615,7 @@ def parse_openalex_work(work: dict) -> dict:
     
     for authorship in work.get('authorships', []):
         author = authorship.get('author', {})
-        author_name = author.get('display_name', '')
+        author_name = authorship.get('raw_author_name', '') or author.get('display_name', '')
         author_orcid = author.get('orcid', '')
         
         if author_name:
