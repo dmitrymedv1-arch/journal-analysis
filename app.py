@@ -1762,7 +1762,7 @@ def get_citing_dois(oa_id: str, progress_callback: Optional[callable] = None) ->
     
     return citing[:MAX_CITING_PER_PAPER]
 
-ddef get_metadata_for_dois_parallel(dois: List[str], 
+def get_metadata_for_dois_parallel(dois: List[str], 
                                    progress_callback: Optional[callable] = None,
                                    stop_callback: Optional[callable] = None,
                                    max_workers: int = MAX_WORKERS) -> Dict[str, Dict]:
