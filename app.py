@@ -3430,7 +3430,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                 border-radius: 8px;
                 border: 1px solid #e9ecef;
                 display: inline-block;
-            }
+            }}
             .filter-stats strong {{
                 color: #2C3E50;
             }}
