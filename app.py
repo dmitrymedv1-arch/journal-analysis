@@ -3513,6 +3513,14 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                 </div>
                 
                 <!-- Citation Network Heatmap -->
+                heatmap_data = citation.get('heatmap', [])
+                all_values = []
+                for row in heatmap_data:
+                    for year, val in row.items():
+                        if year != 'publication_year' and isinstance(val, (int, float)):
+                            all_values.append(val)
+                max_val = max(all_values) if all_values else 0
+                
                 <h3 style="color: {primary}; margin-top: 20px;">{t('citation_network_heatmap')}</h3>
                 <div class="scrollable-table" style="max-height: 500px;">
                     <table>
