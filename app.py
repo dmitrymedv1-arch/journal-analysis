@@ -256,7 +256,7 @@ LANG = {
         'show_original_report': 'Show original report (no filtering)',
         'temporal_gap_use_filter': 'Use year filter for report',
         # ====== НОВЫЕ КЛЮЧИ ДЛЯ JOURNAL ANALYSIS ======
-        'journal_analysis_title': '📊 Journal Analysis Report',
+        'journal_analysis_title': 'Journal Analysis Report',
         'stage_fetch_publications': 'Stage 1: Fetching journal publications',
         'stage_fetch_citing': 'Stage 2: Fetching citing works',
         'stage_fetch_pub_metadata': 'Stage 3: Fetching publication metadata',
@@ -364,8 +364,8 @@ LANG = {
         'analysis_period_label': 'Period: {period}',
         'reset_analysis': 'Reset Analysis',
         'days': 'days',
-        'analysis_data_from_cache': '📦 Using cached data from previous analysis',
-        'regenerate_report': '🔄 Regenerate Report',
+        'analysis_data_from_cache': 'Using cached data from previous analysis',
+        'regenerate_report': 'Regenerate Report',
     },
     'ru': {
         'app_title': 'Advanced Journal Analysis Tool',
@@ -546,7 +546,7 @@ LANG = {
         'show_original_report': 'Показать исходный отчет (без фильтрации)',
         'temporal_gap_use_filter': 'Использовать фильтр по годам для отчета',
         # ====== НОВЫЕ КЛЮЧИ ДЛЯ JOURNAL ANALYSIS (РУССКИЙ) ======
-        'journal_analysis_title': '📊 Отчет анализа журнала',
+        'journal_analysis_title': 'Отчет анализа журнала',
         'stage_fetch_publications': 'Этап 1: Получение публикаций журнала',
         'stage_fetch_citing': 'Этап 2: Получение цитирующих работ',
         'stage_fetch_pub_metadata': 'Этап 3: Получение метаданных публикаций',
@@ -1171,6 +1171,60 @@ def apply_theme_css(base_color: str, accent_color: str = None):
             background: #f8d7da;
             color: #721c24;
         }}
+        
+        /* ===== COLOR SCALE FOR NUMERIC VALUES ===== */
+        .color-scale-value {{
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 8px;
+            font-weight: 600;
+            text-align: center;
+            min-width: 30px;
+            transition: all 0.2s;
+        }}
+        .color-scale-value:hover {{
+            transform: scale(1.05);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }}
+        
+        /* ===== HEATMAP CELL COLORS ===== */
+        .heatmap-cell {{
+            text-align: center;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            transition: all 0.3s;
+            min-width: 40px;
+        }}
+        .heatmap-cell:hover {{
+            transform: scale(1.05);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            z-index: 5;
+        }}
+        
+        /* ===== SORTABLE HEADERS ===== */
+        th.sortable {{
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+        }}
+        th.sortable:hover {{
+            opacity: 0.85;
+        }}
+        th.sortable::after {{
+            content: ' ↕';
+            opacity: 0.4;
+            font-size: 10px;
+        }}
+        th.sortable.asc::after {{
+            content: ' ↑';
+            opacity: 0.8;
+        }}
+        th.sortable.desc::after {{
+            content: ' ↓';
+            opacity: 0.8;
+        }}
     </style>
     """
     st.markdown(theme_css, unsafe_allow_html=True)
@@ -1280,6 +1334,171 @@ def update_colored_progress(progress_percent: float, status_text: str = "", colo
     """
     
     return progress_html
+
+# ============================================
+# НОВЫЕ ФУНКЦИИ ДЛЯ РАБОТЫ С НАЗВАНИЯМИ ЖУРНАЛОВ
+# ============================================
+
+def get_journal_by_issn(issn: str) -> Dict:
+    """
+    Get journal information by ISSN through OpenAlex API
+    Returns dict with journal name and metadata
+    """
+    # Clean ISSN
+    issn = issn.strip().replace("-", "").replace(" ", "")
+    if len(issn) == 8:
+        issn = f"{issn[:4]}-{issn[4:]}"
+    
+    url = f"https://api.openalex.org/sources/issn:{issn}"
+    
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        return {
+            "success": True,
+            "display_name": data.get("display_name"),
+            "issn_l": data.get("issn_l"),
+            "issn": data.get("issn"),
+            "type": data.get("type"),
+            "works_count": data.get("works_count"),
+            "openalex_id": data.get("id"),
+            "homepage_url": data.get("homepage_url"),
+            "abbreviation": data.get("abbreviation"),
+            "raw_data": data
+        }
+        
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 404:
+            return {"success": False, "error": "Journal with this ISSN not found in OpenAlex"}
+        else:
+            return {"success": False, "error": f"HTTP error: {e}"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+def generate_journal_abbreviation(full_name: str) -> str:
+    """
+    Generate abbreviation from full journal name
+    - If 1 word: return as is
+    - If 2+ words: take first letters of each significant word
+    """
+    if not full_name:
+        return "Journal"
+    
+    # Clean up the name
+    name = full_name.strip()
+    
+    # Split into words
+    words = name.split()
+    
+    # If only one word, return as is
+    if len(words) == 1:
+        return name
+    
+    # Stop words to skip
+    stop_words = {'of', 'and', 'the', 'for', 'on', 'at', 'to', 'in', 'with', 'without', 'by', 'from', 'as', 'an', 'a'}
+    
+    # Take first letters of significant words
+    abbreviation_parts = []
+    for word in words:
+        # Skip stop words
+        if word.lower() in stop_words:
+            continue
+        # Take first letter, uppercase
+        if word:
+            abbreviation_parts.append(word[0].upper())
+    
+    # If all words were stop words, use first letters of all words
+    if not abbreviation_parts:
+        abbreviation_parts = [w[0].upper() for w in words if w]
+    
+    # If abbreviation is too short (1 letter), use first 2 letters of first word
+    if len(abbreviation_parts) == 1:
+        first_word = words[0]
+        if len(first_word) >= 2:
+            return first_word[:2].upper()
+        return first_word.upper()
+    
+    return ''.join(abbreviation_parts)
+
+def get_color_for_value(value: float, max_value: float, min_value: float = 0) -> str:
+    """
+    Get color from green-yellow-red scale based on value relative to max
+    Green = highest value, Yellow = middle, Red = lowest
+    """
+    if max_value == min_value:
+        return "rgba(46, 204, 113, 0.15)"
+    
+    # Normalize value to 0-1 range
+    normalized = (value - min_value) / (max_value - min_value)
+    
+    # Clamp to 0-1
+    normalized = max(0, min(1, normalized))
+    
+    # Define colors: Red (0) -> Yellow (0.5) -> Green (1)
+    if normalized < 0.5:
+        # Red to Yellow: (255,0,0) to (255,255,0)
+        ratio = normalized / 0.5
+        r = 255
+        g = int(255 * ratio)
+        b = 0
+    else:
+        # Yellow to Green: (255,255,0) to (0,255,0)
+        ratio = (normalized - 0.5) / 0.5
+        r = int(255 * (1 - ratio))
+        g = 255
+        b = 0
+    
+    # Return with semi-transparent alpha
+    return f"rgba({r}, {g}, {b}, 0.25)"
+
+def get_color_for_value_text(value: float, max_value: float, min_value: float = 0) -> str:
+    """
+    Get color from green-yellow-red scale for text (more opaque for readability)
+    """
+    if max_value == min_value:
+        return "rgba(46, 204, 113, 0.3)"
+    
+    normalized = (value - min_value) / (max_value - min_value)
+    normalized = max(0, min(1, normalized))
+    
+    if normalized < 0.5:
+        ratio = normalized / 0.5
+        r = 200
+        g = int(200 * ratio)
+        b = 50
+    else:
+        ratio = (normalized - 0.5) / 0.5
+        r = int(200 * (1 - ratio))
+        g = 200
+        b = 50
+    
+    return f"rgba({r}, {g}, {b}, 0.35)"
+
+def get_heatmap_cell_color(value: float, max_value: float) -> str:
+    """
+    Get color for heatmap cells using green-yellow-red scale
+    """
+    if max_value == 0:
+        return "rgba(200, 200, 200, 0.15)"
+    
+    normalized = value / max_value
+    normalized = max(0, min(1, normalized))
+    
+    if normalized < 0.5:
+        ratio = normalized / 0.5
+        r = 200
+        g = int(200 * ratio)
+        b = 50
+    else:
+        ratio = (normalized - 0.5) / 0.5
+        r = int(200 * (1 - ratio))
+        g = 200
+        b = 50
+    
+    # More opaque for heatmap
+    return f"rgba({r}, {g}, {b}, 0.45)"
 
 # ============================================
 # НАСТРОЙКА НАУЧНОГО СТИЛЯ ДЛЯ ГРАФИКОВ
@@ -1825,6 +2044,8 @@ class JournalAnalyzer:
         self.citations_metadata = {}  # расширенные данные по цитирующим
         self.analysis_results = {}
         self.lock = Lock()
+        self.journal_name = None
+        self.journal_abbreviation = None
         
     def parse_period(self):
         """Parse period string to years list or range"""
@@ -1846,6 +2067,22 @@ class JournalAnalyzer:
             return int(period_str)
         except:
             return None
+    
+    def get_journal_info(self):
+        """Get journal information from OpenAlex"""
+        result = get_journal_by_issn(self.issn)
+        if result.get('success'):
+            self.journal_name = result.get('display_name')
+            self.journal_abbreviation = generate_journal_abbreviation(self.journal_name)
+            if SHOW_DEBUG_LOGS:
+                print(f"📖 Журнал: {self.journal_name} ({self.journal_abbreviation})")
+        else:
+            self.journal_name = f"Journal {self.issn}"
+            self.journal_abbreviation = f"J-{self.issn[:4]}"
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ Не удалось получить название журнала: {result.get('error', 'Unknown error')}")
+        
+        return self.journal_name, self.journal_abbreviation
     
     def get_year_filter(self):
         """Get year filter for OpenAlex API"""
@@ -2445,15 +2682,27 @@ class JournalAnalyzer:
                     except:
                         pass
         
-        # Sort dynamics by publication year and citation year
-        sorted_dynamics = []
-        for pub_year in sorted(dynamics.keys()):
-            for cite_year in sorted(dynamics[pub_year].keys()):
-                sorted_dynamics.append({
+        # Build complete dynamics matrix with zeros for all year combinations
+        all_pub_years = sorted(dynamics.keys())
+        all_cite_years = sorted(set([y for sub in dynamics.values() for y in sub.keys()]))
+        
+        # If no citation years, use publication years
+        if not all_cite_years:
+            all_cite_years = all_pub_years
+        
+        # Create complete matrix with zeros
+        complete_dynamics = []
+        for pub_year in all_pub_years:
+            for cite_year in all_cite_years:
+                value = dynamics[pub_year].get(cite_year, 0)
+                complete_dynamics.append({
                     'publication_year': pub_year,
                     'citation_year': cite_year,
-                    'citations_count': dynamics[pub_year][cite_year]
+                    'citations_count': value
                 })
+        
+        # Sort dynamics by publication year and citation year
+        sorted_dynamics = sorted(complete_dynamics, key=lambda x: (x['publication_year'], x['citation_year']))
         
         # Cumulative sorted by year
         sorted_cumulative = sorted(cumulative.items())
@@ -2480,6 +2729,9 @@ class JournalAnalyzer:
         # Heatmap data
         heatmap_data = []
         years = sorted(set(list(heatmap.keys()) + [y for sub in heatmap.values() for y in sub.keys()]))
+        if not years:
+            years = all_pub_years
+        
         for pub_year in years:
             row = {'publication_year': pub_year}
             for cite_year in years:
@@ -2756,6 +3008,10 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
     publications = analyzer.publications
     citing_works = analyzer.citing_works
     
+    # Get journal name and abbreviation
+    journal_name = analyzer.journal_name or f"Journal {analyzer.issn}"
+    journal_abbr = analyzer.journal_abbreviation or generate_journal_abbreviation(journal_name)
+    
     if theme_colors is None:
         theme_colors = {
             'primary': '#667eea',
@@ -2807,25 +3063,27 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
     
     all_publications.sort(key=lambda x: x.get('year', 0), reverse=True)
     
-    # Функции для heatmap
-    def get_heatmap_color(value: int, max_value: int) -> str:
-        if max_value == 0:
-            return '#f0f0f0'
-        ratio = value / max_value
-        p_rgb = hex_to_rgb(primary)
-        s_rgb = hex_to_rgb(secondary)
-        r = int(s_rgb[0] + (p_rgb[0] - s_rgb[0]) * ratio)
-        g = int(s_rgb[1] + (p_rgb[1] - s_rgb[1]) * ratio)
-        b = int(s_rgb[2] + (p_rgb[2] - s_rgb[2]) * ratio)
-        return f'rgb({r},{g},{b})'
+    # Helper function for color scale values in HTML
+    def get_color_scale_html(value, max_val, min_val=0, unit=''):
+        color = get_color_for_value(value, max_val, min_val)
+        bg_color = get_color_for_value_text(value, max_val, min_val)
+        return f'<span class="color-scale-value" style="background: {bg_color}; color: #1a1a1a;">{value}{unit}</span>'
     
-    def get_heatmap_text_color(value: int, max_value: int) -> str:
-        if max_value == 0:
-            return '#999'
-        ratio = value / max_value
-        return '#fff' if ratio > 0.5 else '#333'
+    # Max values for color scales
+    max_publications = max([a.get('publications', 0) for a in author_analysis.get('top_authors', [])]) if author_analysis.get('top_authors') else 1
+    max_citations_auth = max([a.get('citations', 0) for a in author_analysis.get('top_authors', [])]) if author_analysis.get('top_authors') else 1
+    max_aff_count = max([a.get('count', 0) for a in affiliation_analysis.get('top_affiliations', [])]) if affiliation_analysis.get('top_affiliations') else 1
+    max_country_count = max([c for c in geographic.get('authors_per_country', {}).values()]) if geographic.get('authors_per_country') else 1
+    max_citation_count = max([r.get('citations_count', 0) for r in citation.get('dynamics', [])]) if citation.get('dynamics') else 1
+    max_citing_auth = max([a.get('count', 0) for a in citing.get('top_authors', [])]) if citing.get('top_authors') else 1
+    max_citing_aff = max([a.get('count', 0) for a in citing.get('top_affiliations', [])]) if citing.get('top_affiliations') else 1
+    max_citing_country = max([a.get('count', 0) for a in citing.get('top_countries', [])]) if citing.get('top_countries') else 1
+    max_citing_journal = max([a.get('count', 0) for a in citing.get('top_journals', [])]) if citing.get('top_journals') else 1
+    max_citing_pub = max([a.get('count', 0) for a in citing.get('top_publishers', [])]) if citing.get('top_publishers') else 1
+    max_most_cited = max([p.get('citations', 0) for p in citation.get('most_cited', [])]) if citation.get('most_cited') else 1
+    max_most_cited_py = max([p.get('citations_per_year', 0) for p in citation.get('most_cited', [])]) if citation.get('most_cited') else 1
     
-    # Максимальное значение для heatmap
+    # Heatmap max
     heatmap_max = 0
     for row in citation.get('heatmap', []):
         for year, val in row.items():
@@ -2843,7 +3101,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
     <html>
     <head>
         <meta charset="UTF-8">
-        <title>{t('journal_analysis_title')}</title>
+        <title>{journal_name}</title>
         <style>
             * {{ margin: 0; padding: 0; box-sizing: border-box; }}
             body {{
@@ -2887,6 +3145,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                 border-bottom: 2px solid rgba(255,255,255,0.3);
                 padding-bottom: 15px;
                 letter-spacing: 0.5px;
+                word-wrap: break-word;
             }}
             .sidebar .nav-section {{
                 margin-top: 5px;
@@ -2958,7 +3217,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                 gap: 20px;
             }}
             .header-left img {{
-                max-height: 70px;
+                max-height: 105px;
                 filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
             }}
             .header h1 {{
@@ -2968,6 +3227,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                 font-size: 28px;
                 font-weight: 700;
                 text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                word-wrap: break-word;
             }}
             .header .subtitle {{
                 opacity: 0.9;
@@ -3236,6 +3496,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
             th.sortable {{
                 cursor: pointer;
                 user-select: none;
+                position: relative;
             }}
             th.sortable:hover {{
                 opacity: 0.9;
@@ -3244,6 +3505,14 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                 content: ' ↕';
                 opacity: 0.5;
                 font-size: 10px;
+            }}
+            th.sortable.asc::after {{
+                content: ' ↑';
+                opacity: 0.8;
+            }}
+            th.sortable.desc::after {{
+                content: ' ↓';
+                opacity: 0.8;
             }}
             td {{
                 padding: 8px 14px;
@@ -3475,6 +3744,21 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                 color: #7F8C8D;
             }}
             
+            /* ===== COLOR SCALE FOR NUMERIC VALUES ===== */
+            .color-scale-value {{
+                display: inline-block;
+                padding: 2px 10px;
+                border-radius: 8px;
+                font-weight: 600;
+                text-align: center;
+                min-width: 30px;
+                transition: all 0.2s;
+            }}
+            .color-scale-value:hover {{
+                transform: scale(1.05);
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            }}
+            
             /* ===== RESPONSIVE ===== */
             @media print {{
                 .sidebar {{ display: none; }}
@@ -3530,11 +3814,17 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
             .footer a:hover {{
                 text-decoration: underline;
             }}
+            
+            .orcid-full {{
+                font-family: monospace;
+                font-size: 12px;
+                color: #1a1a1a;
+            }}
         </style>
     </head>
     <body>
         <div class="sidebar">
-            <h3>📊 {t('app_title')}</h3>
+            <h3>{journal_abbr}</h3>
             
             <div class="nav-section">
                 <div class="nav-section-title">Main</div>
@@ -3562,9 +3852,9 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
             <!-- HEADER -->
             <div class="header">
                 <div class="header-left">
-                    {f'<img src="data:image/png;base64,{app_logo_base64}" alt="App Logo">' if app_logo_base64 else ''}
+                    {f'<img src="data:image/png;base64,{app_logo_base64}" alt="App Logo" style="max-height:105px;">' if app_logo_base64 else ''}
                     <div>
-                        <h1>{t('journal_analysis_title')}</h1>
+                        <h1>{journal_name}</h1>
                         <div class="subtitle">
                             {t('journal_issn_label', issn=analyzer.issn)} | 
                             {t('analysis_period_label', period=str(analyzer.period))}
@@ -3754,29 +4044,29 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                     <!-- Author Analysis -->
                     <h3 style="color: {primary}; font-size: 16px;">{t('author_analysis')}</h3>
                     <div class="scrollable-table">
-                        <table>
+                        <table id="author_table">
                             <thead>
                                 <tr>
                                     <th class="sortable" onclick="sortTable('author_table', 0)">{t('rank')}</th>
                                     <th class="sortable" onclick="sortTable('author_table', 1)">{t('authors')}</th>
-                                    <th>ORCID</th>
+                                    <th class="sortable" onclick="sortTable('author_table', 2)">ORCID</th>
                                     <th>{t('affiliations')}</th>
                                     <th>{t('countries')}</th>
                                     <th class="sortable" onclick="sortTable('author_table', 5)">{t('publications_count')}</th>
                                     <th class="sortable" onclick="sortTable('author_table', 6)">{t('citations_count')}</th>
                                 </tr>
                             </thead>
-                            <tbody id="author_table">
+                            <tbody>
                                 {''.join([
                                     f'''
                                     <tr>
                                         <td>{i+1}</td>
                                         <td><strong>{html.escape(author['name'])}</strong></td>
-                                        <td>{f'<a href="https://orcid.org/{author["orcid"]}" target="_blank" class="doi-link">{author["orcid"][:8]}...</a>' if author.get('orcid') else '-'}</td>
+                                        <td>{f'<a href="https://orcid.org/{author["orcid"]}" target="_blank" class="doi-link orcid-full">{author["orcid"]}</a>' if author.get('orcid') else '-'}</td>
                                         <td>{', '.join([html.escape(a) for a in author.get('affiliations', [])[:3]])}{' +' + str(len(author.get('affiliations', []))-3) if len(author.get('affiliations', [])) > 3 else ''}</td>
                                         <td>{', '.join(author.get('countries', [])[:3])}</td>
-                                        <td><span class="badge badge-primary">{author.get('publications', 0)}</span></td>
-                                        <td><span class="citation-count">{author.get('citations', 0)}</span></td>
+                                        <td>{get_color_scale_html(author.get('publications', 0), max_publications)}</td>
+                                        <td>{get_color_scale_html(author.get('citations', 0), max_citations_auth)}</td>
                                     </tr>
                                     '''
                                     for i, author in enumerate(author_analysis.get('top_authors', [])[:30])
@@ -3788,7 +4078,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                     <!-- Top Affiliations -->
                     <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">{t('top_affiliations')}</h3>
                     <div class="scrollable-table">
-                        <table>
+                        <table id="aff_table">
                             <thead>
                                 <tr>
                                     <th class="sortable" onclick="sortTable('aff_table', 0)">{t('rank')}</th>
@@ -3796,13 +4086,13 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                     <th class="sortable" onclick="sortTable('aff_table', 2)">{t('publications_count')}</th>
                                 </tr>
                             </thead>
-                            <tbody id="aff_table">
+                            <tbody>
                                 {''.join([
                                     f'''
                                     <tr>
                                         <td>{i+1}</td>
                                         <td>{html.escape(aff['name'])}</td>
-                                        <td><span class="badge badge-primary">{aff['count']}</span></td>
+                                        <td>{get_color_scale_html(aff['count'], max_aff_count)}</td>
                                     </tr>
                                     '''
                                     for i, aff in enumerate(affiliation_analysis.get('top_affiliations', [])[:30])
@@ -3863,16 +4153,16 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                     <!-- Authors per Country -->
                     <h4 style="color: {primary}; margin-top: 15px; font-size: 14px;">{t('authors_per_country')}</h4>
                     <div class="scrollable-table" style="max-height: 300px;">
-                        <table>
+                        <table id="country_table">
                             <thead>
                                 <tr>
                                     <th class="sortable" onclick="sortTable('country_table', 0)">{t('countries')}</th>
                                     <th class="sortable" onclick="sortTable('country_table', 1)">{t('authors')}</th>
                                 </tr>
                             </thead>
-                            <tbody id="country_table">
+                            <tbody>
                                 {''.join([
-                                    f'<tr><td>{html.escape(country)}</td><td><span class="badge badge-primary">{count}</span></td></tr>'
+                                    f'<tr><td>{html.escape(country)}</td><td>{get_color_scale_html(count, max_country_count)}</td></tr>'
                                     for country, count in sorted(geographic.get('authors_per_country', {}).items(), key=lambda x: x[1], reverse=True)[:30]
                                 ])}
                             </tbody>
@@ -3882,16 +4172,16 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                     <!-- Collaboration Couples -->
                     <h4 style="color: {primary}; margin-top: 15px; font-size: 14px;">{t('collaboration_couples')}</h4>
                     <div class="scrollable-table" style="max-height: 300px;">
-                        <table>
+                        <table id="couple_table">
                             <thead>
                                 <tr>
                                     <th class="sortable" onclick="sortTable('couple_table', 0)">{t('country_pair')}</th>
                                     <th class="sortable" onclick="sortTable('couple_table', 1)">{t('frequency')}</th>
                                 </tr>
                             </thead>
-                            <tbody id="couple_table">
+                            <tbody>
                                 {''.join([
-                                    f'<tr><td>{html.escape(couple["country1"])} — {html.escape(couple["country2"])}</td><td><span class="badge badge-primary">{couple["frequency"]}</span></td></tr>'
+                                    f'<tr><td>{html.escape(couple["country1"])} — {html.escape(couple["country2"])}</td><td>{get_color_scale_html(couple["frequency"], geographic.get("collaboration_couples", [{}])[0].get("frequency", 1) if geographic.get("collaboration_couples") else 1)}</td></tr>'
                                     for couple in geographic.get('collaboration_couples', [])[:30]
                                 ])}
                             </tbody>
@@ -3918,7 +4208,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                     <!-- Citation Dynamics by Year -->
                     <h3 style="color: {primary}; font-size: 16px;">{t('citation_dynamics_by_year')}</h3>
                     <div class="scrollable-table" style="max-height: 400px;">
-                        <table>
+                        <table id="dynamics_table">
                             <thead>
                                 <tr>
                                     <th class="sortable" onclick="sortTable('dynamics_table', 0)">{t('publication_year')}</th>
@@ -3926,9 +4216,9 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                     <th class="sortable" onclick="sortTable('dynamics_table', 2)">{t('citations_count')}</th>
                                 </tr>
                             </thead>
-                            <tbody id="dynamics_table">
+                            <tbody>
                                 {''.join([
-                                    f'<tr><td>{row["publication_year"]}</td><td>{row["citation_year"]}</td><td><span class="citation-count">{row["citations_count"]}</span></td></tr>'
+                                    f'<tr><td>{row["publication_year"]}</td><td>{row["citation_year"]}</td><td>{get_color_scale_html(row["citations_count"], max_citation_count)}</td></tr>'
                                     for row in citation.get('dynamics', [])
                                 ])}
                             </tbody>
@@ -3963,16 +4253,16 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                     <!-- Cumulative Citations -->
                     <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">{t('cumulative_citations')}</h3>
                     <div class="scrollable-table" style="max-height: 300px;">
-                        <table>
+                        <table id="cum_table">
                             <thead>
                                 <tr>
                                     <th class="sortable" onclick="sortTable('cum_table', 0)">{t('year')}</th>
                                     <th class="sortable" onclick="sortTable('cum_table', 1)">{t('citations')}</th>
                                 </tr>
                             </thead>
-                            <tbody id="cum_table">
+                            <tbody>
                                 {''.join([
-                                    f'<tr><td>{row["year"]}</td><td><span class="citation-count">{row["citations"]:,}</span></td></tr>'
+                                    f'<tr><td>{row["year"]}</td><td>{get_color_scale_html(row["citations"], citation.get("cumulative", [{}])[-1].get("citations", 1) if citation.get("cumulative") else 1)}</td></tr>'
                                     for row in citation.get('cumulative', [])
                                 ])}
                             </tbody>
@@ -3982,7 +4272,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                     <!-- Citation Network Heatmap -->
                     <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">{t('citation_network_heatmap')}</h3>
                     <div class="scrollable-table" style="max-height: 500px;">
-                        <table>
+                        <table id="heatmap_table">
                             <thead>
                                 <tr>
                                     <th>{t('publication_year')} \ {t('citation_year')}</th>
@@ -4000,8 +4290,8 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                         {''.join([
                                             f'''
                                             <td class="heatmap-cell" style="
-                                                background: {get_heatmap_color(row.get(year, 0), heatmap_max) if heatmap_max > 0 else '#f0f0f0'};
-                                                color: {get_heatmap_text_color(row.get(year, 0), heatmap_max) if heatmap_max > 0 else '#999'};
+                                                background: {get_heatmap_cell_color(row.get(year, 0), heatmap_max) if heatmap_max > 0 else 'rgba(200,200,200,0.15)'};
+                                                color: {'#1a1a1a' if row.get(year, 0) / max(heatmap_max, 1) > 0.6 else '#333'};
                                             ">
                                                 {row.get(year, 0) or '0'}
                                             </td>
@@ -4019,7 +4309,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                     <!-- Most Cited Publications -->
                     <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">{t('most_cited_publications')}</h3>
                     <div class="scrollable-table" style="max-height: 400px;">
-                        <table>
+                        <table id="mostcited_table">
                             <thead>
                                 <tr>
                                     <th class="sortable" onclick="sortTable('mostcited_table', 0)">{t('rank')}</th>
@@ -4031,15 +4321,15 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                     <th>DOI</th>
                                 </tr>
                             </thead>
-                            <tbody id="mostcited_table">
+                            <tbody>
                                 {''.join([
                                     f'''
                                     <tr>
                                         <td><span class="badge badge-primary">{i+1}</span></td>
                                         <td class="word-wrap">{html.escape(pub['title'][:80])}{'...' if len(pub['title']) > 80 else ''}</td>
                                         <td>{pub.get('year', 'N/A')}</td>
-                                        <td><span class="citation-count">{pub['citations']}</span></td>
-                                        <td>{pub.get('citations_per_year', 0):.1f}</td>
+                                        <td>{get_color_scale_html(pub['citations'], max_most_cited)}</td>
+                                        <td>{get_color_scale_html(pub.get('citations_per_year', 0), max_most_cited_py, unit='')}</td>
                                         <td>{html.escape(pub.get('authors', 'N/A'))}</td>
                                         <td><a href="https://doi.org/{html.escape(pub.get('doi', ''))}" target="_blank" class="doi-link">{html.escape(pub.get('doi', ''))[:20]}...</a></td>
                                     </tr>
@@ -4078,7 +4368,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                     <!-- Top Citing Authors -->
                     <h3 style="color: {primary}; font-size: 16px;">{t('top_citing_authors')}</h3>
                     <div class="scrollable-table" style="max-height: 300px;">
-                        <table>
+                        <table id="citing_auth_table">
                             <thead>
                                 <tr>
                                     <th class="sortable" onclick="sortTable('citing_auth_table', 0)">{t('rank')}</th>
@@ -4086,9 +4376,9 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                     <th class="sortable" onclick="sortTable('citing_auth_table', 2)">{t('citations_count')}</th>
                                 </tr>
                             </thead>
-                            <tbody id="citing_auth_table">
+                            <tbody>
                                 {''.join([
-                                    f'<tr><td>{i+1}</td><td>{html.escape(author["name"])}</td><td><span class="badge badge-primary">{author["count"]}</span></td></tr>'
+                                    f'<tr><td>{i+1}</td><td>{html.escape(author["name"])}</td><td>{get_color_scale_html(author["count"], max_citing_auth)}</td></tr>'
                                     for i, author in enumerate(citing.get('top_authors', [])[:30])
                                 ])}
                             </tbody>
@@ -4098,7 +4388,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                     <!-- Top Citing Affiliations -->
                     <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">{t('top_citing_affiliations')}</h3>
                     <div class="scrollable-table" style="max-height: 300px;">
-                        <table>
+                        <table id="citing_aff_table">
                             <thead>
                                 <tr>
                                     <th class="sortable" onclick="sortTable('citing_aff_table', 0)">{t('rank')}</th>
@@ -4106,9 +4396,9 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                     <th class="sortable" onclick="sortTable('citing_aff_table', 2)">{t('citations_count')}</th>
                                 </tr>
                             </thead>
-                            <tbody id="citing_aff_table">
+                            <tbody>
                                 {''.join([
-                                    f'<tr><td>{i+1}</td><td>{html.escape(aff["name"])}</td><td><span class="badge badge-primary">{aff["count"]}</span></td></tr>'
+                                    f'<tr><td>{i+1}</td><td>{html.escape(aff["name"])}</td><td>{get_color_scale_html(aff["count"], max_citing_aff)}</td></tr>'
                                     for i, aff in enumerate(citing.get('top_affiliations', [])[:30])
                                 ])}
                             </tbody>
@@ -4118,7 +4408,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                     <!-- Top Citing Countries -->
                     <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">{t('top_citing_countries')}</h3>
                     <div class="scrollable-table" style="max-height: 300px;">
-                        <table>
+                        <table id="citing_country_table">
                             <thead>
                                 <tr>
                                     <th class="sortable" onclick="sortTable('citing_country_table', 0)">{t('rank')}</th>
@@ -4126,9 +4416,9 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                     <th class="sortable" onclick="sortTable('citing_country_table', 2)">{t('citations_count')}</th>
                                 </tr>
                             </thead>
-                            <tbody id="citing_country_table">
+                            <tbody>
                                 {''.join([
-                                    f'<tr><td>{i+1}</td><td>{html.escape(country["name"])}</td><td><span class="badge badge-primary">{country["count"]}</span></td></tr>'
+                                    f'<tr><td>{i+1}</td><td>{html.escape(country["name"])}</td><td>{get_color_scale_html(country["count"], max_citing_country)}</td></tr>'
                                     for i, country in enumerate(citing.get('top_countries', [])[:30])
                                 ])}
                             </tbody>
@@ -4138,7 +4428,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                     <!-- Top Citing Journals -->
                     <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">{t('top_citing_journals')}</h3>
                     <div class="scrollable-table" style="max-height: 300px;">
-                        <table>
+                        <table id="citing_journal_table">
                             <thead>
                                 <tr>
                                     <th class="sortable" onclick="sortTable('citing_journal_table', 0)">{t('rank')}</th>
@@ -4146,9 +4436,9 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                     <th class="sortable" onclick="sortTable('citing_journal_table', 2)">{t('citations_count')}</th>
                                 </tr>
                             </thead>
-                            <tbody id="citing_journal_table">
+                            <tbody>
                                 {''.join([
-                                    f'<tr><td>{i+1}</td><td>{html.escape(journal["name"])}</td><td><span class="badge badge-primary">{journal["count"]}</span></td></tr>'
+                                    f'<tr><td>{i+1}</td><td>{html.escape(journal["name"])}</td><td>{get_color_scale_html(journal["count"], max_citing_journal)}</td></tr>'
                                     for i, journal in enumerate(citing.get('top_journals', [])[:30])
                                 ])}
                             </tbody>
@@ -4158,7 +4448,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                     <!-- Top Citing Publishers -->
                     <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">{t('top_citing_publishers')}</h3>
                     <div class="scrollable-table" style="max-height: 300px;">
-                        <table>
+                        <table id="citing_pub_table">
                             <thead>
                                 <tr>
                                     <th class="sortable" onclick="sortTable('citing_pub_table', 0)">{t('rank')}</th>
@@ -4166,9 +4456,9 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                     <th class="sortable" onclick="sortTable('citing_pub_table', 2)">{t('citations_count')}</th>
                                 </tr>
                             </thead>
-                            <tbody id="citing_pub_table">
+                            <tbody>
                                 {''.join([
-                                    f'<tr><td>{i+1}</td><td>{html.escape(pub["name"])}</td><td><span class="badge badge-primary">{pub["count"]}</span></td></tr>'
+                                    f'<tr><td>{i+1}</td><td>{html.escape(pub["name"])}</td><td>{get_color_scale_html(pub["count"], max_citing_pub)}</td></tr>'
                                     for i, pub in enumerate(citing.get('top_publishers', [])[:30])
                                 ])}
                             </tbody>
@@ -4194,7 +4484,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                     
                     <h3 style="color: {primary}; font-size: 16px;">Topics</h3>
                     <div class="scrollable-table" style="max-height: 400px;">
-                        <table>
+                        <table id="topics_table">
                             <thead>
                                 <tr>
                                     <th class="sortable" onclick="sortTable('topics_table', 0)">Topic</th>
@@ -4207,7 +4497,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                     <th>{t('peak_year')}</th>
                                 </tr>
                             </thead>
-                            <tbody id="topics_table">
+                            <tbody>
                                 {''.join([
                                     f'''
                                     <tr>
@@ -4458,8 +4748,8 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                         <td>{p.get('year', 'N/A')}</td>
                                         <td>{', '.join([html.escape(a) for a in p.get('authors', [])[:3]])}{' +' + str(len(p.get('authors', []))-3) if len(p.get('authors', [])) > 3 else ''}</td>
                                         <td>{', '.join([html.escape(a) for a in p.get('affiliations', [])[:3]])}{' +' + str(len(p.get('affiliations', []))-3) if len(p.get('affiliations', [])) > 3 else ''}</td>
-                                        <td><span class="citation-count">{p.get('citations', 0)}</span></td>
-                                        <td>{p.get('citations_per_year', 0):.1f}</td>
+                                        <td>{get_color_scale_html(p.get('citations', 0), max([pub.get('citations', 0) for pub in all_publications]) if all_publications else 1)}</td>
+                                        <td>{get_color_scale_html(p.get('citations_per_year', 0), max([pub.get('citations_per_year', 0) for pub in all_publications]) if all_publications else 1)}</td>
                                         <td><a href="https://doi.org/{html.escape(p.get('doi', ''))}" target="_blank" class="doi-link">{html.escape(p.get('doi', ''))[:20]}...</a></td>
                                     </tr>
                                     '''
@@ -4548,32 +4838,53 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                 'Showing ' + visible + ' of ' + rows.length + ' publications';
         }}
         
-        // ===== SORT TABLE =====
-        var sortOrder = {{}};
-        function sortTable(tableId, col) {{
+        // ===== UNIVERSAL SORT FUNCTION =====
+        function sortTable(tableId, colIndex) {{
             var table = document.getElementById(tableId);
             if (!table) return;
             var tbody = table.querySelector('tbody');
             if (!tbody) return;
             var rows = Array.from(tbody.querySelectorAll('tr'));
             
-            var key = tableId + '_' + col;
-            if (!sortOrder[key]) sortOrder[key] = 1;
-            else sortOrder[key] *= -1;
+            // Determine sort direction
+            var key = tableId + '_col_' + colIndex;
+            if (!window.sortState) window.sortState = {{}};
+            if (!window.sortState[key]) window.sortState[key] = 1;
+            else window.sortState[key] *= -1;
+            var direction = window.sortState[key];
             
-            rows.sort(function(a, b) {{
-                var valA = a.cells[col] ? a.cells[col].textContent.trim() : '';
-                var valB = b.cells[col] ? b.cells[col].textContent.trim() : '';
-                
-                var numA = parseFloat(valA);
-                var numB = parseFloat(valB);
-                if (!isNaN(numA) && !isNaN(numB)) {{
-                    return (numA - numB) * sortOrder[key];
+            // Update header indicators
+            var headers = table.querySelectorAll('thead th');
+            headers.forEach(function(th, idx) {{
+                th.classList.remove('asc', 'desc');
+                if (idx === colIndex) {{
+                    th.classList.add(direction > 0 ? 'asc' : 'desc');
                 }}
-                
-                return valA.localeCompare(valB) * sortOrder[key];
             }});
             
+            rows.sort(function(a, b) {{
+                var valA = a.cells[colIndex] ? a.cells[colIndex].textContent.trim() : '';
+                var valB = b.cells[colIndex] ? b.cells[colIndex].textContent.trim() : '';
+                
+                // Try parsing as number
+                var numA = parseFloat(valA.replace(/,/g, ''));
+                var numB = parseFloat(valB.replace(/,/g, ''));
+                if (!isNaN(numA) && !isNaN(numB)) {{
+                    return (numA - numB) * direction;
+                }}
+                
+                // Try parsing as date
+                var dateA = new Date(valA);
+                var dateB = new Date(valB);
+                if (!isNaN(dateA) && !isNaN(dateB)) {{
+                    return (dateA - dateB) * direction;
+                }}
+                
+                // String comparison
+                return valA.localeCompare(valB) * direction;
+            }});
+            
+            // Re-append rows
             rows.forEach(function(row) {{
                 tbody.appendChild(row);
             }});
@@ -4663,6 +4974,9 @@ def run_journal_analysis(issn: str, period: str, max_workers: int = 6, journal_l
         # Initialize analyzer
         analyzer = JournalAnalyzer(issn, period, max_workers)
         
+        # Get journal info
+        journal_name, journal_abbr = analyzer.get_journal_info()
+        
         # Stage 1: Fetch publications
         status_container.info(f"📡 {t('stage_fetch_publications')}")
         analysis_progress.progress(0.01, text=t('stage_fetch_publications'))
@@ -4744,6 +5058,8 @@ def run_journal_analysis(issn: str, period: str, max_workers: int = 6, journal_l
         st.session_state['issn'] = issn
         st.session_state['period'] = period
         st.session_state['max_workers'] = max_workers
+        st.session_state['journal_name'] = journal_name
+        st.session_state['journal_abbreviation'] = journal_abbr
         
         analysis_progress.progress(1.0, text=f"✅ {t('analysis_complete_text')}!")
         
@@ -4770,7 +5086,7 @@ def run_journal_analysis(issn: str, period: str, max_workers: int = 6, journal_l
             )
         
         # Кнопка скачивания
-        filename = f"journal_analysis_{st.session_state.issn}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+        filename = f"journal_analysis_{st.session_state.journal_abbreviation or st.session_state.issn}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
         st.download_button(
             label="📥 " + t('download_report'),
             data=html_report.encode('utf-8'),
@@ -4788,7 +5104,7 @@ def run_journal_analysis(issn: str, period: str, max_workers: int = 6, journal_l
         
         # Кнопка сброса
         if st.button("🔄 " + t('reset_analysis'), type="secondary"):
-            for key in ['analyzer', 'results', 'publications', 'citing_works', 'analysis_complete', 'issn', 'period', 'max_workers']:
+            for key in ['analyzer', 'results', 'publications', 'citing_works', 'analysis_complete', 'issn', 'period', 'max_workers', 'journal_name', 'journal_abbreviation']:
                 if key in st.session_state:
                     del st.session_state[key]
             st.rerun()
@@ -4840,6 +5156,10 @@ def main():
         st.session_state.period = ''
     if 'max_workers' not in st.session_state:
         st.session_state.max_workers = 6
+    if 'journal_name' not in st.session_state:
+        st.session_state.journal_name = ''
+    if 'journal_abbreviation' not in st.session_state:
+        st.session_state.journal_abbreviation = ''
     
     # Apply theme
     primary = st.session_state.primary_color
@@ -4960,12 +5280,14 @@ def main():
     if st.session_state.analysis_complete and st.session_state.analyzer:
         st.info(f"📦 {t('analysis_data_from_cache')}")
         st.markdown(f"**{t('journal_issn_label', issn=st.session_state.issn)}** | **{t('analysis_period_label', period=st.session_state.period)}**")
+        if st.session_state.journal_name:
+            st.markdown(f"**Journal:** {st.session_state.journal_name} ({st.session_state.journal_abbreviation})")
         
         # Кнопка для сброса
         col1, col2 = st.columns([4, 1])
         with col2:
             if st.button("🗑️ " + t('reset_analysis'), type="secondary"):
-                for key in ['analyzer', 'results', 'publications', 'citing_works', 'analysis_complete', 'issn', 'period', 'max_workers']:
+                for key in ['analyzer', 'results', 'publications', 'citing_works', 'analysis_complete', 'issn', 'period', 'max_workers', 'journal_name', 'journal_abbreviation']:
                     if key in st.session_state:
                         del st.session_state[key]
                 st.rerun()
@@ -4989,7 +5311,7 @@ def main():
                 current_lang
             )
         
-        filename = f"journal_analysis_{st.session_state.issn}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+        filename = f"journal_analysis_{st.session_state.journal_abbreviation or st.session_state.issn}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
         st.download_button(
             label="📥 " + t('download_report'),
             data=html_report.encode('utf-8'),
