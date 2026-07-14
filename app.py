@@ -3302,7 +3302,14 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                     {''.join([
                         f'''
                         <div class="oa-item">
-                            <span class="color-dot" style="background: {colors.get(status, '#BDC3C7')};"></span>
+                            <span class="color-dot" style="background: {{
+                                'gold': '#FFD700',
+                                'hybrid': '#F1C40F',
+                                'green': '#2ECC71',
+                                'bronze': '#CD7F32',
+                                'closed': '#95A5A6',
+                                'unknown': '#BDC3C7'
+                            }}.get('{status}', '#BDC3C7')}};"></span>
                             <span><strong>{t(status)}</strong>: {count}</span>
                             <span style="font-size: 11px; color: #666;">({count/basic.get("total_publications", 1)*100:.1f}%)</span>
                         </div>
