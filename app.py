@@ -1762,44 +1762,73 @@ def get_citing_dois(oa_id: str, progress_callback: Optional[callable] = None) ->
     
     return citing[:MAX_CITING_PER_PAPER]
 
-def get_metadata_for_dois(dois: List[str], progress_callback: Optional[callable] = None) -> Dict[str, Dict]:
-    """Получает метаданные для списка DOI из OpenAlex"""
+ddef get_metadata_for_dois_parallel(dois: List[str], 
+                                   progress_callback: Optional[callable] = None,
+                                   stop_callback: Optional[callable] = None,
+                                   max_workers: int = MAX_WORKERS) -> Dict[str, Dict]:
+    """
+    Параллельно получает метаданные для списка DOI из OpenAlex.
+    """
     if not dois:
         return {}
     
     result = {}
-    base_url = "https://api.openalex.org/works"
+    result_lock = Lock()
+    total = len(dois)
+    processed = 0
     
-    for i, doi in enumerate(dois):
-        if get_stop_flag():
-            break
+    if SHOW_DEBUG_LOGS:
+        print(f"⚡ Параллельное получение метаданных для {total} DOI ({max_workers} потоков)...")
+    
+    def fetch_one(doi: str) -> Tuple[str, Optional[Dict]]:
+        """Получает метаданные для одного DOI"""
+        if stop_callback and stop_callback():
+            return doi, None
         
-        if progress_callback:
-            progress_callback(i + 1, len(dois), doi)
+        base_url = "https://api.openalex.org/works"
         
-        # Ищем по DOI
-        params = {
-            "filter": f"doi:{doi}",
-            "per_page": 1
-        }
-        
+        # Пробуем найти по DOI
+        params = {"filter": f"doi:{doi}", "per_page": 1}
         data = smart_get(base_url, params)
-        if data and data.get("results"):
-            work = data["results"][0]
-            result[doi] = work
-        else:
-            # Пробуем найти по ID если DOI не найден
-            params = {
-                "filter": f"id:https://doi.org/{doi}",
-                "per_page": 1
-            }
-            data = smart_get(base_url, params)
-            if data and data.get("results"):
-                result[doi] = data["results"][0]
         
-        # Небольшая задержка между запросами
-        if i < len(dois) - 1:
-            time.sleep(0.2)
+        if data and data.get("results"):
+            return doi, data["results"][0]
+        
+        # Пробуем найти по ID
+        params = {"filter": f"id:https://doi.org/{doi}", "per_page": 1}
+        data = smart_get(base_url, params)
+        
+        if data and data.get("results"):
+            return doi, data["results"][0]
+        
+        return doi, None
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Отправляем все задачи
+        futures = {executor.submit(fetch_one, doi): doi for doi in dois}
+        
+        # Обрабатываем результаты по мере завершения
+        for future in as_completed(futures):
+            if stop_callback and stop_callback():
+                break
+            
+            doi = futures[future]
+            try:
+                doi_result, work_data = future.result()
+                with result_lock:
+                    if work_data:
+                        result[doi_result] = work_data
+                    processed += 1
+                    if progress_callback:
+                        progress_callback(processed, total, doi_result)
+            except Exception as e:
+                if SHOW_DEBUG_LOGS:
+                    print(f"⚠️ Ошибка получения метаданных для {doi}: {e}")
+                with result_lock:
+                    processed += 1
+    
+    if SHOW_DEBUG_LOGS:
+        print(f"✅ Получено метаданных для {len(result)} из {total} DOI")
     
     return result
 
@@ -1895,7 +1924,6 @@ def parse_publication(work_data: Dict, is_analyzed: bool = True) -> Union[Analyz
             author = parse_author_data(author_data)
             authors.append(author)
             
-            # Собираем аффилиации и страны из аффилиаций автора
             for aff in authorship.get("institutions", []):
                 aff_name = aff.get("display_name", "")
                 if aff_name and aff_name not in affiliations_list:
@@ -1923,7 +1951,7 @@ def parse_publication(work_data: Dict, is_analyzed: bool = True) -> Union[Analyz
         if topic.domain and topic.domain not in domains:
             domains.append(topic.domain)
     
-    # Основная информация о журнале/источнике
+    # ====== ИСПРАВЛЕНИЕ: обрабатываем None primary_location ======
     primary_location = work_data.get("primary_location")
     if primary_location and isinstance(primary_location, dict):
         source = primary_location.get("source", {})
@@ -2137,7 +2165,7 @@ def enrich_analyzed_papers(analyzed_papers: List[Dict],
                            progress_callback: Optional[callable] = None,
                            stop_callback: Optional[callable] = None) -> List[AnalyzedPaper]:
     """
-    Обогащает анализируемые статьи метаданными из OpenAlex.
+    Обогащает анализируемые статьи метаданными из OpenAlex (параллельно).
     """
     if SHOW_DEBUG_LOGS:
         print("📊 Обогащение анализируемых статей метаданными...")
@@ -2146,8 +2174,13 @@ def enrich_analyzed_papers(analyzed_papers: List[Dict],
     all_dois = [p['DOI'] for p in analyzed_papers if p['DOI'] != 'N/A']
     enriched = []
     
-    # Получаем метаданные
-    metadata = get_metadata_for_dois(all_dois, progress_callback)
+    # Параллельное получение метаданных
+    metadata = get_metadata_for_dois_parallel(
+        all_dois, 
+        progress_callback=progress_callback,
+        stop_callback=stop_callback,
+        max_workers=MAX_WORKERS
+    )
     
     for paper in analyzed_papers:
         if stop_callback and stop_callback():
@@ -2158,7 +2191,6 @@ def enrich_analyzed_papers(analyzed_papers: List[Dict],
         
         if work_data:
             analyzed_paper = parse_publication(work_data, is_analyzed=True)
-            # Добавляем цитирующие DOI
             analyzed_paper.citing_dois = citing_map.get(doi, [])
             enriched.append(analyzed_paper)
         else:
@@ -2174,8 +2206,7 @@ def enrich_citing_papers(analyzed_papers: List[AnalyzedPaper],
                          progress_callback: Optional[callable] = None,
                          stop_callback: Optional[callable] = None) -> Dict[str, List[CitingPaper]]:
     """
-    Обогащает цитирующие статьи метаданными из OpenAlex.
-    Возвращает словарь {analyzed_doi: [CitingPaper]}.
+    Обогащает цитирующие статьи метаданными из OpenAlex (параллельно).
     """
     if SHOW_DEBUG_LOGS:
         print("📊 Обогащение цитирующих статей метаданными...")
@@ -2189,8 +2220,13 @@ def enrich_citing_papers(analyzed_papers: List[AnalyzedPaper],
     if SHOW_DEBUG_LOGS:
         print(f"📝 Найдено уникальных цитирующих DOI: {len(all_citing_dois)}")
     
-    # Получаем метаданные для цитирующих статей
-    metadata = get_metadata_for_dois(all_citing_dois, progress_callback)
+    # Параллельное получение метаданных
+    metadata = get_metadata_for_dois_parallel(
+        all_citing_dois,
+        progress_callback=progress_callback,
+        stop_callback=stop_callback,
+        max_workers=MAX_WORKERS
+    )
     
     # Собираем результат
     result = {}
