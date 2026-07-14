@@ -4,10 +4,6 @@
 
 # Параметры API запросов
 BATCH_SIZE = 50  # Размер батча для всех API
-CITING_BATCH_SIZE = 20
-MAX_CITING_PER_WORK = 500
-CITING_REQUEST_DELAY = 0.5  # Задержка между запросами к цитирующим (сек)
-CITING_BATCH_DELAY = 1.0  # Задержка между батчами цитирующих (сек)
 MAX_RETRIES = 3  # Количество попыток при ошибке
 TIMEOUT = 30  # Таймаут на запрос в секундах
 DELAY_BETWEEN_BATCHES = 0.5  # Задержка между батчами (сек)
@@ -1848,61 +1844,28 @@ def normalize_issn(issn_str):
     return cleaned.upper()
 
 def smart_request(params, retries=5):
-    """
-    Smart request to OpenAlex API with rate limiting and retries.
-    Uses exponential backoff for better rate limit handling.
-    """
+    """Smart request to OpenAlex API with rate limiting and retries"""
     base_url = "https://api.openalex.org/works"
     lock = Lock()
     
     for attempt in range(retries):
         try:
-            # Базовый базовый delay с учетом попытки
-            base_delay = 0.3 + (attempt * 0.2)
-            
             with lock:
-                time.sleep(random.uniform(base_delay, base_delay + 0.3))
+                time.sleep(random.uniform(0.2, 0.45))
             
             resp = requests.get(base_url, params=params, timeout=30)
             
-            # Обработка rate limiting
             if resp.status_code == 429:
-                wait = int(resp.headers.get("Retry-After", 3 + attempt * 2))
-                wait = wait + random.uniform(1, 3)
-                if SHOW_DEBUG_LOGS:
-                    print(f"⚠️ Rate limit (429), ждем {wait:.1f} сек...")
-                time.sleep(wait)
-                continue
-            
-            # Обработка ошибок сервера
-            if resp.status_code >= 500:
-                wait = 2 ** attempt + random.uniform(0.5, 1.5)
-                if SHOW_DEBUG_LOGS:
-                    print(f"⚠️ Ошибка сервера {resp.status_code}, ждем {wait:.1f} сек...")
-                time.sleep(wait)
+                wait = int(resp.headers.get("Retry-After", 3))
+                time.sleep(wait + random.uniform(1, 2))
                 continue
                 
             if resp.status_code == 200:
                 return resp.json()
             
-            # Другие ошибки
-            if SHOW_DEBUG_LOGS:
-                print(f"⚠️ HTTP {resp.status_code} для запроса, попытка {attempt+1}/{retries}")
-            time.sleep(1.2 ** attempt + random.uniform(0.1, 0.3))
-            
-        except requests.exceptions.Timeout:
-            if SHOW_DEBUG_LOGS:
-                print(f"⚠️ Таймаут, попытка {attempt+1}/{retries}")
-            time.sleep(2 ** attempt + random.uniform(0.5, 1))
-        except requests.exceptions.ConnectionError:
-            if SHOW_DEBUG_LOGS:
-                print(f"⚠️ Ошибка соединения, попытка {attempt+1}/{retries}")
-            time.sleep(2 ** attempt + random.uniform(0.5, 1))
-        except Exception as e:
-            if SHOW_DEBUG_LOGS:
-                print(f"⚠️ Неизвестная ошибка: {str(e)[:100]}, попытка {attempt+1}/{retries}")
-            time.sleep(1.5 ** attempt + random.uniform(0.3, 0.7))
-    
+            time.sleep(1.2 ** attempt)
+        except:
+            time.sleep(1.5 ** attempt)
     return None
 
 def get_work_metadata_batch(work_ids: List[str]) -> List[Dict]:
@@ -2183,109 +2146,44 @@ class JournalAnalyzer:
         return publications
     
     def fetch_citing_works(self, progress_callback=None):
-        """
-        Stage 2: Fetch citing works for all publications using batched requests.
-        Uses batched metadata fetching + individual citing work retrieval with rate limiting.
-        """
+        """Stage 2: Fetch citing works for all publications in parallel"""
         if not self.publications:
             return {}
         
-        # Получаем все публикации с цитированиями
-        works_with_citations = [
-            row for row in self.publications 
-            if row.get('Cited_by_count', 0) > 0 and row.get('OpenAlex_ID')
-        ]
-        
-        if not works_with_citations:
-            if SHOW_DEBUG_LOGS:
-                print("⚠️ Нет публикаций с цитированиями для обработки")
-            return {}
+        citing_map = {}
+        to_process = [row for row in self.publications if row.get('Cited_by_count', 0) > 0 and row.get('DOI')]
         
         if SHOW_DEBUG_LOGS:
-            print(f"⚡ Запуск сбора цитирующих для {len(works_with_citations)} публикаций...")
-            print(f"📊 Используется батчинг с размером {BATCH_SIZE} работ за запрос")
-            print(f"⏱️ Задержка между батчами: {CITING_BATCH_DELAY} сек")
-            print(f"📈 Максимум цитирующих на работу: {MAX_CITING_PER_WORK}")
+            print(f"⚡ Запуск параллельного сбора цитирующих ({self.max_workers} потоков)...")
         
-        citing_map = {}
-        total_works = len(works_with_citations)
-        processed = 0
-        
-        # Разбиваем на батчи для получения метаданных работ
-        for batch_index, batch in enumerate(chunks(works_with_citations, BATCH_SIZE)):
-            if SHOW_DEBUG_LOGS:
-                print(f"\n📦 Обработка батча {batch_index + 1}/{(total_works + BATCH_SIZE - 1)//BATCH_SIZE}")
-            
-            # Формируем список OpenAlex ID для батча
-            oa_ids = [row['OpenAlex_ID'] for row in batch if row.get('OpenAlex_ID')]
-            
-            if not oa_ids:
-                processed += len(batch)
-                if progress_callback:
-                    progress_callback(processed, total_works)
-                continue
-            
-            # Получаем метаданные для всех работ в батче одним запросом
-            batch_metadata = self._get_works_metadata_batch(oa_ids)
-            
-            if not batch_metadata:
-                if SHOW_DEBUG_LOGS:
-                    print(f"⚠️ Не удалось получить метаданные для батча")
-                processed += len(batch)
-                if progress_callback:
-                    progress_callback(processed, total_works)
-                continue
-            
-            # Создаем словарь для быстрого доступа к метаданным по ID
-            metadata_by_id = {}
-            for meta in batch_metadata:
-                oa_id = meta.get('id', '').replace('https://openalex.org/', '')
-                metadata_by_id[oa_id] = meta
-            
-            # Для каждой работы в батче получаем цитирующие
-            for row in batch:
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            future_to_doi = {}
+            for row in to_process:
                 oa_id = row.get('OpenAlex_ID')
                 doi = row.get('DOI')
-                
-                if not oa_id or not doi:
-                    processed += 1
-                    if progress_callback:
-                        progress_callback(processed, total_works)
-                    continue
-                
-                # Получаем цитирующие для конкретной работы
+                if oa_id:
+                    future = executor.submit(self._get_citing_dois_batch, oa_id)
+                    future_to_doi[future] = doi
+            
+            total = len(future_to_doi)
+            completed = 0
+            
+            for future in as_completed(future_to_doi):
+                doi = future_to_doi[future]
                 try:
-                    citing_works = self._get_citing_dois_for_work(oa_id)
-                    citing_map[doi] = citing_works
-                    
-                    # Задержка между запросами к цитирующим
-                    time.sleep(random.uniform(CITING_REQUEST_DELAY * 0.5, CITING_REQUEST_DELAY * 1.5))
-                    
-                except Exception as e:
-                    if SHOW_DEBUG_LOGS:
-                        print(f"⚠️ Ошибка при получении цитирующих для {doi}: {str(e)[:100]}")
+                    citing_map[doi] = future.result()
+                except:
                     citing_map[doi] = []
                 
-                processed += 1
-                
-                # Обновляем прогресс
+                completed += 1
                 if progress_callback:
-                    progress_callback(processed, total_works)
-            
-            # Задержка между батчами для снижения нагрузки на API
-            if processed < total_works:
-                delay = CITING_BATCH_DELAY + random.uniform(0.3, 0.7)
-                if SHOW_DEBUG_LOGS:
-                    print(f"⏱️ Задержка между батчами: {delay:.2f} сек")
-                time.sleep(delay)
+                    progress_callback(completed, total)
         
         self.citing_works = citing_map
         
-        total_citing = sum(len(v) for v in citing_map.values())
         if SHOW_DEBUG_LOGS:
-            print(f"\n✅ Собрано цитирующих работ: {total_citing}")
-            print(f"📊 Среднее цитирований на публикацию: {total_citing / len(works_with_citations):.1f}" if works_with_citations else "")
-            print(f"📊 Всего обработано публикаций: {len(citing_map)} из {len(works_with_citations)}")
+            total_citing = sum(len(v) for v in citing_map.values())
+            print(f"✅ Собрано цитирующих работ: {total_citing}")
         
         return citing_map
     
@@ -2318,100 +2216,6 @@ class JournalAnalyzer:
                 break
         
         return citing
-
-    def _get_citing_dois_for_work(self, oa_id: str, max_results: int = None) -> List[str]:
-        """
-        Get citing DOIs for a single work with pagination and rate limiting.
-        Returns list of dicts with doi and publication_date.
-        """
-        if max_results is None:
-            max_results = MAX_CITING_PER_WORK
-        
-        citing = []
-        cursor = "*"
-        fetched = 0
-        max_per_page = 200
-        
-        if SHOW_DEBUG_LOGS:
-            print(f"  📖 Получение цитирующих для {oa_id[:20]}...")
-        
-        while fetched < max_results:
-            try:
-                data = smart_request({
-                    "filter": f"cites:{oa_id}",
-                    "per_page": min(max_per_page, max_results - fetched),
-                    "select": "doi,publication_date",
-                    "cursor": cursor
-                })
-                
-                if not data or not data.get("results"):
-                    break
-                
-                for item in data["results"]:
-                    d = item.get("doi")
-                    if d:
-                        citing.append({
-                            'doi': d.replace("https://doi.org/", ""),
-                            'publication_date': item.get('publication_date')
-                        })
-                
-                fetched += len(data["results"])
-                cursor = data.get("meta", {}).get("next_cursor")
-                
-                # Небольшая задержка между пагинационными запросами
-                if cursor:
-                    time.sleep(random.uniform(0.1, 0.2))
-                
-                if not cursor:
-                    break
-                    
-            except Exception as e:
-                if SHOW_DEBUG_LOGS:
-                    print(f"  ⚠️ Ошибка при получении цитирующих для {oa_id}: {str(e)[:100]}")
-                break
-        
-        if SHOW_DEBUG_LOGS and len(citing) > 0:
-            print(f"  ✅ Найдено цитирующих: {len(citing)}")
-        
-        return citing
-
-    def _get_works_metadata_batch(self, oa_ids: List[str]) -> List[Dict]:
-        """
-        Get metadata for a batch of works by OpenAlex IDs using a single API request.
-        Uses the OpenAlex filter with OR operator (|) for up to 50 IDs.
-        """
-        if not oa_ids:
-            return []
-        
-        # OpenAlex ограничивает количество ID в одном запросе
-        max_ids_per_request = 50
-        results = []
-        
-        for batch in chunks(oa_ids, max_ids_per_request):
-            try:
-                # Формируем запрос с OR оператором
-                id_query = '|'.join(batch)
-                params = {
-                    'filter': f'openalex:{id_query}',
-                    'per_page': len(batch),
-                    'select': 'id,doi,publication_year,cited_by_count,publication_date'
-                }
-                
-                data = smart_request(params)
-                
-                if data and data.get('results'):
-                    results.extend(data['results'])
-                
-                # Задержка между батчами метаданных
-                if len(oa_ids) > max_ids_per_request:
-                    time.sleep(random.uniform(0.1, 0.3))
-                    
-            except Exception as e:
-                if SHOW_DEBUG_LOGS:
-                    print(f"⚠️ Ошибка при получении метаданных батча: {str(e)[:100]}")
-                continue
-        
-        return results
     
     def fetch_publications_metadata(self, progress_callback=None):
         """Stage 3: Fetch extended metadata for all publications"""
