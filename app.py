@@ -4210,30 +4210,31 @@ def run_journal_analysis(issn: str, period: str, max_workers: int = 6, journal_l
             'secondary': st.session_state.secondary_color
         }
         
-        if st.button(t('download_report'), type="primary", width='stretch'):
-            with st.spinner(t('generating_report')):
-                html_report = generate_journal_html_report(
-                    analyzer,
-                    journal_logo_base64,
-                    app_logo_base64,
-                    theme_colors,
-                    current_lang
-                )
-                
-                filename = f"journal_analysis_{analyzer.issn}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
-                
-                st.download_button(
-                    label="📥 " + t('download_report'),
-                    data=html_report.encode('utf-8'),
-                    file_name=filename,
-                    mime="text/html",
-                    width='stretch'
-                )
-                
-                st.markdown("---")
-                st.markdown(f"### {t('report_preview')}")
-                st.info(t('download_hint'))
-                st.components.v1.html(html_report, height=800, scrolling=True)
+        html_report = generate_journal_html_report(
+            analyzer,
+            journal_logo_base64,
+            app_logo_base64,
+            theme_colors,
+            current_lang
+        )
+        
+        filename = f"journal_analysis_{analyzer.issn}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+        
+        # Кнопка скачивания
+        st.download_button(
+            label="📥 " + t('download_report'),
+            data=html_report.encode('utf-8'),
+            file_name=filename,
+            mime="text/html",
+            type="primary",
+            width='stretch'
+        )
+        
+        # Отображение предпросмотра (всегда, а не только при клике)
+        st.markdown("---")
+        st.markdown(f"### {t('report_preview')}")
+        st.info(t('download_hint'))
+        st.components.v1.html(html_report, height=800, scrolling=True)
         
     except Exception as e:
         st.error(f"❌ {t('error_occurred')}: {str(e)}")
