@@ -1,35 +1,19 @@
 # ============================================
-# СЕКЦИЯ ПАРАМЕТРОВ (настройка запросов)
+# СЕКЦИЯ ПАРАМЕТРОВ
 # ============================================
 
 # Параметры API запросов
-BATCH_SIZE = 50  # Размер батча для всех API
+BATCH_SIZE = 50  # Размер батча для API
 MAX_RETRIES = 3  # Количество попыток при ошибке
-TIMEOUT = 20  # Таймаут на запрос в секундах
-DELAY_BETWEEN_BATCHES = 0.5  # Задержка между батчами (сек)
-MAX_CONCURRENT_REQUESTS = 10  # Максимум параллельных запросов
-RETRY_DELAY = 2  # Задержка перед повторной попыткой (сек)
-ORCID_REQUEST_DELAY = 0.2  # Задержка между запросами к ORCID API (сек)
-
-# Параметры вывода
+TIMEOUT = 30  # Таймаут на запрос в секундах
+DELAY_BETWEEN_BATCHES = 0.3  # Задержка между батчами (сек)
 SHOW_DEBUG_LOGS = True  # Показывать детальные логи
 GENERATE_HTML_REPORT = True  # Генерировать HTML отчет
 USE_CACHE = True  # Кэширование результатов
-LOGO_PATH = None  # Путь к логотипу журнала (устанавливается через виджет)
-
-# Лимиты для анализа
-MAX_PUBLICATIONS_TO_ANALYZE = 1000  # Максимум статей для анализа
-MIN_YEAR_FOR_TREND = 5  # Сколько лет для тренда
-
-# Режим анализа источников данных
-ANALYSIS_MODE = "journal_analysis"  # Режим анализа журнала
-
-# Параметры для обнаружения временных разрывов
-MIN_GAP_YEARS_FOR_WARNING = 10  # Минимальный разрыв в годах для предупреждения
 
 # Параметры для параллельного сбора цитирований
-MAX_WORKERS = 4  # Количество параллельных потоков
-BASE_DELAY = 0.45  # Базовая задержка между запросами
+MAX_WORKERS = 8  # Количество параллельных потоков
+BASE_DELAY = 0.25  # Базовая задержка между запросами
 MAX_RETRIES_PARALLEL = 4  # Количество попыток при ошибке для параллельных запросов
 MAX_CITING_PER_PAPER = 300  # Максимум цитирующих DOI на статью
 
@@ -37,44 +21,25 @@ MAX_CITING_PER_PAPER = 300  # Максимум цитирующих DOI на с�
 # ИМПОРТЫ
 # ============================================
 
-import asyncio
-import aiohttp
-import pandas as pd
 import streamlit as st
 from streamlit import session_state as ss
-import re
-import time
-from datetime import datetime
-import json
-from typing import List, Set, Dict, Tuple, Optional, Any
-from collections import Counter, defaultdict
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib
-matplotlib.use('Agg')
-import seaborn as sns
-from wordcloud import WordCloud
-from io import BytesIO
-import base64
-import plotly.graph_objects as go
-import plotly.express as px
-from plotly.subplots import make_subplots
+import pandas as pd
 import requests
-from bs4 import BeautifulSoup
+import json
+import time
+import re
 import os
-import hashlib
-from matplotlib.ticker import MaxNLocator
 import html
 import html as html_module
-import colorsys
-from tenacity import retry, stop_after_attempt, wait_exponential, wait_random
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import math
-from itertools import combinations
-import difflib
-from threading import Lock
+import base64
+from datetime import datetime
+from typing import List, Set, Dict, Tuple, Optional, Any
+from collections import Counter, defaultdict
 import random
-from tqdm import tqdm
+from threading import Lock
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import colorsys
+import numpy as np
 
 # ============================================
 # СЛОВАРЬ ПЕРЕВОДОВ
@@ -98,8 +63,6 @@ LANG = {
         'use_cache': '💾 Use cache',
         'clear_cache': '🗑️ Clear cache',
         'cache_cleared': '✅ Cache cleared!',
-        'load_data': '📥 Load Data',
-        'reports': '📄 Reports',
         'issn_label': 'ISSN',
         'period_label': 'Period',
         'period_hint': 'e.g., 2020-2023, 2020,2021,2022, or 2020',
@@ -262,6 +225,7 @@ LANG = {
         'citing_topics': 'Citing Topics',
         'analyzed_work': 'Analyzed Work',
         'total_citing_works': 'Total Citing Works',
+        'generating_report': 'Generating report...',
     },
     'ru': {
         'app_title': 'Расширенный анализ журналов',
@@ -280,8 +244,6 @@ LANG = {
         'use_cache': '💾 Использовать кэш',
         'clear_cache': '🗑️ Очистить кэш',
         'cache_cleared': '✅ Кэш очищен!',
-        'load_data': '📥 Загрузка данных',
-        'reports': '📄 Отчеты',
         'issn_label': 'ISSN',
         'period_label': 'Период',
         'period_hint': 'например, 2020-2023, 2020,2021,2022, или 2020',
@@ -444,6 +406,7 @@ LANG = {
         'citing_topics': 'Темы цитирующей работы',
         'analyzed_work': 'Анализируемая работа',
         'total_citing_works': 'Всего цитирующих работ',
+        'generating_report': 'Генерация отчета...',
     }
 }
 
@@ -460,7 +423,7 @@ def translate(key: str, lang: str = 'en', **kwargs) -> str:
     return text
 
 # ============================================
-# COLOR UTILITIES FOR DYNAMIC THEMES (из второго кода)
+# COLOR UTILITIES FOR DYNAMIC THEMES
 # ============================================
 
 def hex_to_rgb(hex_color: str) -> tuple:
@@ -687,309 +650,13 @@ def apply_theme_css(base_color: str, accent_color: str = None):
             text-align: center;
         }}
         
-        .reviewer-card {{
-            background: white;
-            border-radius: 12px;
-            padding: 16px;
-            margin-bottom: 16px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            transition: transform 0.2s, box-shadow 0.2s;
-            border-left: 4px solid var(--primary);
-        }}
-        
-        .reviewer-card:hover {{
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        }}
-        
-        .reviewer-name {{
-            font-size: 18px;
-            font-weight: 600;
-            color: var(--primary);
-            margin-bottom: 8px;
-        }}
-        
-        .reviewer-orcid {{
-            font-family: monospace;
-            font-size: 12px;
-            margin-bottom: 8px;
-        }}
-        
-        .reviewer-section {{
-            margin-top: 12px;
-            padding-top: 8px;
-            border-top: 1px solid #e0e0e0;
-        }}
-        
-        .reviewer-section-title {{
-            font-weight: 600;
-            font-size: 13px;
-            margin-bottom: 8px;
-            color: #555;
-        }}
-        
-        .external-id-link {{
-            display: inline-block;
-            background: #f0f0f0;
-            padding: 4px 10px;
-            border-radius: 15px;
-            font-size: 11px;
-            margin: 3px;
-            text-decoration: none;
-            color: #333;
-            transition: background 0.2s;
-        }}
-        
-        .external-id-link:hover {{
-            background: var(--primary);
-            color: white;
-        }}
-        
-        .reviewer-website {{
-            display: inline-block;
-            margin: 3px 6px 3px 0;
-            font-size: 12px;
-        }}
-        
-        .confidential-banner {{
-            background: linear-gradient(135deg, #fff3cd 0%, #ffe69e 100%);
-            border-left: 4px solid #dc3545;
-            padding: 12px 20px;
-            margin-bottom: 20px;
-            border-radius: 8px;
-            font-weight: 500;
-            text-align: center;
-        }}
-        
-        /* Author card styles for multiple authors */
-        .author-card {{
-            background: white;
-            border-radius: 15px;
-            padding: 20px;
-            margin-bottom: 25px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            border-left: 5px solid var(--primary);
-            transition: transform 0.2s;
-        }}
-        
-        .author-card:hover {{
-            transform: translateX(5px);
-            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
-        }}
-        
-        .author-card.best {{
-            border-left-color: #FFD700;
-            background: linear-gradient(135deg, #fff9e6 0%, #ffffff 100%);
-        }}
-        
-        .author-rank {{
-            font-size: 20px;
-            font-weight: bold;
-            color: var(--primary);
-            display: inline-block;
-            margin-right: 10px;
-        }}
-        
-        .author-name-main {{
-            font-size: 22px;
-            font-weight: 600;
-            color: var(--primary);
-            display: inline-block;
-        }}
-        
-        .author-hindex {{
-            font-size: 18px;
-            color: #666;
-            margin-left: 10px;
-        }}
-        
-        .best-badge {{
-            background: #FFD700;
-            color: #333;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 14px;
-            font-weight: bold;
-            display: inline-block;
-            margin-left: 15px;
-        }}
-        
-        /* Color coding for author cards in reports */
-        .author-section {{
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 2px solid #e0e0e0;
-        }}
-        
-        .author-section:last-child {{
-            border-bottom: none;
-        }}
-        
-        /* Source types table styles */
-        .source-table {{
-            width: 100%;
-            border-collapse: collapse;
-            margin: 20px 0;
-            font-family: 'Times New Roman', serif;
-        }}
-        .source-table th {{
-            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
-            color: white;
-            padding: 12px;
-            text-align: left;
-        }}
-        .source-table td {{
-            padding: 10px;
-            border-bottom: 1px solid #BDC3C7;
-            vertical-align: top;
-        }}
-        .source-table tr:hover {{
-            background-color: #f5f5f5;
-        }}
-        .source-example-item {{
-            margin: 3px 0;
-            font-size: 13px;
-        }}
-        .source-example-link {{
-            color: #2980B9;
-            text-decoration: none;
-            font-size: 12px;
-        }}
-        .source-example-link:hover {{
-            text-decoration: underline;
-        }}
-        .source-badge {{
-            display: inline-block;
-            padding: 2px 10px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 600;
-            margin-left: 5px;
-        }}
-        .source-badge-doi {{
-            background: #d4edda;
-            color: #155724;
-        }}
-        .source-badge-nodoi {{
-            background: #f8d7da;
-            color: #721c24;
-        }}
-        
-        /* Co-author card styles */
-        .coauthor-card {{
-            background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
-            border-radius: 12px;
-            padding: 16px 20px;
-            margin-bottom: 12px;
-            border: 1px solid #e0e0e0;
-            border-left: 4px solid var(--primary);
-            transition: transform 0.2s, box-shadow 0.2s;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        }}
-        
-        .coauthor-card:hover {{
-            transform: translateY(-2px);
-            box-shadow: 0 6px 16px rgba(0,0,0,0.1);
-            border-color: var(--primary);
-        }}
-        
-        .coauthor-name {{
-            font-size: 16px;
-            font-weight: 600;
-            color: var(--primary);
-            margin-bottom: 6px;
-        }}
-        
-        .coauthor-joint {{
-            font-size: 13px;
-            color: #666;
-            margin-bottom: 8px;
-        }}
-        
-        .coauthor-profiles {{
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-            margin-top: 8px;
-        }}
-        
-        .coauthor-profile-link {{
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 3px 10px;
-            border-radius: 15px;
-            font-size: 11px;
-            font-weight: 500;
-            text-decoration: none;
-            transition: all 0.2s;
-            background: #f0f0f0;
-            color: #333;
-        }}
-        
-        .coauthor-profile-link:hover {{
-            transform: translateY(-1px);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-        }}
-        
-        .coauthor-profile-link.orcid {{
-            background: #a6ce39;
-            color: #1a1a1a;
-        }}
-        
-        .coauthor-profile-link.orcid:hover {{
-            background: #8cb82e;
-        }}
-        
-        .coauthor-profile-link.scopus {{
-            background: #e97132;
-            color: white;
-        }}
-        
-        .coauthor-profile-link.scopus:hover {{
-            background: #d45f24;
-        }}
-        
-        .coauthor-profile-link.researcherid {{
-            background: #005a9c;
-            color: white;
-        }}
-        
-        .coauthor-profile-link.researcherid:hover {{
-            background: #004a82;
-        }}
-        
-        .coauthor-profile-link.website {{
-            background: #6c757d;
-            color: white;
-        }}
-        
-        .coauthor-profile-link.website:hover {{
-            background: #5a6268;
-        }}
-        
-        .coauthor-profile-link.other {{
-            background: #17a2b8;
-            color: white;
-        }}
-        
-        .coauthor-profile-link.other:hover {{
-            background: #138496;
-        }}
-        
-        .coauthor-no-orcid {{
-            font-size: 12px;
-            color: #999;
-            font-style: italic;
-        }}
-        
-        /* Journal analysis specific styles */
         .journal-metrics-grid {{
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
             gap: 12px;
             margin: 15px 0;
         }}
+        
         .journal-metric-card {{
             background: #f8f9fa;
             padding: 14px;
@@ -998,44 +665,53 @@ def apply_theme_css(base_color: str, accent_color: str = None):
             text-align: center;
             transition: transform 0.3s;
         }}
+        
         .journal-metric-card:hover {{
             transform: translateY(-3px);
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }}
+        
         .journal-metric-value {{
             font-size: 26px;
             font-weight: bold;
             color: #2C3E50;
             font-family: 'Times New Roman', serif;
         }}
+        
         .journal-metric-label {{
             font-size: 11px;
             color: #7F8C8D;
             margin-top: 4px;
             font-family: 'Times New Roman', serif;
         }}
+        
         .oa-progress-container {{
             margin: 15px 0;
+            max-width: 600px;
         }}
+        
         .oa-progress-item {{
             display: flex;
             align-items: center;
             gap: 12px;
             margin: 6px 0;
         }}
+        
         .oa-progress-label {{
             min-width: 80px;
             font-size: 13px;
             font-weight: 500;
         }}
+        
         .oa-progress-track {{
             flex: 1;
-            height: 22px;
+            height: 24px;
             background: #f0f0f0;
             border-radius: 12px;
             overflow: hidden;
             position: relative;
         }}
+        
         .oa-progress-fill {{
             height: 100%;
             border-radius: 12px;
@@ -1044,59 +720,68 @@ def apply_theme_css(base_color: str, accent_color: str = None):
             align-items: center;
             justify-content: flex-end;
             padding-right: 8px;
-            font-size: 11px;
+            font-size: 12px;
             font-weight: 600;
             color: white;
             text-shadow: 0 1px 2px rgba(0,0,0,0.3);
         }}
+        
         .oa-progress-percent {{
             min-width: 50px;
             font-size: 13px;
             font-weight: 500;
             color: #555;
         }}
+        
         .heatmap-grid {{
             display: grid;
             gap: 2px;
             margin: 15px 0;
             overflow-x: auto;
         }}
+        
         .heatmap-row {{
             display: grid;
             gap: 2px;
             align-items: center;
         }}
+        
         .heatmap-header {{
             font-weight: 600;
-            padding: 8px 12px;
+            padding: 8px 10px;
             background: #f0f0f0;
             text-align: center;
-            font-size: 13px;
+            font-size: 12px;
         }}
+        
         .heatmap-row-label {{
             font-weight: 500;
-            padding: 8px 12px;
+            padding: 8px 10px;
             background: #f8f9fa;
             text-align: center;
-            font-size: 13px;
+            font-size: 12px;
         }}
+        
         .heatmap-cell {{
-            padding: 8px 12px;
+            padding: 8px 10px;
             text-align: center;
             border-radius: 4px;
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 500;
             transition: transform 0.2s;
         }}
+        
         .heatmap-cell:hover {{
             transform: scale(1.05);
             z-index: 10;
             box-shadow: 0 4px 12px rgba(0,0,0,0.2);
         }}
+        
         .heatmap-cell-empty {{
             background: #f5f5f5;
             color: #ccc;
         }}
+        
         .collapser {{
             cursor: pointer;
             padding: 12px 16px;
@@ -1107,10 +792,12 @@ def apply_theme_css(base_color: str, accent_color: str = None):
             transition: background 0.3s, transform 0.2s;
             user-select: none;
         }}
+        
         .collapser:hover {{
             background: #e9ecef;
             transform: translateX(4px);
         }}
+        
         .collapser .citation-count {{
             background: var(--primary);
             color: white;
@@ -1119,6 +806,7 @@ def apply_theme_css(base_color: str, accent_color: str = None):
             font-size: 12px;
             margin-left: 10px;
         }}
+        
         .citation-detail {{
             padding: 12px 20px;
             margin: 4px 0 4px 20px;
@@ -1127,17 +815,21 @@ def apply_theme_css(base_color: str, accent_color: str = None):
             border: 1px solid #e0e0e0;
             border-left: 3px solid var(--secondary);
         }}
+        
         .citation-detail:hover {{
             background: #fafafa;
         }}
+        
         .cite-meta {{
             font-size: 13px;
             color: #555;
             margin-top: 4px;
         }}
+        
         .cite-meta strong {{
             color: #333;
         }}
+        
         .filter-section {{
             background: #f8f9fa;
             padding: 16px 20px;
@@ -1145,16 +837,19 @@ def apply_theme_css(base_color: str, accent_color: str = None):
             margin: 15px 0;
             border: 1px solid #e0e0e0;
         }}
+        
         .filter-row {{
             display: flex;
             flex-wrap: wrap;
             gap: 12px;
             align-items: flex-end;
         }}
+        
         .filter-row > div {{
             flex: 1;
-            min-width: 150px;
+            min-width: 140px;
         }}
+        
         .filter-row label {{
             display: block;
             font-size: 12px;
@@ -1162,6 +857,7 @@ def apply_theme_css(base_color: str, accent_color: str = None):
             color: #555;
             margin-bottom: 4px;
         }}
+        
         .filter-row select, .filter-row input {{
             width: 100%;
             padding: 6px 10px;
@@ -1170,26 +866,31 @@ def apply_theme_css(base_color: str, accent_color: str = None):
             font-size: 13px;
             background: white;
         }}
+        
         .filter-row select:focus, .filter-row input:focus {{
             border-color: var(--primary);
             outline: none;
             box-shadow: 0 0 0 3px var(--hover-light);
         }}
+        
         #visibleCount {{
             font-weight: 600;
             color: var(--primary);
             font-size: 14px;
         }}
+        
         .word-wrap {{
             word-wrap: break-word;
             max-width: 300px;
         }}
+        
         .collab-couples-grid {{
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
             gap: 8px;
             margin: 10px 0;
         }}
+        
         .collab-couple-item {{
             background: #f8f9fa;
             padding: 8px 14px;
@@ -1198,8 +899,9 @@ def apply_theme_css(base_color: str, accent_color: str = None):
             display: flex;
             justify-content: space-between;
             align-items: center;
-            font-size: 14px;
+            font-size: 13px;
         }}
+        
         .collab-couple-item .badge {{
             background: var(--primary);
             color: white;
@@ -1207,63 +909,187 @@ def apply_theme_css(base_color: str, accent_color: str = None):
             border-radius: 12px;
             font-size: 12px;
         }}
-        .country-flag {{
-            font-size: 18px;
-            margin-right: 4px;
-        }}
+        
         .scrollable-table {{
             max-height: 600px;
             overflow-y: auto;
             border: 1px solid #e0e0e0;
             border-radius: 8px;
         }}
+        
         .scrollable-table table {{
             margin: 0;
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
         }}
+        
         .scrollable-table thead {{
             position: sticky;
             top: 0;
             z-index: 10;
         }}
-        .topic-card {{
-            background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
-            border-radius: 10px;
-            padding: 14px 18px;
-            margin: 6px 0;
-            border-left: 4px solid var(--primary);
-            transition: transform 0.2s;
-        }}
-        .topic-card:hover {{
-            transform: translateX(4px);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        }}
-        .topic-name {{
+        
+        .scrollable-table th {{
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            color: white;
+            padding: 10px 12px;
+            text-align: left;
             font-weight: 600;
-            font-size: 14px;
-            color: var(--primary);
-        }}
-        .topic-stats {{
-            display: flex;
-            flex-wrap: wrap;
-            gap: 12px;
-            margin-top: 4px;
             font-size: 12px;
-            color: #666;
+            white-space: nowrap;
         }}
-        .topic-stats span {{
-            background: #f0f0f0;
+        
+        .scrollable-table td {{
+            padding: 8px 12px;
+            border-bottom: 1px solid #e0e0e0;
+            vertical-align: middle;
+        }}
+        
+        .scrollable-table tr:hover {{
+            background-color: #f5f5f5;
+        }}
+        
+        .scrollable-table tr:nth-child(even) {{
+            background-color: #fafafa;
+        }}
+        
+        .scrollable-table tr:nth-child(even):hover {{
+            background-color: #f0f0f0;
+        }}
+        
+        .badge {{
+            display: inline-block;
             padding: 2px 10px;
             border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            margin: 2px;
         }}
-        .topic-stats .highlight {{
+        
+        .badge-info {{
+            background: #d1ecf1;
+            color: #0c5460;
+        }}
+        
+        .badge-success {{
+            background: #d4edda;
+            color: #155724;
+        }}
+        
+        .badge-warning {{
+            background: #fff3cd;
+            color: #856404;
+        }}
+        
+        .badge-danger {{
+            background: #f8d7da;
+            color: #721c24;
+        }}
+        
+        .citation-count {{
             background: var(--primary);
             color: white;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
         }}
-        .sticky-header {{
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            background: white;
+        
+        .doi-link {{
+            color: #2980B9;
+            text-decoration: none;
+            font-size: 12px;
+            word-break: break-all;
+        }}
+        
+        .doi-link:hover {{
+            text-decoration: underline;
+        }}
+        
+        .stat-row {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin: 10px 0;
+        }}
+        
+        .stat-item {{
+            background: #f8f9fa;
+            padding: 8px 14px;
+            border-radius: 6px;
+            border-left: 3px solid var(--primary);
+            font-size: 13px;
+        }}
+        
+        .stat-item strong {{
+            color: #333;
+        }}
+        
+        .sub-section-title {{
+            font-size: 18px;
+            font-weight: 600;
+            margin: 15px 0 10px 0;
+            color: var(--primary);
+            padding-bottom: 6px;
+            border-bottom: 2px solid #e0e0e0;
+        }}
+        
+        .collab-stats {{
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin: 10px 0;
+        }}
+        
+        .collab-stat-box {{
+            background: #f8f9fa;
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+            text-align: center;
+        }}
+        
+        .collab-stat-box .value {{
+            font-size: 24px;
+            font-weight: bold;
+            color: var(--primary);
+        }}
+        
+        .collab-stat-box .label {{
+            font-size: 13px;
+            color: #666;
+            margin-top: 4px;
+        }}
+        
+        .footer {{
+            margin-top: 30px;
+            padding-top: 18px;
+            border-top: 2px solid #e0e0e0;
+            text-align: center;
+            color: #7F8C8D;
+            font-size: 12px;
+        }}
+        
+        .footer a {{
+            color: var(--primary);
+            text-decoration: none;
+        }}
+        
+        .footer a:hover {{
+            text-decoration: underline;
+        }}
+        
+        @media print {{
+            .sidebar {{ display: none; }}
+            .main-content {{ margin-left: 0; }}
+        }}
+        
+        @media (max-width: 768px) {{
+            .sidebar {{ display: none; }}
+            .main-content {{ margin-left: 0; padding: 15px; }}
+            .filter-row > div {{ min-width: 100%; }}
+            .collab-stats {{ grid-template-columns: 1fr; }}
         }}
     </style>
     """
@@ -1376,142 +1202,8 @@ def update_colored_progress(progress_percent: float, status_text: str = "", colo
     return progress_html
 
 # ============================================
-# НАСТРОЙКА НАУЧНОГО СТИЛЯ ДЛЯ ГРАФИКОВ
+# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 # ============================================
-
-def apply_scientific_style():
-    """Улучшенный научный стиль для matplotlib для материаловедческих публикаций"""
-    try:
-        plt.style.use('seaborn-v0_8-whitegrid')
-    except:
-        try:
-            plt.style.use('seaborn-whitegrid')
-        except:
-            pass
-    
-    plt.rcParams.update({
-        'font.size': 11,
-        'font.family': 'serif',
-        'font.serif': ['Times New Roman', 'DejaVu Serif', 'Computer Modern Roman'],
-        'mathtext.fontset': 'stix',
-        
-        'axes.labelsize': 12,
-        'axes.labelweight': 'bold',
-        'axes.titlesize': 13,
-        'axes.titleweight': 'bold',
-        'axes.facecolor': '#FFFFFF',
-        'axes.edgecolor': '#000000',
-        'axes.linewidth': 1.5,
-        'axes.spines.top': False,
-        'axes.spines.right': False,
-        'axes.grid': True,
-        'grid.alpha': 0.3,
-        'grid.linestyle': '--',
-        
-        'xtick.color': '#000000',
-        'ytick.color': '#000000',
-        'xtick.labelsize': 11,
-        'ytick.labelsize': 11,
-        'xtick.direction': 'in',
-        'ytick.direction': 'in',
-        'xtick.major.size': 7,
-        'xtick.major.width': 1.5,
-        'ytick.major.size': 7,
-        'ytick.major.width': 1.5,
-        'xtick.minor.size': 3,
-        'xtick.minor.width': 1.0,
-        'ytick.minor.size': 3,
-        'ytick.minor.width': 1.0,
-        
-        'legend.fontsize': 10,
-        'legend.frameon': True,
-        'legend.framealpha': 0.9,
-        'legend.edgecolor': '#000000',
-        'legend.fancybox': False,
-        'legend.borderaxespad': 0.5,
-        'legend.handlelength': 1.5,
-        'legend.handletextpad': 0.8,
-        
-        'figure.dpi': 300,
-        'savefig.dpi': 300,
-        'savefig.bbox': 'tight',
-        'savefig.pad_inches': 0.05,
-        'figure.facecolor': 'white',
-        'figure.constrained_layout.use': True,
-        'figure.figsize': (8, 6),
-        
-        'lines.linewidth': 2,
-        'lines.markersize': 7,
-        'lines.markeredgewidth': 1.0,
-        'errorbar.capsize': 3,
-        
-        'pdf.fonttype': 42,
-        'ps.fonttype': 42,
-    })
-
-apply_scientific_style()
-
-# ============================================
-# ДОПОЛНИТЕЛЬНЫЕ СЛОВАРИ И УТИЛИТЫ
-# ============================================
-
-# Словарь для преобразования кодов стран в полные названия
-COUNTRY_CODE_TO_NAME = {
-    'GR': 'Greece',
-    'CN': 'China',
-    'PT': 'Portugal',
-    'BY': 'Belarus',
-    'PL': 'Poland',
-    'SK': 'Slovakia',
-    'SA': 'Saudi Arabia',
-    'US': 'United States',
-    'AU': 'Australia',
-    'PK': 'Pakistan',
-    'GB': 'United Kingdom',
-    'HK': 'Hong Kong',
-    'DE': 'Germany',
-    'NO': 'Norway',
-    'FR': 'France',
-    'IN': 'India',
-    'KR': 'South Korea',
-    'RU': 'Russia',
-    'UA': 'Ukraine',
-    'IT': 'Italy',
-    'ES': 'Spain',
-    'NL': 'Netherlands',
-    'CH': 'Switzerland',
-    'SE': 'Sweden',
-    'BE': 'Belgium',
-    'AT': 'Austria',
-    'DK': 'Denmark',
-    'FI': 'Finland',
-    'IE': 'Ireland',
-    'NZ': 'New Zealand',
-    'ZA': 'South Africa',
-    'AR': 'Argentina',
-    'MX': 'Mexico',
-    'CL': 'Chile',
-    'CO': 'Colombia',
-    'BR': 'Brazil',
-    'JP': 'Japan',
-    'SG': 'Singapore',
-    'TW': 'Taiwan',
-    'IL': 'Israel',
-    'TR': 'Turkey',
-    'EG': 'Egypt',
-    'NG': 'Nigeria',
-    'KE': 'Kenya',
-}
-
-def get_full_country_name(country_code: str) -> str:
-    """Преобразует код страны в полное название"""
-    if not country_code:
-        return 'Unknown'
-    
-    if len(country_code) > 3:
-        return country_code
-    
-    return COUNTRY_CODE_TO_NAME.get(country_code.upper(), country_code)
 
 def normalize_issn(issn_str: str) -> str:
     """Нормализует ISSN"""
@@ -1529,7 +1221,7 @@ def smart_get(url: str, params: dict, retries: int = MAX_RETRIES_PARALLEL) -> Op
             with lock:
                 time.sleep(random.uniform(0.1, BASE_DELAY))
             
-            resp = requests.get(url, params=params, timeout=25)
+            resp = requests.get(url, params=params, timeout=TIMEOUT)
             
             if resp.status_code == 429:
                 wait = int(resp.headers.get("Retry-After", 2 ** attempt + 1))
@@ -1548,11 +1240,12 @@ def smart_get(url: str, params: dict, retries: int = MAX_RETRIES_PARALLEL) -> Op
     
     return None
 
-def chunks(lst, n):
+def chunks(lst: List, n: int):
+    """Разбивает список на батчи размера n"""
     for i in range(0, len(lst), n):
         yield lst[i:i + n]
 
-def safe_get(data, *keys, default=None):
+def safe_get(data: dict, *keys, default=None):
     """Безопасное получение значения из вложенного словаря"""
     for key in keys:
         if isinstance(data, dict):
@@ -1602,8 +1295,24 @@ def save_to_cache(issn: str, data_type: str, data: Dict):
         if SHOW_DEBUG_LOGS:
             print(f"⚠️ Ошибка сохранения кэша: {e}")
 
+def extract_country_from_affiliation(affiliation: str) -> str:
+    """Извлекает страну из названия аффилиации"""
+    countries = [
+        'USA', 'UK', 'China', 'Germany', 'France', 'Japan', 'Russia', 'Italy', 
+        'Canada', 'Australia', 'Spain', 'Brazil', 'India', 'Netherlands', 'Switzerland',
+        'South Korea', 'Sweden', 'Belgium', 'Poland', 'Austria', 'Norway', 'Denmark',
+        'Finland', 'Ireland', 'Portugal', 'Greece', 'Czech Republic', 'Hungary',
+        'New Zealand', 'South Africa', 'Argentina', 'Mexico', 'Chile', 'Colombia',
+        'United States', 'United Kingdom', 'England', 'Scotland', 'Wales'
+    ]
+    
+    for country in countries:
+        if country.lower() in affiliation.lower():
+            return country
+    return "Unknown"
+
 # ============================================
-# ФУНКЦИИ ДЛЯ РАБОТЫ С OPENALEX API
+# API ФУНКЦИИ
 # ============================================
 
 def get_articles_by_journal(issn: str, period, progress_callback=None) -> List[Dict]:
@@ -1687,9 +1396,9 @@ def get_articles_by_journal(issn: str, period, progress_callback=None) -> List[D
     
     return articles
 
-def get_citing_dois(oa_id: str) -> List[str]:
+def get_citing_dois_single(oa_id: str) -> List[str]:
     """
-    Получает список цитирующих DOI для статьи.
+    Получает список цитирующих DOI для одной статьи.
     
     Args:
         oa_id: OpenAlex ID статьи
@@ -1729,9 +1438,27 @@ def get_citing_dois(oa_id: str) -> List[str]:
     
     return citing[:MAX_CITING_PER_PAPER]
 
-def fetch_openalex_metadata(doi_list: List[str], batch_size: int = 50, progress_callback=None) -> List[Dict]:
+def get_citing_dois_with_cache(oa_id: str) -> List[str]:
+    """Получает цитирующие DOI с кэшированием."""
+    if not oa_id:
+        return []
+    
+    # Проверяем кэш
+    cache_data = load_from_cache(oa_id, "citing_dois")
+    if cache_data:
+        return cache_data.get('dois', [])
+    
+    # Получаем данные
+    dois = get_citing_dois_single(oa_id)
+    
+    # Сохраняем в кэш
+    save_to_cache(oa_id, "citing_dois", {"dois": dois})
+    
+    return dois
+
+def fetch_openalex_metadata(doi_list: List[str], batch_size: int = BATCH_SIZE, progress_callback=None) -> List[Dict]:
     """
-    Получает полные метаданные из OpenAlex для списка DOI.
+    Получает полные метаданные из OpenAlex для списка DOI батчами.
     
     Args:
         doi_list: список DOI
@@ -1745,28 +1472,43 @@ def fetch_openalex_metadata(doi_list: List[str], batch_size: int = 50, progress_
         return []
     
     all_metadata = []
-    total = len(doi_list)
+    uncached_dois = []
     
+    # Проверяем кэш для каждого DOI
+    for doi in doi_list:
+        cache_data = load_from_cache(doi, "metadata")
+        if cache_data:
+            all_metadata.append(cache_data.get('data', {}))
+        else:
+            uncached_dois.append(doi)
+    
+    if SHOW_DEBUG_LOGS:
+        print(f"📊 Закэшировано: {len(all_metadata)}, нужно запросить: {len(uncached_dois)}")
+    
+    # Батчевый запрос для незакэшированных
+    total = len(uncached_dois)
     for i in range(0, total, batch_size):
-        batch = doi_list[i:i+batch_size]
+        batch = uncached_dois[i:i+batch_size]
         doi_query = '|'.join(batch[:50])
         
         params = {
             'filter': f'doi:{doi_query}',
-            'per-page': len(batch)
+            'per-page': len(batch),
+            'select': 'id,doi,title,publication_year,publication_date,cited_by_count,open_access,authorships,primary_topic,topics,concepts'
         }
         
-        url = "https://api.openalex.org/works"
-        data = smart_get(url, params)
+        data = smart_get("https://api.openalex.org/works", params)
         
         if data and data.get('results'):
             for item in data['results']:
                 parsed = parse_openalex_publication(item)
-                if parsed:
+                if parsed and parsed.get('doi'):
                     all_metadata.append(parsed)
+                    # Сохраняем в кэш
+                    save_to_cache(parsed['doi'], "metadata", {"data": parsed})
         
         if progress_callback:
-            progress_callback(len(all_metadata), total)
+            progress_callback(min(i + batch_size, total), total)
         
         time.sleep(DELAY_BETWEEN_BATCHES)
     
@@ -1934,22 +1676,6 @@ def parse_openalex_publication(item: Dict) -> Dict:
             print(f"⚠️ Ошибка парсинга публикации: {e}")
         return None
 
-def extract_country_from_affiliation(affiliation: str) -> str:
-    """Извлекает страну из названия аффилиации"""
-    countries = [
-        'USA', 'UK', 'China', 'Germany', 'France', 'Japan', 'Russia', 'Italy', 
-        'Canada', 'Australia', 'Spain', 'Brazil', 'India', 'Netherlands', 'Switzerland',
-        'South Korea', 'Sweden', 'Belgium', 'Poland', 'Austria', 'Norway', 'Denmark',
-        'Finland', 'Ireland', 'Portugal', 'Greece', 'Czech Republic', 'Hungary',
-        'New Zealand', 'South Africa', 'Argentina', 'Mexico', 'Chile', 'Colombia',
-        'United States', 'United Kingdom', 'England', 'Scotland', 'Wales'
-    ]
-    
-    for country in countries:
-        if country.lower() in affiliation.lower():
-            return country
-    return "Unknown"
-
 # ============================================
 # КЛАСС ДЛЯ АНАЛИЗА ЖУРНАЛА
 # ============================================
@@ -1964,22 +1690,6 @@ class JournalAnalyzer:
         self.enriched_articles = []
         self.enriched_citations = []
         self.report_data = {}
-        self.cache_data = {}
-        
-        # Коллекции для агрегации
-        self.all_authors = set()
-        self.all_affiliations = set()
-        self.all_countries = set()
-        self.all_journals = set()
-        self.all_publishers = set()
-        self.all_topics = defaultdict(lambda: {'analyzed': 0, 'citing': 0})
-        self.all_subtopics = defaultdict(lambda: {'analyzed': 0, 'citing': 0})
-        self.all_fields = defaultdict(lambda: {'analyzed': 0, 'citing': 0})
-        self.all_domains = defaultdict(lambda: {'analyzed': 0, 'citing': 0})
-        self.all_concepts = defaultdict(lambda: {'analyzed': 0, 'citing': 0})
-        
-        # Детальные цитирования
-        self.detailed_citations = {}
         
     def run_analysis(self, progress_callback=None) -> Dict:
         """Запускает полный анализ журнала"""
@@ -2004,7 +1714,7 @@ class JournalAnalyzer:
         if SHOW_DEBUG_LOGS:
             print(f"✅ Найдено статей: {len(self.journal_articles)}")
         
-        # Этап 2: Сбор цитирующих DOI (параллельно)
+        # Этап 2: Сбор цитирующих DOI (параллельно с кэшем)
         if progress_callback:
             progress_callback(0, 1, "stage_collecting_citations", 0, 0)
         
@@ -2037,28 +1747,34 @@ class JournalAnalyzer:
         return self.report_data
     
     def _collect_citing_dois(self, progress_callback=None):
-        """Параллельный сбор цитирующих DOI"""
+        """Параллельный сбор цитирующих DOI с кэшированием"""
         if SHOW_DEBUG_LOGS:
             print(f"⚡ Параллельный сбор цитирующих DOI ({self.max_workers} потоков)...")
         
         self.citing_dois_map = {}
-        futures = {}
         
         # Собираем статьи с цитированиями
-        citing_tasks = []
-        for article in self.journal_articles:
-            if article.get('cited_by_count', 0) > 0 and article.get('doi') != "N/A":
-                citing_tasks.append(article)
+        citing_tasks = [
+            (article.get('openalex_id', ''), article.get('doi', ''))
+            for article in self.journal_articles
+            if article.get('cited_by_count', 0) > 0 and article.get('doi') != "N/A"
+        ]
+        
+        if not citing_tasks:
+            if SHOW_DEBUG_LOGS:
+                print("ℹ️ Нет статей с цитированиями")
+            return
         
         if SHOW_DEBUG_LOGS:
             print(f"📊 Статей с цитированиями: {len(citing_tasks)}")
         
+        # Используем ThreadPoolExecutor с ограничением
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            for article in citing_tasks:
-                oa_id = article.get('openalex_id', '')
+            futures = {}
+            for oa_id, doi in citing_tasks:
                 if oa_id:
-                    future = executor.submit(get_citing_dois, oa_id)
-                    futures[future] = article.get('doi', '')
+                    future = executor.submit(get_citing_dois_with_cache, oa_id)
+                    futures[future] = doi
             
             total = len(futures)
             completed = 0
@@ -2174,7 +1890,6 @@ class JournalAnalyzer:
         if SHOW_DEBUG_LOGS:
             print("📊 Подготовка данных для отчета...")
         
-        # Базовая статистика
         articles = self.enriched_articles
         citations = self.enriched_citations
         
@@ -2187,7 +1902,6 @@ class JournalAnalyzer:
         total_publications = len(articles)
         total_citations = sum(a.get('cited_by_count', 0) for a in articles)
         
-        # h-index, g-index, i10-index, i100-index
         citation_counts = [a.get('cited_by_count', 0) for a in articles]
         h_index = self._calculate_h_index(citation_counts)
         g_index = self._calculate_g_index(citation_counts)
@@ -2195,7 +1909,6 @@ class JournalAnalyzer:
         i100_index = sum(1 for c in citation_counts if c >= 100)
         avg_citations = sum(citation_counts) / len(citation_counts) if citation_counts else 0
         
-        # Open Access Breakdown
         oa_breakdown = {'gold': 0, 'hybrid': 0, 'green': 0, 'bronze': 0, 'closed': 0, 'unknown': 0}
         for a in articles:
             status = a.get('oa_status', 'unknown')
@@ -2204,11 +1917,9 @@ class JournalAnalyzer:
             else:
                 oa_breakdown['unknown'] += 1
         
-        # Активные годы
         years = [a.get('publication_year') for a in articles if a.get('publication_year')]
         active_years = len(set(years))
         
-        # Уникальные авторы, аффилиации, страны
         all_authors = set()
         all_affiliations = set()
         all_countries = set()
@@ -2220,12 +1931,10 @@ class JournalAnalyzer:
         for a in articles:
             authors = a.get('authors', [])
             affiliations = a.get('affiliations', [])
-            countries = a.get('affiliation_countries', [])
             
             all_authors.update(authors)
             all_affiliations.update(affiliations)
             
-            # Извлекаем страны из аффилиаций
             country_codes = set()
             for aff in affiliations:
                 country = extract_country_from_affiliation(aff)
@@ -2237,7 +1946,6 @@ class JournalAnalyzer:
             total_affiliations += len(affiliations)
             total_countries += len(country_codes)
             
-            # Международные коллаборации
             if len(country_codes) >= 2:
                 international_collab_count += 1
         
@@ -2253,7 +1961,6 @@ class JournalAnalyzer:
             authors_with_orcids = a.get('authors_with_orcids', [])
             citations_count = a.get('cited_by_count', 0)
             
-            # Создаем словарь для быстрого поиска ORCID по имени
             orcid_map = {item['name']: item.get('orcid', '') for item in authors_with_orcids}
             
             for author in authors:
@@ -2262,7 +1969,6 @@ class JournalAnalyzer:
                 if author in orcid_map and not author_stats[author]['orcid']:
                     author_stats[author]['orcid'] = orcid_map[author]
                 
-                # Добавляем аффилиации и страны
                 affs = a.get('affiliations', [])
                 for aff in affs:
                     author_stats[author]['affiliations'].add(aff)
@@ -2270,7 +1976,6 @@ class JournalAnalyzer:
                     if country != 'Unknown':
                         author_stats[author]['countries'].add(country)
         
-        # Сортируем по количеству публикаций
         sorted_authors = sorted(
             author_stats.items(),
             key=lambda x: (x[1]['publications'], x[1]['citations']),
@@ -2299,7 +2004,6 @@ class JournalAnalyzer:
         top_affiliations = [{'affiliation': aff, 'count': count} for aff, count in top_affiliations]
         
         # 4. Geographic Analysis
-        # 4.1 Unique Countries per Publication
         unique_countries_per_pub = defaultdict(int)
         for a in articles:
             countries = set()
@@ -2310,7 +2014,6 @@ class JournalAnalyzer:
             for country in countries:
                 unique_countries_per_pub[country] += 1
         
-        # 4.2 Authors per Country
         authors_per_country = defaultdict(int)
         for a in articles:
             for aff in a.get('affiliations', []):
@@ -2318,7 +2021,6 @@ class JournalAnalyzer:
                 if country != 'Unknown':
                     authors_per_country[country] += 1
         
-        # 4.3 Collaboration Patterns
         single_country_papers = 0
         international_papers = 0
         for a in articles:
@@ -2332,7 +2034,6 @@ class JournalAnalyzer:
             elif len(countries) == 1:
                 single_country_papers += 1
         
-        # 4.4 Collaboration Couples
         collaboration_couples = defaultdict(int)
         for a in articles:
             countries = set()
@@ -2348,11 +2049,9 @@ class JournalAnalyzer:
                         collaboration_couples[pair] += 1
         
         # 5. Citation Analysis
-        # 5.1 Citation Dynamics by Year
         citation_dynamics = defaultdict(lambda: defaultdict(int))
         first_citation_lags = []
         
-        # Строим карту цитирований
         for article in articles:
             pub_year = article.get('publication_year')
             pub_date = article.get('publication_date')
@@ -2371,13 +2070,11 @@ class JournalAnalyzer:
                     if cite_year:
                         citation_dynamics[pub_year][cite_year] += 1
                         
-                        # Первое цитирование
                         if cite_year and pub_year:
                             lag = cite_year - pub_year
                             if lag >= 0:
                                 first_citation_lags.append(lag)
         
-        # Преобразуем в список для отчета
         citation_dynamics_list = []
         for pub_year in sorted(citation_dynamics.keys()):
             for cite_year in sorted(citation_dynamics[pub_year].keys()):
@@ -2387,7 +2084,6 @@ class JournalAnalyzer:
                     'count': citation_dynamics[pub_year][cite_year]
                 })
         
-        # First citation analysis
         first_citation_stats = {}
         if first_citation_lags:
             first_citation_stats = {
@@ -2397,7 +2093,6 @@ class JournalAnalyzer:
                 'median': sorted(first_citation_lags)[len(first_citation_lags)//2]
             }
         
-        # 5.2 Cumulative Citations
         cumulative_citations = defaultdict(int)
         all_citation_years = set()
         for article in articles:
@@ -2413,12 +2108,10 @@ class JournalAnalyzer:
                     if cite_year:
                         all_citation_years.add(cite_year)
         
-        # Сортируем годы
         sorted_years = sorted(all_citation_years)
         cum_sum = 0
         cumulative_list = []
         for year in sorted_years:
-            # Суммируем все цитирования за этот год
             year_total = 0
             for pub_year in citation_dynamics.keys():
                 year_total += citation_dynamics[pub_year].get(year, 0)
@@ -2428,13 +2121,11 @@ class JournalAnalyzer:
                 'cumulative_count': cum_sum
             })
         
-        # 5.3 Citation Network Heatmap
         heatmap_data = {}
         for pub_year in sorted(citation_dynamics.keys()):
             for cite_year in sorted(citation_dynamics[pub_year].keys()):
                 heatmap_data[(pub_year, cite_year)] = citation_dynamics[pub_year][cite_year]
         
-        # 5.4 Most Cited Publications
         sorted_by_citations = sorted(articles, key=lambda x: x.get('cited_by_count', 0), reverse=True)[:20]
         most_cited_publications = []
         for rank, pub in enumerate(sorted_by_citations, 1):
@@ -2477,7 +2168,6 @@ class JournalAnalyzer:
             if publisher and publisher != 'Unknown':
                 citing_publishers.add(publisher)
         
-        # 6.1 Top Citing Authors
         citing_author_stats = defaultdict(int)
         for cite in citations:
             for author in cite.get('authors', []):
@@ -2486,7 +2176,6 @@ class JournalAnalyzer:
         top_citing_authors = sorted(citing_author_stats.items(), key=lambda x: x[1], reverse=True)[:20]
         top_citing_authors = [{'name': name, 'count': count} for name, count in top_citing_authors]
         
-        # 6.2 Top Citing Affiliations
         citing_aff_stats = defaultdict(int)
         for cite in citations:
             for aff in cite.get('affiliations', []):
@@ -2495,7 +2184,6 @@ class JournalAnalyzer:
         top_citing_affiliations = sorted(citing_aff_stats.items(), key=lambda x: x[1], reverse=True)[:20]
         top_citing_affiliations = [{'affiliation': aff, 'count': count} for aff, count in top_citing_affiliations]
         
-        # 6.3 Top Citing Countries
         citing_country_stats = defaultdict(int)
         for cite in citations:
             for aff in cite.get('affiliations', []):
@@ -2506,7 +2194,6 @@ class JournalAnalyzer:
         top_citing_countries = sorted(citing_country_stats.items(), key=lambda x: x[1], reverse=True)[:20]
         top_citing_countries = [{'country': country, 'count': count} for country, count in top_citing_countries]
         
-        # 6.4 Top Citing Journals
         citing_journal_stats = defaultdict(int)
         for cite in citations:
             journal = cite.get('journal_name')
@@ -2516,7 +2203,6 @@ class JournalAnalyzer:
         top_citing_journals = sorted(citing_journal_stats.items(), key=lambda x: x[1], reverse=True)[:20]
         top_citing_journals = [{'journal': journal, 'count': count} for journal, count in top_citing_journals]
         
-        # 6.5 Top Citing Publishers
         citing_publisher_stats = defaultdict(int)
         for cite in citations:
             publisher = cite.get('publisher')
@@ -2527,7 +2213,6 @@ class JournalAnalyzer:
         top_citing_publishers = [{'publisher': publisher, 'count': count} for publisher, count in top_citing_publishers]
         
         # 7. Topics Analysis
-        # 7.1 Topic Overview
         topic_stats = defaultdict(lambda: {'analyzed': 0, 'citing': 0, 'first_year': 9999, 'last_year': 0})
         
         for article in articles:
@@ -2547,7 +2232,6 @@ class JournalAnalyzer:
                 if topic_name:
                     topic_stats[topic_name]['citing'] += 1
         
-        # Нормализация
         total_analyzed = len(articles)
         total_citing = len(citations)
         
@@ -2557,7 +2241,6 @@ class JournalAnalyzer:
             citing_norm = stats['citing'] / total_citing if total_citing > 0 else 0
             total_norm = (stats['analyzed'] + stats['citing']) / (total_analyzed + total_citing) if (total_analyzed + total_citing) > 0 else 0
             
-            # Определяем пиковый год
             peak_year = stats['last_year'] if stats['last_year'] > 0 else 0
             
             topic_analysis_list.append({
@@ -2571,10 +2254,8 @@ class JournalAnalyzer:
                 'peak_year': peak_year
             })
         
-        # Сортируем по total_norm
         topic_analysis_list = sorted(topic_analysis_list, key=lambda x: x['total_norm'], reverse=True)[:30]
         
-        # 7.2 Top Topics, Subtopics, Fields, Domains, Concepts
         topic_count = defaultdict(int)
         subtopic_count = defaultdict(int)
         field_count = defaultdict(int)
@@ -2630,7 +2311,7 @@ class JournalAnalyzer:
         top_concepts = sorted(concept_count.items(), key=lambda x: x[1], reverse=True)[:20]
         
         # 8. Detailed Citations
-        self.detailed_citations = {}
+        detailed_citations = {}
         for article in articles:
             pub_id = article.get('id', '')
             doi = article.get('doi', '')
@@ -2643,7 +2324,6 @@ class JournalAnalyzer:
             for citing_doi in citing_dois:
                 citing_work = citing_map.get(citing_doi)
                 if citing_work:
-                    # Вычисляем задержку цитирования
                     pub_year = article.get('publication_year', 0)
                     cite_year = citing_work.get('publication_year', 0)
                     lag = cite_year - pub_year if pub_year and cite_year else None
@@ -2662,7 +2342,7 @@ class JournalAnalyzer:
                     })
             
             if citing_list:
-                self.detailed_citations[pub_id] = {
+                detailed_citations[pub_id] = {
                     'title': article.get('title', 'No title'),
                     'year': article.get('publication_year', 'N/A'),
                     'doi': doi,
@@ -2735,7 +2415,7 @@ class JournalAnalyzer:
             'top_fields': top_fields,
             'top_domains': top_domains,
             'top_concepts': top_concepts,
-            'detailed_citations': self.detailed_citations,
+            'detailed_citations': detailed_citations,
             'all_publications': all_publications,
             'articles': articles,
             'citations': citations,
@@ -2768,7 +2448,7 @@ class JournalAnalyzer:
         return g
 
 # ============================================
-# ФУНКЦИИ ДЛЯ ГЕНЕРАЦИИ HTML ОТЧЕТА
+# ГЕНЕРАТОР HTML ОТЧЕТА
 # ============================================
 
 def generate_html_report(report_data: Dict, logo_base64: Optional[str] = None, app_logo_base64: Optional[str] = None, theme_colors: Optional[Dict] = None, lang: str = 'en') -> str:
@@ -2786,7 +2466,7 @@ def generate_html_report(report_data: Dict, logo_base64: Optional[str] = None, a
     def t(key: str, **kwargs) -> str:
         return translate(key, lang, **kwargs)
     
-    # Получаем данные из отчета
+    # Получаем данные из отчета (сокращенно для краткости, но полный функционал сохранен)
     total_pubs = report_data.get('total_publications', 0)
     total_citations = report_data.get('total_citations', 0)
     h_index = report_data.get('h_index', 0)
@@ -2803,7 +2483,6 @@ def generate_html_report(report_data: Dict, logo_base64: Optional[str] = None, a
     avg_affiliations_per_paper = report_data.get('avg_affiliations_per_paper', 0)
     avg_countries_per_paper = report_data.get('avg_countries_per_paper', 0)
     international_collab_rate = report_data.get('international_collab_rate', 0)
-    
     total_citing_works = report_data.get('total_citing_works', 0)
     unique_citing_authors = report_data.get('unique_citing_authors', 0)
     unique_citing_affiliations = report_data.get('unique_citing_affiliations', 0)
@@ -3028,7 +2707,6 @@ def generate_html_report(report_data: Dict, logo_base64: Optional[str] = None, a
                 </thead>
                 <tbody>
         """
-        # Группируем по году публикации
         dynamics_by_pub = defaultdict(list)
         for item in citation_dynamics:
             dynamics_by_pub[item['publication_year']].append(item)
@@ -3078,22 +2756,18 @@ def generate_html_report(report_data: Dict, logo_base64: Optional[str] = None, a
     # Генерируем Heatmap
     heatmap_html = ""
     if heatmap_data:
-        # Определяем все годы
         pub_years = sorted(set(k[0] for k in heatmap_data.keys()))
         cite_years = sorted(set(k[1] for k in heatmap_data.keys()))
         
         if pub_years and cite_years:
             max_val = max(heatmap_data.values()) if heatmap_data else 1
             
-            # Строим сетку тепловой карты
             heatmap_html = '<div class="heatmap-grid" style="grid-template-columns: 100px ' + ' '.join(['80px'] * len(cite_years)) + ';">'
             
-            # Заголовки
             heatmap_html += '<div class="heatmap-header"></div>'
             for cy in cite_years:
                 heatmap_html += f'<div class="heatmap-header">{cy}</div>'
             
-            # Строки
             for py in pub_years:
                 heatmap_html += f'<div class="heatmap-row" style="grid-template-columns: 100px ' + ' '.join(['80px'] * len(cite_years)) + ';">'
                 heatmap_html += f'<div class="heatmap-row-label">{py}</div>'
@@ -3352,7 +3026,6 @@ def generate_html_report(report_data: Dict, logo_base64: Optional[str] = None, a
     detailed_citations_html = ""
     if detailed_citations:
         for pub_id, data in detailed_citations.items():
-            # Создаем безопасный ID для JavaScript
             safe_id = re.sub(r'[^a-zA-Z0-9]', '_', pub_id)
             
             detailed_citations_html += f"""
@@ -3394,7 +3067,6 @@ def generate_html_report(report_data: Dict, logo_base64: Optional[str] = None, a
     # Генерируем All Publications таблицу с фильтрацией
     all_publications_html = ""
     if all_publications:
-        # Собираем уникальные годы для фильтра
         years_set = sorted(set(p['year'] for p in all_publications if p['year'] != 'N/A'), reverse=True)
         
         all_publications_html = f"""
@@ -3447,7 +3119,6 @@ def generate_html_report(report_data: Dict, logo_base64: Optional[str] = None, a
         """
         
         for pub in all_publications:
-            # Подготавливаем данные для фильтрации (в data-атрибутах)
             authors_lower = ' '.join(pub.get('raw_authors', [])).lower()
             affiliations_lower = ' '.join(pub.get('raw_affiliations', [])).lower()
             title_lower = pub['title'].lower()
@@ -3581,7 +3252,6 @@ def generate_html_report(report_data: Dict, logo_base64: Optional[str] = None, a
             }
         }
         
-        // Автоматическая фильтрация при изменении полей
         document.addEventListener('DOMContentLoaded', function() {
             var inputs = document.querySelectorAll('#titleFilter, #yearFilter, #authorFilter, #affiliationFilter, #citationFilter');
             for (var i = 0; i < inputs.length; i++) {
@@ -3592,7 +3262,7 @@ def generate_html_report(report_data: Dict, logo_base64: Optional[str] = None, a
     </script>
     """
     
-    # Базовый HTML отчет
+    # Базовый HTML отчет (полный, но сокращен для читаемости)
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -3600,6 +3270,7 @@ def generate_html_report(report_data: Dict, logo_base64: Optional[str] = None, a
         <meta charset="UTF-8">
         <title>{t('app_title')} - {report_data.get('issn', '')}</title>
         <style>
+            /* Все стили уже определены в apply_theme_css и продублированы здесь для отчета */
             * {{ margin: 0; padding: 0; box-sizing: border-box; }}
             body {{
                 font-family: 'Times New Roman', 'DejaVu Serif', serif;
@@ -4035,21 +3706,6 @@ def generate_html_report(report_data: Dict, logo_base64: Optional[str] = None, a
             .doi-link:hover {{
                 text-decoration: underline;
             }}
-            .footer {{
-                margin-top: 30px;
-                padding-top: 18px;
-                border-top: 2px solid #e0e0e0;
-                text-align: center;
-                color: #7F8C8D;
-                font-size: 12px;
-            }}
-            .footer a {{
-                color: {primary};
-                text-decoration: none;
-            }}
-            .footer a:hover {{
-                text-decoration: underline;
-            }}
             .stat-row {{
                 display: grid;
                 grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -4096,6 +3752,21 @@ def generate_html_report(report_data: Dict, logo_base64: Optional[str] = None, a
                 font-size: 13px;
                 color: #666;
                 margin-top: 4px;
+            }}
+            .footer {{
+                margin-top: 30px;
+                padding-top: 18px;
+                border-top: 2px solid #e0e0e0;
+                text-align: center;
+                color: #7F8C8D;
+                font-size: 12px;
+            }}
+            .footer a {{
+                color: {primary};
+                text-decoration: none;
+            }}
+            .footer a:hover {{
+                text-decoration: underline;
             }}
             @media print {{
                 .sidebar {{ display: none; }}
@@ -4156,90 +3827,27 @@ def generate_html_report(report_data: Dict, logo_base64: Optional[str] = None, a
                 <div class="section-title"><span class="icon">📋</span> {t('overview')}</div>
                 
                 <div class="journal-metrics-grid">
-                    <div class="journal-metric-card">
-                        <div class="journal-metric-value">{total_pubs}</div>
-                        <div class="journal-metric-label">{t('total_publications')}</div>
-                    </div>
-                    <div class="journal-metric-card">
-                        <div class="journal-metric-value">{total_citations:,}</div>
-                        <div class="journal-metric-label">{t('total_citations')}</div>
-                    </div>
-                    <div class="journal-metric-card">
-                        <div class="journal-metric-value">{h_index}</div>
-                        <div class="journal-metric-label">{t('h_index')}</div>
-                    </div>
-                    <div class="journal-metric-card">
-                        <div class="journal-metric-value">{g_index}</div>
-                        <div class="journal-metric-label">{t('g_index')}</div>
-                    </div>
-                    <div class="journal-metric-card">
-                        <div class="journal-metric-value">{i10_index}</div>
-                        <div class="journal-metric-label">{t('i10_index')}</div>
-                    </div>
-                    <div class="journal-metric-card">
-                        <div class="journal-metric-value">{i100_index}</div>
-                        <div class="journal-metric-label">{t('i100_index')}</div>
-                    </div>
-                    <div class="journal-metric-card">
-                        <div class="journal-metric-value">{avg_citations:.1f}</div>
-                        <div class="journal-metric-label">{t('avg_citations')}</div>
-                    </div>
-                    <div class="journal-metric-card">
-                        <div class="journal-metric-value">{active_years}</div>
-                        <div class="journal-metric-label">{t('active_years')}</div>
-                    </div>
-                    <div class="journal-metric-card">
-                        <div class="journal-metric-value">{unique_authors}</div>
-                        <div class="journal-metric-label">{t('unique_authors')}</div>
-                    </div>
-                    <div class="journal-metric-card">
-                        <div class="journal-metric-value">{unique_affiliations}</div>
-                        <div class="journal-metric-label">{t('unique_affiliations')}</div>
-                    </div>
-                    <div class="journal-metric-card">
-                        <div class="journal-metric-value">{unique_countries}</div>
-                        <div class="journal-metric-label">{t('unique_countries')}</div>
-                    </div>
-                    <div class="journal-metric-card">
-                        <div class="journal-metric-value">{avg_authors_per_paper:.1f}</div>
-                        <div class="journal-metric-label">{t('avg_authors_per_paper')}</div>
-                    </div>
-                    <div class="journal-metric-card">
-                        <div class="journal-metric-value">{avg_affiliations_per_paper:.1f}</div>
-                        <div class="journal-metric-label">{t('avg_affiliations_per_paper')}</div>
-                    </div>
-                    <div class="journal-metric-card">
-                        <div class="journal-metric-value">{avg_countries_per_paper:.1f}</div>
-                        <div class="journal-metric-label">{t('avg_countries_per_paper')}</div>
-                    </div>
-                    <div class="journal-metric-card">
-                        <div class="journal-metric-value">{international_collab_rate*100:.1f}%</div>
-                        <div class="journal-metric-label">{t('international_collab_rate')}</div>
-                    </div>
-                    <div class="journal-metric-card">
-                        <div class="journal-metric-value">{total_citing_works}</div>
-                        <div class="journal-metric-label">{t('total_citing_works')}</div>
-                    </div>
-                    <div class="journal-metric-card">
-                        <div class="journal-metric-value">{unique_citing_authors}</div>
-                        <div class="journal-metric-label">{t('unique_citing_authors')}</div>
-                    </div>
-                    <div class="journal-metric-card">
-                        <div class="journal-metric-value">{unique_citing_affiliations}</div>
-                        <div class="journal-metric-label">{t('unique_citing_affiliations')}</div>
-                    </div>
-                    <div class="journal-metric-card">
-                        <div class="journal-metric-value">{unique_citing_countries}</div>
-                        <div class="journal-metric-label">{t('unique_citing_countries')}</div>
-                    </div>
-                    <div class="journal-metric-card">
-                        <div class="journal-metric-value">{unique_citing_journals}</div>
-                        <div class="journal-metric-label">{t('unique_citing_journals')}</div>
-                    </div>
-                    <div class="journal-metric-card">
-                        <div class="journal-metric-value">{unique_citing_publishers}</div>
-                        <div class="journal-metric-label">{t('unique_citing_publishers')}</div>
-                    </div>
+                    <div class="journal-metric-card"><div class="journal-metric-value">{total_pubs}</div><div class="journal-metric-label">{t('total_publications')}</div></div>
+                    <div class="journal-metric-card"><div class="journal-metric-value">{total_citations:,}</div><div class="journal-metric-label">{t('total_citations')}</div></div>
+                    <div class="journal-metric-card"><div class="journal-metric-value">{h_index}</div><div class="journal-metric-label">{t('h_index')}</div></div>
+                    <div class="journal-metric-card"><div class="journal-metric-value">{g_index}</div><div class="journal-metric-label">{t('g_index')}</div></div>
+                    <div class="journal-metric-card"><div class="journal-metric-value">{i10_index}</div><div class="journal-metric-label">{t('i10_index')}</div></div>
+                    <div class="journal-metric-card"><div class="journal-metric-value">{i100_index}</div><div class="journal-metric-label">{t('i100_index')}</div></div>
+                    <div class="journal-metric-card"><div class="journal-metric-value">{avg_citations:.1f}</div><div class="journal-metric-label">{t('avg_citations')}</div></div>
+                    <div class="journal-metric-card"><div class="journal-metric-value">{active_years}</div><div class="journal-metric-label">{t('active_years')}</div></div>
+                    <div class="journal-metric-card"><div class="journal-metric-value">{unique_authors}</div><div class="journal-metric-label">{t('unique_authors')}</div></div>
+                    <div class="journal-metric-card"><div class="journal-metric-value">{unique_affiliations}</div><div class="journal-metric-label">{t('unique_affiliations')}</div></div>
+                    <div class="journal-metric-card"><div class="journal-metric-value">{unique_countries}</div><div class="journal-metric-label">{t('unique_countries')}</div></div>
+                    <div class="journal-metric-card"><div class="journal-metric-value">{avg_authors_per_paper:.1f}</div><div class="journal-metric-label">{t('avg_authors_per_paper')}</div></div>
+                    <div class="journal-metric-card"><div class="journal-metric-value">{avg_affiliations_per_paper:.1f}</div><div class="journal-metric-label">{t('avg_affiliations_per_paper')}</div></div>
+                    <div class="journal-metric-card"><div class="journal-metric-value">{avg_countries_per_paper:.1f}</div><div class="journal-metric-label">{t('avg_countries_per_paper')}</div></div>
+                    <div class="journal-metric-card"><div class="journal-metric-value">{international_collab_rate*100:.1f}%</div><div class="journal-metric-label">{t('international_collab_rate')}</div></div>
+                    <div class="journal-metric-card"><div class="journal-metric-value">{total_citing_works}</div><div class="journal-metric-label">{t('total_citing_works')}</div></div>
+                    <div class="journal-metric-card"><div class="journal-metric-value">{unique_citing_authors}</div><div class="journal-metric-label">{t('unique_citing_authors')}</div></div>
+                    <div class="journal-metric-card"><div class="journal-metric-value">{unique_citing_affiliations}</div><div class="journal-metric-label">{t('unique_citing_affiliations')}</div></div>
+                    <div class="journal-metric-card"><div class="journal-metric-value">{unique_citing_countries}</div><div class="journal-metric-label">{t('unique_citing_countries')}</div></div>
+                    <div class="journal-metric-card"><div class="journal-metric-value">{unique_citing_journals}</div><div class="journal-metric-label">{t('unique_citing_journals')}</div></div>
+                    <div class="journal-metric-card"><div class="journal-metric-value">{unique_citing_publishers}</div><div class="journal-metric-label">{t('unique_citing_publishers')}</div></div>
                 </div>
                 
                 <h3 style="color: {primary}; margin-top: 20px;">{t('oa_breakdown')}</h3>
@@ -4252,19 +3860,16 @@ def generate_html_report(report_data: Dict, logo_base64: Optional[str] = None, a
             <div id="analyzed_articles" class="section">
                 <div class="section-title"><span class="icon">📄</span> {t('analyzed_articles')}</div>
                 
-                <!-- Author Analysis -->
                 <div id="author_analysis">
                     <h3 class="sub-section-title">{t('author_analysis')}</h3>
                     {author_table_html if author_table_html else '<p>No data available</p>'}
                 </div>
                 
-                <!-- Top Affiliations -->
                 <div id="top_affiliations">
                     <h3 class="sub-section-title">{t('top_affiliations')}</h3>
                     {aff_table_html if aff_table_html else '<p>No data available</p>'}
                 </div>
                 
-                <!-- Geographic Analysis -->
                 <div id="geographic_analysis">
                     <h3 class="sub-section-title">{t('geographic_analysis')}</h3>
                     
@@ -4276,14 +3881,8 @@ def generate_html_report(report_data: Dict, logo_base64: Optional[str] = None, a
                     
                     <h4 style="margin: 12px 0 6px 0;">{t('collaboration_patterns')}</h4>
                     <div class="collab-stats">
-                        <div class="collab-stat-box">
-                            <div class="value">{single_country_papers}</div>
-                            <div class="label">{t('single_country')}</div>
-                        </div>
-                        <div class="collab-stat-box">
-                            <div class="value">{international_papers}</div>
-                            <div class="label">{t('international')}</div>
-                        </div>
+                        <div class="collab-stat-box"><div class="value">{single_country_papers}</div><div class="label">{t('single_country')}</div></div>
+                        <div class="collab-stat-box"><div class="value">{international_papers}</div><div class="label">{t('international')}</div></div>
                     </div>
                     
                     <h4 style="margin: 12px 0 6px 0;">{t('collaboration_couples')}</h4>
@@ -4295,13 +3894,11 @@ def generate_html_report(report_data: Dict, logo_base64: Optional[str] = None, a
             <div id="citation_analysis" class="section">
                 <div class="section-title"><span class="icon">📈</span> {t('citation_analysis')}</div>
                 
-                <!-- Citation Dynamics -->
                 <div id="citation_dynamics">
                     <h3 class="sub-section-title">{t('citation_dynamics')}</h3>
                     {citation_dynamics_html if citation_dynamics_html else '<p>No data available</p>'}
                 </div>
                 
-                <!-- First Citation Analysis -->
                 <div id="first_citation_analysis">
                     <h3 class="sub-section-title">{t('first_citation_analysis')}</h3>
                     <div class="stat-row">
@@ -4312,19 +3909,16 @@ def generate_html_report(report_data: Dict, logo_base64: Optional[str] = None, a
                     </div>
                 </div>
                 
-                <!-- Cumulative Citations -->
                 <div id="cumulative_citations">
                     <h3 class="sub-section-title">{t('cumulative_citations')}</h3>
                     {cumulative_html if cumulative_html else '<p>No data available</p>'}
                 </div>
                 
-                <!-- Citation Heatmap -->
                 <div id="citation_heatmap">
                     <h3 class="sub-section-title">{t('citation_heatmap')}</h3>
                     {heatmap_html if heatmap_html else '<p>No data available</p>'}
                 </div>
                 
-                <!-- Most Cited Publications -->
                 <div id="most_cited">
                     <h3 class="sub-section-title">{t('most_cited_publications')}</h3>
                     {most_cited_html if most_cited_html else '<p>No data available</p>'}
@@ -4417,7 +4011,6 @@ def generate_html_report(report_data: Dict, logo_base64: Optional[str] = None, a
                 {all_publications_html if all_publications_html else '<p>No data available</p>'}
             </div>
             
-            <!-- FOOTER -->
             <div class="footer">
                 <p>{t('footer')}</p>
                 <p><a href="{t('journal_url')}" target="_blank">{t('journal_url')}</a></p>
@@ -4450,13 +4043,11 @@ def run_journal_analysis(issn: str, period, max_workers: int = MAX_WORKERS, jour
         st.error("⚠️ " + t('no_data'))
         return
     
-    # Нормализуем ISSN
     issn_normalized = normalize_issn(issn)
     if len(issn_normalized) != 9 or issn_normalized[4] != '-':
         st.error("⚠️ " + t('data_not_found'))
         return
     
-    # Парсим период
     period_str = str(period)
     if ',' in period_str:
         years = [int(y.strip()) for y in period_str.split(',') if y.strip().isdigit()]
@@ -4479,7 +4070,6 @@ def run_journal_analysis(issn: str, period, max_workers: int = MAX_WORKERS, jour
             st.error("⚠️ " + t('data_not_found'))
             return
     
-    # Загружаем логотип приложения
     app_logo_base64 = None
     if os.path.exists("logo.png"):
         try:
@@ -4503,14 +4093,11 @@ def run_journal_analysis(issn: str, period, max_workers: int = MAX_WORKERS, jour
         except Exception as e:
             st.warning(f"⚠️ " + t('error_occurred') + f": {e}")
     
-    # Создаем прогресс-бары
     progress_container = st.empty()
     status_container = st.empty()
     analysis_progress = st.progress(0, text=t('analysis_in_progress'))
     
-    # Функция обновления прогресса
     def progress_callback(current: int, total: int, stage: str, stage_current: int = 0, stage_total: int = 0):
-        """Обновляет прогресс в интерфейсе"""
         stages = {
             'stage_fetching_articles': 0,
             'stage_collecting_citations': 25,
@@ -4527,24 +4114,17 @@ def run_journal_analysis(issn: str, period, max_workers: int = MAX_WORKERS, jour
             stage_progress = 0
         
         total_progress = (stage_base + stage_progress) / 100
-        
-        # Ограничиваем 99% до завершения
         total_progress = min(total_progress, 0.99)
         
-        # Обновляем прогресс-бар
         analysis_progress.progress(total_progress, text=t(stage))
         
-        # Обновляем статус с деталями
         if stage_total > 0:
             status_container.info(f"{t(stage)} ({stage_current}/{stage_total})")
         else:
             status_container.info(t(stage))
     
     try:
-        # Создаем анализатор
         analyzer = JournalAnalyzer(issn_normalized, period_parsed, max_workers)
-        
-        # Запускаем анализ
         report_data = analyzer.run_analysis(progress_callback)
         
         if not report_data:
@@ -4552,18 +4132,15 @@ def run_journal_analysis(issn: str, period, max_workers: int = MAX_WORKERS, jour
             analysis_progress.empty()
             return
         
-        # Завершаем прогресс
         analysis_progress.progress(1.0, text=f"✅ {t('analysis_complete')}")
         status_container.success(f"✅ {t('analysis_complete')}")
         
-        # Сохраняем данные в session_state
         st.session_state['report_data'] = report_data
         st.session_state['analyzer'] = analyzer
         st.session_state['analysis_complete'] = True
         st.session_state['journal_logo_base64'] = journal_logo_base64
         st.session_state['app_logo_base64'] = app_logo_base64
         
-        # Отображаем метрики
         st.markdown("---")
         
         col1, col2, col3, col4, col5 = st.columns(5)
@@ -4578,7 +4155,6 @@ def run_journal_analysis(issn: str, period, max_workers: int = MAX_WORKERS, jour
         with col5:
             st.metric(t('avg_citations'), f"{report_data.get('avg_citations', 0):.1f}")
         
-        # Кнопка скачивания отчета
         st.markdown("---")
         st.markdown(f"### {t('download_report')}")
         
@@ -4607,7 +4183,6 @@ def run_journal_analysis(issn: str, period, max_workers: int = MAX_WORKERS, jour
                     width='stretch'
                 )
         
-        # Предпросмотр отчета
         st.markdown("---")
         st.markdown(f"### {t('report_preview')}")
         
@@ -4620,7 +4195,6 @@ def run_journal_analysis(issn: str, period, max_workers: int = MAX_WORKERS, jour
                 lang
             )
             
-            # Отображаем HTML в iframe
             st.components.v1.html(html_report_preview, height=800, scrolling=True)
         
         st.balloons()
@@ -4637,7 +4211,6 @@ def run_journal_analysis(issn: str, period, max_workers: int = MAX_WORKERS, jour
 # ============================================
 
 def main():
-    # Page configuration
     st.set_page_config(
         page_title="Advanced Journal Analysis",
         page_icon="📊",
@@ -4645,7 +4218,6 @@ def main():
         initial_sidebar_state="expanded"
     )
     
-    # Initialize session state
     if 'primary_color' not in st.session_state:
         st.session_state.primary_color = '#667eea'
     if 'secondary_color' not in st.session_state:
@@ -4657,29 +4229,24 @@ def main():
     if 'app_logo_base64' not in st.session_state:
         st.session_state.app_logo_base64 = None
     if 'language' not in st.session_state:
-        st.session_state.language = 'en'  # По умолчанию английский
+        st.session_state.language = 'en'
     if 'report_data' not in st.session_state:
         st.session_state.report_data = {}
     if 'analyzer' not in st.session_state:
         st.session_state.analyzer = None
     
-    # Apply theme
     primary = st.session_state.primary_color
     secondary = st.session_state.secondary_color
     apply_theme_css(primary, secondary)
     
-    # Get current language
     current_lang = st.session_state.language
     
-    # Helper function for translations
     def t(key: str, **kwargs) -> str:
         return translate(key, current_lang, **kwargs)
     
-    # Sidebar
     with st.sidebar:
         st.markdown(f"## {t('settings')}")
         
-        # Language selector
         lang_option = st.selectbox(
             t('language'),
             options=['en', 'ru'],
@@ -4692,7 +4259,6 @@ def main():
         
         st.markdown("---")
         
-        # Color theme
         st.markdown(f"## {t('color_theme')}")
         
         preset_themes = {
@@ -4772,10 +4338,8 @@ def main():
         </div>
         """, unsafe_allow_html=True)
     
-    # Main content
     st.markdown("---")
     
-    # Display logo if exists
     if os.path.exists("logo.png"):
         col_logo, col_text = st.columns([1, 3])
         with col_logo:
@@ -4785,7 +4349,6 @@ def main():
     
     st.markdown("---")
     
-    # Main interface
     st.markdown(f"## {t('journal_analysis')}")
     
     col1, col2 = st.columns([1, 1])
@@ -4819,7 +4382,6 @@ def main():
             help=t('logo_help')
         )
     
-    # Start analysis button
     if st.button(t('start_analysis'), type="primary", width='stretch'):
         journal_logo_data = None
         if journal_logo_upload:
@@ -4837,11 +4399,9 @@ def main():
             current_lang
         )
     
-    # Display report if available
     if st.session_state.analysis_complete and st.session_state.report_data:
         st.markdown("---")
         
-        # Кнопка скачивания отчета
         st.markdown(f"### {t('download_report')}")
         
         theme_colors = {
@@ -4870,7 +4430,6 @@ def main():
                     width='stretch'
                 )
         
-        # Предпросмотр отчета
         st.markdown("---")
         st.markdown(f"### {t('report_preview')}")
         
@@ -4883,7 +4442,6 @@ def main():
                 current_lang
             )
             
-            # Отображаем HTML в iframe
             st.components.v1.html(html_report_preview, height=800, scrolling=True)
 
 if __name__ == "__main__":
