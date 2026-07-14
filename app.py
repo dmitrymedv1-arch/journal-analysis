@@ -2439,7 +2439,8 @@ class JournalAnalyzer:
                     try:
                         pub_dt = datetime.fromisoformat(pub_date[:10])
                         cite_dt = datetime.fromisoformat(cite_date[:10])
-                        lag = (cite_dt - pub_dt).days                        if lag >= 0:
+                        lag = (cite_dt - pub_dt).days
+                        if lag >= 0:
                             first_citation_lags.append(lag)
                     except:
                         pass
