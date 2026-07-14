@@ -2742,7 +2742,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                  app_logo_base64: Optional[str] = None, 
                                  theme_colors: Optional[Dict] = None, 
                                  lang: str = 'en') -> str:
-    """Generate HTML report for journal analysis"""
+    """Generate HTML report for journal analysis with rich visual elements"""
     
     results = analyzer.analysis_results
     publications = analyzer.publications
@@ -2756,6 +2756,16 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
     
     primary = theme_colors.get('primary', '#667eea')
     secondary = theme_colors.get('secondary', '#f39c12')
+    
+    # Получаем цвета для OA статусов
+    oa_colors = {
+        'gold': '#FFD700',
+        'hybrid': '#F1C40F',
+        'green': '#2ECC71',
+        'bronze': '#CD7F32',
+        'closed': '#95A5A6',
+        'unknown': '#BDC3C7'
+    }
     
     def t(key: str, **kwargs) -> str:
         return translate(key, lang, **kwargs)
@@ -2787,8 +2797,37 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
             'id': meta.get('id', '')
         })
     
-    # Сортируем по году (новые сначала)
     all_publications.sort(key=lambda x: x.get('year', 0), reverse=True)
+    
+    # Функции для heatmap
+    def get_heatmap_color(value: int, max_value: int) -> str:
+        if max_value == 0:
+            return '#f0f0f0'
+        ratio = value / max_value
+        p_rgb = hex_to_rgb(primary)
+        s_rgb = hex_to_rgb(secondary)
+        r = int(s_rgb[0] + (p_rgb[0] - s_rgb[0]) * ratio)
+        g = int(s_rgb[1] + (p_rgb[1] - s_rgb[1]) * ratio)
+        b = int(s_rgb[2] + (p_rgb[2] - s_rgb[2]) * ratio)
+        return f'rgb({r},{g},{b})'
+    
+    def get_heatmap_text_color(value: int, max_value: int) -> str:
+        if max_value == 0:
+            return '#999'
+        ratio = value / max_value
+        return '#fff' if ratio > 0.5 else '#333'
+    
+    # Максимальное значение для heatmap
+    heatmap_max = 0
+    for row in citation.get('heatmap', []):
+        for year, val in row.items():
+            if year != 'publication_year' and isinstance(val, (int, float)):
+                heatmap_max = max(heatmap_max, val)
+    
+    # Собираем все годы для heatmap
+    heatmap_years = sorted(set(
+        [y for row in citation.get('heatmap', []) for y in row.keys() if y != 'publication_year']
+    ))
     
     # HTML generation
     html_content = f"""
@@ -2814,6 +2853,8 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                 border-radius: 10px;
                 overflow: hidden;
             }}
+            
+            /* ===== SIDEBAR NAVIGATION ===== */
             .sidebar {{
                 position: fixed;
                 left: 0;
@@ -2822,52 +2863,76 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                 height: 100vh;
                 background: linear-gradient(135deg, {primary} 0%, {secondary} 100%);
                 color: white;
-                padding: 30px 20px;
+                padding: 25px 18px;
                 overflow-y: auto;
                 z-index: 1000;
+                box-shadow: 2px 0 20px rgba(0,0,0,0.15);
             }}
+            .sidebar::-webkit-scrollbar {{ width: 4px; }}
+            .sidebar::-webkit-scrollbar-thumb {{ background: rgba(255,255,255,0.3); border-radius: 4px; }}
+            
             .sidebar h3 {{
                 margin-bottom: 20px;
                 font-size: 18px;
-                font-weight: 600;
+                font-weight: 700;
                 color: white;
                 border-bottom: 2px solid rgba(255,255,255,0.3);
                 padding-bottom: 15px;
+                letter-spacing: 0.5px;
+            }}
+            .sidebar .nav-section {{
+                margin-top: 5px;
+            }}
+            .sidebar .nav-section-title {{
+                font-size: 11px;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+                opacity: 0.7;
+                padding: 8px 12px 4px 12px;
+                font-weight: 600;
             }}
             .sidebar a {{
                 color: white;
                 text-decoration: none;
                 display: flex;
                 align-items: center;
-                gap: 12px;
-                padding: 10px 15px;
-                margin: 3px 0;
+                gap: 10px;
+                padding: 8px 14px;
+                margin: 2px 0;
                 border-radius: 8px;
                 transition: all 0.3s;
-                font-size: 14px;
+                font-size: 13px;
             }}
             .sidebar a:hover {{
                 background: rgba(255,255,255,0.2);
                 transform: translateX(5px);
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            }}
+            .sidebar a .nav-icon {{
+                font-size: 16px;
+                width: 24px;
+                text-align: center;
             }}
             .sidebar .sub-link {{
-                padding-left: 40px;
-                font-size: 13px;
-                opacity: 0.9;
+                padding-left: 44px;
+                font-size: 12px;
+                opacity: 0.85;
             }}
             .sidebar .sub-link:hover {{
                 opacity: 1;
             }}
-            .sidebar-icon {{
+            .sidebar .sub-link .nav-icon {{
+                font-size: 13px;
                 width: 20px;
-                height: 20px;
-                display: inline-block;
-                vertical-align: middle;
             }}
+            
+            /* ===== MAIN CONTENT ===== */
             .main-content {{
                 margin-left: 280px;
                 padding: 30px 40px;
             }}
+            
+            /* ===== HEADER ===== */
             .header {{
                 background: linear-gradient(135deg, {primary} 0%, {secondary} 100%);
                 color: white;
@@ -2877,6 +2942,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.1);
             }}
             .header-left {{
                 display: flex;
@@ -2884,106 +2950,334 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                 gap: 20px;
             }}
             .header-left img {{
-                max-height: 80px;
+                max-height: 70px;
+                filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
             }}
             .header h1 {{
                 color: white;
                 border-bottom: none;
                 margin: 0;
                 font-size: 28px;
+                font-weight: 700;
+                text-shadow: 0 2px 4px rgba(0,0,0,0.2);
             }}
             .header .subtitle {{
                 opacity: 0.9;
                 margin-top: 5px;
                 font-size: 14px;
+                text-shadow: 0 1px 2px rgba(0,0,0,0.15);
             }}
             .header-right img {{
                 max-height: 80px;
                 max-width: 200px;
+                filter: drop-shadow(0 2px 8px rgba(0,0,0,0.2));
+                background: rgba(255,255,255,0.1);
+                border-radius: 8px;
+                padding: 5px;
             }}
+            
+            /* ===== SECTIONS ===== */
             .section {{
                 background: white;
                 border-radius: 15px;
-                padding: 25px;
-                margin-bottom: 30px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                padding: 25px 30px;
+                margin-bottom: 25px;
+                box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+                border: 1px solid #f0f0f0;
+                transition: all 0.3s;
+            }}
+            .section:hover {{
+                box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+            }}
+            
+            .section-header {{
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                user-select: none;
+                padding: 5px 0;
+            }}
+            .section-header:hover .section-title {{
+                color: {primary};
             }}
             .section-title {{
                 font-size: 22px;
-                font-weight: 600;
-                margin-bottom: 20px;
-                padding-bottom: 10px;
-                border-bottom: 3px solid {primary};
+                font-weight: 700;
+                margin-bottom: 0;
+                padding-bottom: 0;
+                border-bottom: none;
                 display: flex;
                 align-items: center;
                 gap: 12px;
+                color: #2C3E50;
+                transition: color 0.3s;
             }}
             .section-title .icon {{
                 font-size: 24px;
             }}
+            .section-title .section-badge {{
+                background: linear-gradient(135deg, {primary}, {secondary});
+                color: white;
+                padding: 2px 12px;
+                border-radius: 20px;
+                font-size: 13px;
+                font-weight: 600;
+                margin-left: 8px;
+            }}
+            .section-divider {{
+                height: 3px;
+                background: linear-gradient(90deg, {primary}, {secondary}, transparent);
+                margin: 15px 0 20px 0;
+                border-radius: 3px;
+            }}
+            .toggle-indicator {{
+                font-size: 18px;
+                transition: transform 0.3s;
+                color: {primary};
+                font-weight: 300;
+            }}
+            .toggle-indicator.collapsed {{
+                transform: rotate(-90deg);
+            }}
+            .section-content {{
+                display: block;
+                transition: all 0.4s ease;
+            }}
+            .section-content.collapsed {{
+                display: none;
+            }}
+            
+            /* ===== METRICS GRID ===== */
             .metrics-grid {{
                 display: grid;
                 grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
                 gap: 12px;
                 margin: 15px 0;
             }}
+            .metrics-grid-4 {{
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            }}
             .metric-card {{
-                background: #f8f9fa;
-                padding: 12px 15px;
-                border-radius: 8px;
+                background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+                padding: 14px 18px;
+                border-radius: 12px;
                 border-left: 4px solid {primary};
                 text-align: center;
-                transition: transform 0.3s;
+                transition: all 0.3s;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+                position: relative;
+                overflow: hidden;
+            }}
+            .metric-card::after {{
+                content: '';
+                position: absolute;
+                top: 0;
+                right: 0;
+                width: 60px;
+                height: 60px;
+                background: linear-gradient(135deg, transparent 50%, {primary}08 100%);
+                border-radius: 0 12px 0 60px;
             }}
             .metric-card:hover {{
-                transform: translateY(-3px);
-                box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+                transform: translateY(-4px);
+                box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+                border-left-color: {secondary};
+            }}
+            .metric-card .metric-icon {{
+                font-size: 20px;
+                display: block;
+                margin-bottom: 4px;
             }}
             .metric-value {{
-                font-size: 24px;
-                font-weight: bold;
+                font-size: 26px;
+                font-weight: 700;
                 color: #2C3E50;
                 font-family: 'Times New Roman', serif;
+                background: linear-gradient(135deg, {primary}, {secondary});
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                background-clip: text;
             }}
             .metric-label {{
                 font-size: 11px;
                 color: #7F8C8D;
                 margin-top: 4px;
                 font-family: 'Times New Roman', serif;
+                font-weight: 500;
+                text-transform: uppercase;
+                letter-spacing: 0.3px;
             }}
+            
+            /* ===== PROGRESS BARS ===== */
+            .progress-bar-container {{
+                width: 100%;
+                background-color: #f0f0f0;
+                border-radius: 8px;
+                overflow: hidden;
+                margin: 4px 0;
+                height: 22px;
+                position: relative;
+                box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+            }}
+            .progress-bar-fill {{
+                height: 100%;
+                border-radius: 8px;
+                transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: white;
+                font-size: 11px;
+                font-weight: 700;
+                text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+                position: relative;
+                overflow: hidden;
+                min-width: 30px;
+            }}
+            .progress-bar-fill.animate {{
+                animation: shimmer 2s infinite linear;
+                background-size: 200% 100%;
+            }}
+            @keyframes shimmer {{
+                0% {{ background-position: -200% 0; }}
+                100% {{ background-position: 200% 0; }}
+            }}
+            
+            .progress-bar-label {{
+                display: flex;
+                justify-content: space-between;
+                font-size: 12px;
+                margin: 2px 0 1px 0;
+                color: #555;
+                font-weight: 500;
+            }}
+            .progress-bar-label .label-value {{
+                font-weight: 700;
+                color: #2C3E50;
+            }}
+            
+            /* ===== OA BREAKDOWN ===== */
+            .oa-breakdown {{
+                display: flex;
+                flex-wrap: wrap;
+                gap: 12px;
+                margin: 12px 0;
+            }}
+            .oa-item {{
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                background: #f8f9fa;
+                padding: 8px 16px 8px 12px;
+                border-radius: 10px;
+                border: 1px solid #e9ecef;
+                flex: 1;
+                min-width: 120px;
+                transition: all 0.3s;
+            }}
+            .oa-item:hover {{
+                transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            }}
+            .oa-item .color-dot {{
+                width: 16px;
+                height: 16px;
+                border-radius: 50%;
+                display: inline-block;
+                flex-shrink: 0;
+                border: 1px solid rgba(0,0,0,0.05);
+            }}
+            .oa-item .oa-info {{
+                flex: 1;
+            }}
+            .oa-item .oa-name {{
+                font-weight: 600;
+                font-size: 13px;
+            }}
+            .oa-item .oa-count {{
+                font-size: 12px;
+                color: #666;
+            }}
+            .oa-item .oa-percent {{
+                font-size: 14px;
+                font-weight: 700;
+                color: #2C3E50;
+                margin-left: auto;
+            }}
+            
+            /* ===== TABLES ===== */
             table {{
                 width: 100%;
                 border-collapse: collapse;
-                margin: 15px 0;
+                margin: 12px 0;
                 font-family: 'Times New Roman', serif;
-                font-size: 14px;
+                font-size: 13px;
             }}
             th {{
                 background: linear-gradient(135deg, {primary} 0%, {secondary} 100%);
                 color: white;
-                padding: 10px 12px;
+                padding: 10px 14px;
                 text-align: left;
+                font-weight: 600;
+                position: sticky;
+                top: 0;
+                z-index: 10;
+                white-space: nowrap;
+            }}
+            th.sortable {{
+                cursor: pointer;
+                user-select: none;
+            }}
+            th.sortable:hover {{
+                opacity: 0.9;
+            }}
+            th.sortable::after {{
+                content: ' ↕';
+                opacity: 0.5;
+                font-size: 10px;
+            }}
+            td {{
+                padding: 8px 14px;
+                border-bottom: 1px solid #e9ecef;
+                vertical-align: middle;
+                transition: background 0.2s;
+            }}
+            tr:hover td {{
+                background-color: #f8f9fa;
+            }}
+            .scrollable-table {{
+                max-height: 500px;
+                overflow-y: auto;
+                border-radius: 8px;
+                border: 1px solid #e9ecef;
+            }}
+            .scrollable-table thead {{
                 position: sticky;
                 top: 0;
                 z-index: 10;
             }}
-            td {{
-                padding: 8px 12px;
-                border-bottom: 1px solid #BDC3C7;
-                vertical-align: middle;
+            
+            .citation-count {{
+                background: linear-gradient(135deg, {primary}15, {secondary}15);
+                padding: 2px 10px;
+                border-radius: 12px;
+                font-weight: 700;
+                color: {primary};
             }}
-            tr:hover {{
-                background-color: #f5f5f5;
-            }}
+            
             .doi-link {{
                 color: #2980B9;
                 text-decoration: none;
-                font-size: 12px;
+                font-size: 11px;
                 word-break: break-all;
+                transition: color 0.2s;
             }}
             .doi-link:hover {{
+                color: {primary};
                 text-decoration: underline;
             }}
+            
             .badge {{
                 display: inline-block;
                 padding: 2px 10px;
@@ -2999,32 +3293,33 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
             .badge-closed {{ background: #95A5A6; color: white; }}
             .badge-unknown {{ background: #BDC3C7; color: #333; }}
             .badge-info {{ background: #3498DB; color: white; }}
+            .badge-success {{ background: #2ECC71; color: white; }}
+            .badge-warning {{ background: #F39C12; color: white; }}
+            .badge-danger {{ background: #E74C3C; color: white; }}
+            .badge-primary {{ background: {primary}; color: white; }}
             
-            .progress-bar-container {{
-                width: 100%;
-                background-color: #f0f0f0;
-                border-radius: 10px;
-                overflow: hidden;
-                margin: 5px 0;
-            }}
-            .progress-bar-fill {{
-                height: 20px;
-                background: linear-gradient(90deg, {primary}, {secondary});
-                border-radius: 10px;
-                transition: width 0.5s ease;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                color: white;
-                font-size: 11px;
+            /* ===== HEATMAP ===== */
+            .heatmap-cell {{
+                text-align: center;
+                padding: 6px 10px;
+                border-radius: 4px;
+                font-size: 12px;
                 font-weight: 600;
+                transition: all 0.3s;
+                min-width: 40px;
+            }}
+            .heatmap-cell:hover {{
+                transform: scale(1.05);
+                box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+                z-index: 5;
             }}
             
+            /* ===== COLLAPSER (Detailed Citations) ===== */
             .collapser {{
-                background: #f8f9fa;
-                padding: 12px 15px;
+                background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+                padding: 12px 18px;
                 margin: 5px 0;
-                border-radius: 8px;
+                border-radius: 10px;
                 cursor: pointer;
                 border-left: 4px solid {primary};
                 transition: all 0.3s;
@@ -3032,163 +3327,280 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                 align-items: center;
                 flex-wrap: wrap;
                 gap: 8px;
+                box-shadow: 0 1px 4px rgba(0,0,0,0.04);
             }}
             .collapser:hover {{
                 background: #e9ecef;
-                transform: translateX(3px);
+                transform: translateX(5px);
+                box-shadow: 0 2px 12px rgba(0,0,0,0.08);
             }}
-            .collapser .citation-count {{
-                background: {primary};
+            .collapser .citation-count-badge {{
+                background: linear-gradient(135deg, {primary}, {secondary});
                 color: white;
-                padding: 2px 10px;
-                border-radius: 12px;
+                padding: 2px 12px;
+                border-radius: 20px;
                 font-size: 12px;
-                font-weight: 600;
+                font-weight: 700;
+            }}
+            .collapser .toggle-hint {{
+                font-size: 11px;
+                color: #999;
+                margin-left: auto;
+                font-weight: 400;
             }}
             .citation-detail {{
                 background: #f8f9fa;
-                padding: 12px 15px;
-                margin: 5px 0 5px 20px;
-                border-radius: 6px;
+                padding: 12px 18px;
+                margin: 4px 0 4px 24px;
+                border-radius: 8px;
                 border-left: 3px solid {secondary};
                 font-size: 13px;
+                transition: all 0.3s;
+            }}
+            .citation-detail:hover {{
+                background: #f0f1f2;
+                transform: translateX(3px);
             }}
             .citation-detail .cite-meta {{
                 color: #555;
                 font-size: 12px;
                 margin-top: 4px;
+                line-height: 1.6;
+            }}
+            .citation-detail .cite-title {{
+                font-weight: 600;
+                color: #2C3E50;
             }}
             
+            /* ===== FILTER SECTION ===== */
             .filter-section {{
-                background: #f8f9fa;
+                background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
                 padding: 15px 20px;
                 border-radius: 10px;
                 margin-bottom: 15px;
+                border: 1px solid #e9ecef;
             }}
             .filter-row {{
                 display: flex;
                 flex-wrap: wrap;
-                gap: 15px;
+                gap: 12px;
                 align-items: center;
             }}
-            .filter-row div {{
+            .filter-row .filter-group {{
                 display: flex;
                 align-items: center;
                 gap: 6px;
+                background: white;
+                padding: 4px 10px 4px 12px;
+                border-radius: 8px;
+                border: 1px solid #e9ecef;
             }}
             .filter-row label {{
-                font-size: 12px;
+                font-size: 11px;
                 font-weight: 600;
                 color: #555;
                 white-space: nowrap;
+                text-transform: uppercase;
+                letter-spacing: 0.3px;
             }}
             .filter-row select, .filter-row input {{
                 padding: 4px 8px;
-                border: 1px solid #ddd;
+                border: none;
                 border-radius: 4px;
                 font-size: 12px;
                 font-family: 'Times New Roman', serif;
+                background: transparent;
+                outline: none;
+            }}
+            .filter-row select:focus, .filter-row input:focus {{
+                box-shadow: 0 0 0 2px {primary}40;
             }}
             .filter-row input[type="text"] {{
-                width: 150px;
+                width: 130px;
             }}
             .filter-row input[type="number"] {{
-                width: 80px;
+                width: 70px;
             }}
-            
-            .heatmap-cell {{
-                text-align: center;
-                padding: 4px 8px;
-                border-radius: 4px;
-                font-size: 12px;
-                font-weight: 500;
-            }}
-            
-            .scrollable-table {{
-                max-height: 600px;
-                overflow-y: auto;
-            }}
-            .scrollable-table thead {{
-                position: sticky;
-                top: 0;
-                z-index: 10;
-            }}
-            
-            .footer {{
-                margin-top: 40px;
-                padding-top: 20px;
-                border-top: 1px solid #BDC3C7;
-                text-align: center;
-                color: #7F8C8D;
-                font-size: 12px;
-            }}
-            .footer a {{
-                color: #2980B9;
-                text-decoration: none;
-            }}
-            .footer a:hover {{
-                text-decoration: underline;
-            }}
-            
-            .oa-breakdown {{
-                display: flex;
-                flex-wrap: wrap;
-                gap: 10px;
-                margin: 10px 0;
-            }}
-            .oa-item {{
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                background: #f8f9fa;
+            .filter-stats {{
+                margin-top: 10px;
+                font-size: 13px;
+                color: #555;
                 padding: 6px 12px;
+                background: white;
                 border-radius: 8px;
-            }}
-            .oa-item .color-dot {{
-                width: 14px;
-                height: 14px;
-                border-radius: 50%;
+                border: 1px solid #e9ecef;
                 display: inline-block;
+            }
+            .filter-stats strong {{
+                color: #2C3E50;
             }}
             
+            /* ===== GEO GRID ===== */
             .geo-grid {{
                 display: grid;
                 grid-template-columns: 1fr 1fr;
                 gap: 20px;
                 margin: 15px 0;
             }}
+            .geo-card {{
+                background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+                padding: 16px 20px;
+                border-radius: 10px;
+                border: 1px solid #e9ecef;
+                transition: all 0.3s;
+            }}
+            .geo-card:hover {{
+                box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+            }}
+            .geo-card h4 {{
+                color: {primary};
+                margin-bottom: 8px;
+                font-size: 14px;
+            }}
+            .geo-card .geo-value {{
+                font-size: 18px;
+                font-weight: 700;
+                color: #2C3E50;
+            }}
+            .geo-card .geo-label {{
+                font-size: 12px;
+                color: #7F8C8D;
+            }}
             
+            /* ===== DONUT CHART (CSS) ===== */
+            .donut-container {{
+                display: flex;
+                align-items: center;
+                gap: 20px;
+                flex-wrap: wrap;
+            }}
+            .donut {{
+                width: 120px;
+                height: 120px;
+                border-radius: 50%;
+                position: relative;
+                flex-shrink: 0;
+                box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+            }}
+            .donut-inner {{
+                position: absolute;
+                top: 20px;
+                left: 20px;
+                right: 20px;
+                bottom: 20px;
+                background: white;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 14px;
+                font-weight: 700;
+                color: #2C3E50;
+                box-shadow: inset 0 2px 8px rgba(0,0,0,0.04);
+            }}
+            .donut-legend {{
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+            }}
+            .donut-legend-item {{
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-size: 12px;
+            }}
+            .donut-legend-item .legend-color {{
+                width: 12px;
+                height: 12px;
+                border-radius: 3px;
+                flex-shrink: 0;
+            }}
+            
+            /* ===== RESPONSIVE ===== */
             @media print {{
                 .sidebar {{ display: none; }}
                 .main-content {{ margin-left: 0; }}
+                .section {{ box-shadow: none; border: 1px solid #ddd; }}
+                .metric-card {{ box-shadow: none; }}
             }}
             @media (max-width: 768px) {{
                 .sidebar {{ display: none; }}
-                .main-content {{ margin-left: 0; padding: 20px; }}
+                .main-content {{ margin-left: 0; padding: 15px; }}
+                .header {{ flex-direction: column; text-align: center; padding: 20px; }}
+                .header-left {{ flex-direction: column; }}
                 .geo-grid {{ grid-template-columns: 1fr; }}
                 .filter-row {{ flex-direction: column; align-items: stretch; }}
-                .filter-row div {{ flex-wrap: wrap; }}
+                .filter-row .filter-group {{ flex-wrap: wrap; }}
+                .metrics-grid {{ grid-template-columns: repeat(2, 1fr); }}
+                .metrics-grid-4 {{ grid-template-columns: 1fr 1fr; }}
+                .oa-breakdown {{ flex-direction: column; }}
+            }}
+            
+            /* ===== ANIMATIONS ===== */
+            @keyframes fadeInUp {{
+                from {{ opacity: 0; transform: translateY(20px); }}
+                to {{ opacity: 1; transform: translateY(0); }}
+            }}
+            .section {{
+                animation: fadeInUp 0.6s ease forwards;
+            }}
+            .section:nth-child(2) {{ animation-delay: 0.1s; }}
+            .section:nth-child(3) {{ animation-delay: 0.2s; }}
+            .section:nth-child(4) {{ animation-delay: 0.3s; }}
+            .section:nth-child(5) {{ animation-delay: 0.4s; }}
+            .section:nth-child(6) {{ animation-delay: 0.5s; }}
+            .section:nth-child(7) {{ animation-delay: 0.6s; }}
+            
+            .word-wrap {{
+                word-wrap: break-word;
+                max-width: 300px;
+            }}
+            
+            .footer {{
+                margin-top: 40px;
+                padding-top: 20px;
+                border-top: 2px solid #e9ecef;
+                text-align: center;
+                color: #7F8C8D;
+                font-size: 12px;
+            }}
+            .footer a {{
+                color: {primary};
+                text-decoration: none;
+            }}
+            .footer a:hover {{
+                text-decoration: underline;
             }}
         </style>
     </head>
     <body>
         <div class="sidebar">
             <h3>📊 {t('app_title')}</h3>
-            <a href="#overview">📋 {t('overview')}</a>
-            <a href="#analyzed_articles" class="sub-link">📄 {t('analyzed_articles')}</a>
-            <a href="#citation_analysis" class="sub-link">📈 {t('citation_analysis')}</a>
-            <a href="#citing_works" class="sub-link">📚 {t('citing_works_analysis')}</a>
-            <a href="#topics_analysis" class="sub-link">🏷️ {t('topics_analysis')}</a>
-            <a href="#detailed_citations" class="sub-link">📋 {t('detailed_citations')}</a>
-            <a href="#all_publications" class="sub-link">📚 {t('all_publications')}</a>
-            <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.3); font-size: 11px; opacity: 0.8;">
-                {t('journal_issn_label', issn=analyzer.issn)}
-                <br>
-                {t('analysis_period_label', period=str(analyzer.period))}
+            
+            <div class="nav-section">
+                <div class="nav-section-title">Main</div>
+                <a href="#overview"><span class="nav-icon">📋</span> {t('overview')}</a>
+            </div>
+            
+            <div class="nav-section">
+                <div class="nav-section-title">Publications</div>
+                <a href="#analyzed_articles"><span class="nav-icon">📄</span> {t('analyzed_articles')}</a>
+                <a href="#citation_analysis" class="sub-link"><span class="nav-icon">📈</span> {t('citation_analysis')}</a>
+                <a href="#citing_works" class="sub-link"><span class="nav-icon">📚</span> {t('citing_works_analysis')}</a>
+                <a href="#topics_analysis" class="sub-link"><span class="nav-icon">🏷️</span> {t('topics_analysis')}</a>
+                <a href="#detailed_citations" class="sub-link"><span class="nav-icon">📋</span> {t('detailed_citations')}</a>
+                <a href="#all_publications" class="sub-link"><span class="nav-icon">📚</span> {t('all_publications')}</a>
+            </div>
+            
+            <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.2); font-size: 11px; opacity: 0.8; line-height: 1.6;">
+                <div>{t('journal_issn_label', issn=analyzer.issn)}</div>
+                <div>{t('analysis_period_label', period=str(analyzer.period))}</div>
+                <div style="margin-top: 4px; font-size: 10px; opacity: 0.6;">{t('generated_on')}: {datetime.now().strftime('%d.%m.%Y %H:%M')}</div>
             </div>
         </div>
         
         <div class="main-content">
+            <!-- HEADER -->
             <div class="header">
                 <div class="header-left">
                     {f'<img src="data:image/png;base64,{app_logo_base64}" alt="App Logo">' if app_logo_base64 else ''}
@@ -3197,777 +3609,940 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                         <div class="subtitle">
                             {t('journal_issn_label', issn=analyzer.issn)} | 
                             {t('analysis_period_label', period=str(analyzer.period))}
-                            <br>
-                            {t('generated_on')}: {datetime.now().strftime('%d.%m.%Y %H:%M')}
                         </div>
                     </div>
                 </div>
                 {f'<div class="header-right"><img src="data:image/png;base64,{logo_base64}" alt="Journal Logo"></div>' if logo_base64 else ''}
             </div>
             
-            <!-- Overview Section -->
+            <!-- ============================================================ -->
+            <!-- SECTION 1: OVERVIEW -->
+            <!-- ============================================================ -->
             <div id="overview" class="section">
-                <div class="section-title"><span class="icon">📋</span> {t('overview')}</div>
-                
-                <div class="metrics-grid">
-                    <div class="metric-card">
-                        <div class="metric-value">{basic.get('total_publications', 0)}</div>
-                        <div class="metric-label">{t('total_publications')}</div>
+                <div class="section-header" onclick="toggleSection('overview_content')">
+                    <div class="section-title">
+                        <span class="icon">📋</span> {t('overview')}
+                        <span class="section-badge">{basic.get('total_publications', 0)} {t('publications')}</span>
                     </div>
-                    <div class="metric-card">
-                        <div class="metric-value">{basic.get('total_citations', 0):,}</div>
-                        <div class="metric-label">{t('total_citations')}</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-value">{basic.get('h_index', 0)}</div>
-                        <div class="metric-label">{t('h_index')}</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-value">{basic.get('g_index', 0)}</div>
-                        <div class="metric-label">{t('g_index')}</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-value">{basic.get('i10_index', 0)}</div>
-                        <div class="metric-label">{t('i10_index')}</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-value">{basic.get('i100_index', 0)}</div>
-                        <div class="metric-label">{t('i100_index')}</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-value">{basic.get('avg_citations', 0):.1f}</div>
-                        <div class="metric-label">{t('avg_citations')}</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-value">{basic.get('oa_percentage', 0):.1f}%</div>
-                        <div class="metric-label">{t('open_access')}</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-value">{basic.get('active_years', 0)}</div>
-                        <div class="metric-label">{t('active_years')}</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-value">{basic.get('unique_authors', 0):,}</div>
-                        <div class="metric-label">{t('unique_authors')}</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-value">{basic.get('unique_affiliations', 0):,}</div>
-                        <div class="metric-label">{t('unique_affiliations')}</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-value">{basic.get('unique_countries', 0)}</div>
-                        <div class="metric-label">{t('unique_countries')}</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-value">{basic.get('avg_authors_per_paper', 0):.1f}</div>
-                        <div class="metric-label">{t('avg_authors_per_paper')}</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-value">{basic.get('avg_affiliations_per_paper', 0):.1f}</div>
-                        <div class="metric-label">{t('avg_affiliations_per_paper')}</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-value">{basic.get('avg_countries_per_paper', 0):.1f}</div>
-                        <div class="metric-label">{t('avg_countries_per_paper')}</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-value">{basic.get('international_collaboration_rate', 0):.1f}%</div>
-                        <div class="metric-label">{t('international_collaboration_rate')}</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-value">{basic.get('unique_citing_authors', 0):,}</div>
-                        <div class="metric-label">{t('unique_citing_authors')}</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-value">{basic.get('unique_citing_affiliations', 0):,}</div>
-                        <div class="metric-label">{t('unique_citing_affiliations')}</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-value">{basic.get('unique_citing_countries', 0)}</div>
-                        <div class="metric-label">{t('unique_citing_countries')}</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-value">{basic.get('unique_citing_journals', 0):,}</div>
-                        <div class="metric-label">{t('unique_citing_journals')}</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-value">{basic.get('unique_citing_publishers', 0):,}</div>
-                        <div class="metric-label">{t('unique_citing_publishers')}</div>
-                    </div>
+                    <span class="toggle-indicator" id="overview_indicator">▼</span>
                 </div>
-                
-                <!-- Open Access Breakdown -->
-                <h3 style="margin-top: 20px; color: {primary};">{t('open_access_breakdown')}</h3>
-                <div class="oa-breakdown">
+                <div class="section-divider"></div>
+                <div id="overview_content" class="section-content">
+                    
+                    <!-- Metrics Grid -->
+                    <div class="metrics-grid">
+                        <div class="metric-card">
+                            <span class="metric-icon">📄</span>
+                            <div class="metric-value">{basic.get('total_publications', 0)}</div>
+                            <div class="metric-label">{t('total_publications')}</div>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-icon">📊</span>
+                            <div class="metric-value">{basic.get('total_citations', 0):,}</div>
+                            <div class="metric-label">{t('total_citations')}</div>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-icon">📈</span>
+                            <div class="metric-value">{basic.get('h_index', 0)}</div>
+                            <div class="metric-label">{t('h_index')}</div>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-icon">📈</span>
+                            <div class="metric-value">{basic.get('g_index', 0)}</div>
+                            <div class="metric-label">{t('g_index')}</div>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-icon">📈</span>
+                            <div class="metric-value">{basic.get('i10_index', 0)}</div>
+                            <div class="metric-label">{t('i10_index')}</div>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-icon">📈</span>
+                            <div class="metric-value">{basic.get('i100_index', 0)}</div>
+                            <div class="metric-label">{t('i100_index')}</div>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-icon">📊</span>
+                            <div class="metric-value">{basic.get('avg_citations', 0):.1f}</div>
+                            <div class="metric-label">{t('avg_citations')}</div>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-icon">🔓</span>
+                            <div class="metric-value">{basic.get('oa_percentage', 0):.1f}%</div>
+                            <div class="metric-label">{t('open_access')}</div>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-icon">📅</span>
+                            <div class="metric-value">{basic.get('active_years', 0)}</div>
+                            <div class="metric-label">{t('active_years')}</div>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-icon">👤</span>
+                            <div class="metric-value">{basic.get('unique_authors', 0):,}</div>
+                            <div class="metric-label">{t('unique_authors')}</div>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-icon">🏛️</span>
+                            <div class="metric-value">{basic.get('unique_affiliations', 0):,}</div>
+                            <div class="metric-label">{t('unique_affiliations')}</div>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-icon">🌍</span>
+                            <div class="metric-value">{basic.get('unique_countries', 0)}</div>
+                            <div class="metric-label">{t('unique_countries')}</div>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-icon">👥</span>
+                            <div class="metric-value">{basic.get('avg_authors_per_paper', 0):.1f}</div>
+                            <div class="metric-label">{t('avg_authors_per_paper')}</div>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-icon">🏛️</span>
+                            <div class="metric-value">{basic.get('avg_affiliations_per_paper', 0):.1f}</div>
+                            <div class="metric-label">{t('avg_affiliations_per_paper')}</div>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-icon">🌍</span>
+                            <div class="metric-value">{basic.get('avg_countries_per_paper', 0):.1f}</div>
+                            <div class="metric-label">{t('avg_countries_per_paper')}</div>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-icon">🌐</span>
+                            <div class="metric-value">{basic.get('international_collaboration_rate', 0):.1f}%</div>
+                            <div class="metric-label">{t('international_collaboration_rate')}</div>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-icon">👤</span>
+                            <div class="metric-value">{basic.get('unique_citing_authors', 0):,}</div>
+                            <div class="metric-label">{t('unique_citing_authors')}</div>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-icon">🏛️</span>
+                            <div class="metric-value">{basic.get('unique_citing_affiliations', 0):,}</div>
+                            <div class="metric-label">{t('unique_citing_affiliations')}</div>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-icon">🌍</span>
+                            <div class="metric-value">{basic.get('unique_citing_countries', 0)}</div>
+                            <div class="metric-label">{t('unique_citing_countries')}</div>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-icon">📰</span>
+                            <div class="metric-value">{basic.get('unique_citing_journals', 0):,}</div>
+                            <div class="metric-label">{t('unique_citing_journals')}</div>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-icon">📚</span>
+                            <div class="metric-value">{basic.get('unique_citing_publishers', 0):,}</div>
+                            <div class="metric-label">{t('unique_citing_publishers')}</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Open Access Breakdown with Progress Bars -->
+                    <h3 style="margin-top: 20px; color: {primary}; font-size: 16px;">{t('open_access_breakdown')}</h3>
+                    
                     {''.join([
                         f'''
-                        <div class="oa-item">
-                            <span class="color-dot" style="background: {{
-                                'gold': '#FFD700',
-                                'hybrid': '#F1C40F',
-                                'green': '#2ECC71',
-                                'bronze': '#CD7F32',
-                                'closed': '#95A5A6',
-                                'unknown': '#BDC3C7'
-                            }}.get('{status}', '#BDC3C7')}};"></span>
-                            <span><strong>{t(status)}</strong>: {count}</span>
-                            <span style="font-size: 11px; color: #666;">({count/basic.get("total_publications", 1)*100:.1f}%)</span>
+                        <div style="margin: 6px 0;">
+                            <div class="progress-bar-label">
+                                <span><span class="color-dot" style="display:inline-block;width:12px;height:12px;border-radius:50%;background:{oa_colors.get(status, '#BDC3C7')};vertical-align:middle;margin-right:6px;"></span> 
+                                <strong>{t(status)}</strong></span>
+                                <span class="label-value">{count} ({count/basic.get("total_publications", 1)*100:.1f}%)</span>
+                            </div>
+                            <div class="progress-bar-container">
+                                <div class="progress-bar-fill animate" style="width: {count/basic.get('total_publications', 1)*100:.1f}%; background: {oa_colors.get(status, '#BDC3C7')};">
+                                    {count/basic.get('total_publications', 1)*100:.1f}%
+                                </div>
+                            </div>
                         </div>
                         '''
                         for status, count in basic.get('oa_breakdown', {}).items()
                         if count > 0 and status not in ['unknown']
                     ])}
+                    
                     {f'''
-                    <div class="oa-item">
-                        <span class="color-dot" style="background: #BDC3C7;"></span>
-                        <span><strong>{t('unknown')}</strong>: {basic.get('oa_breakdown', {}).get('unknown', 0)}</span>
+                    <div style="margin: 6px 0;">
+                        <div class="progress-bar-label">
+                            <span><span class="color-dot" style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#BDC3C7;vertical-align:middle;margin-right:6px;"></span> 
+                            <strong>{t('unknown')}</strong></span>
+                            <span class="label-value">{basic.get('oa_breakdown', {}).get('unknown', 0)} ({basic.get('oa_breakdown', {}).get('unknown', 0)/basic.get('total_publications', 1)*100:.1f}%)</span>
+                        </div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar-fill animate" style="width: {basic.get('oa_breakdown', {}).get('unknown', 0)/basic.get('total_publications', 1)*100:.1f}%; background: #BDC3C7;">
+                                {basic.get('oa_breakdown', {}).get('unknown', 0)/basic.get('total_publications', 1)*100:.1f}%
+                            </div>
+                        </div>
                     </div>
                     ''' if basic.get('oa_breakdown', {}).get('unknown', 0) > 0 else ''}
+                    
                 </div>
             </div>
             
-            <!-- Analyzed Articles Section -->
+            <!-- ============================================================ -->
+            <!-- SECTION 2: ANALYZED ARTICLES -->
+            <!-- ============================================================ -->
             <div id="analyzed_articles" class="section">
-                <div class="section-title"><span class="icon">📄</span> {t('analyzed_articles')}</div>
-                
-                <!-- Author Analysis -->
-                <h3 style="color: {primary};">{t('author_analysis')}</h3>
-                <div class="scrollable-table">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>{t('rank')}</th>
-                                <th>{t('authors')}</th>
-                                <th>ORCID</th>
-                                <th>{t('affiliations')}</th>
-                                <th>{t('countries')}</th>
-                                <th>{t('publications_count')}</th>
-                                <th>{t('citations_count')}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {''.join([
-                                f'''
+                <div class="section-header" onclick="toggleSection('analyzed_content')">
+                    <div class="section-title">
+                        <span class="icon">📄</span> {t('analyzed_articles')}
+                        <span class="section-badge">{len(publications)} {t('articles')}</span>
+                    </div>
+                    <span class="toggle-indicator" id="analyzed_indicator">▼</span>
+                </div>
+                <div class="section-divider"></div>
+                <div id="analyzed_content" class="section-content">
+                    
+                    <!-- Author Analysis -->
+                    <h3 style="color: {primary}; font-size: 16px;">{t('author_analysis')}</h3>
+                    <div class="scrollable-table">
+                        <table>
+                            <thead>
                                 <tr>
-                                    <td>{i+1}</td>
-                                    <td><strong>{html.escape(author['name'])}</strong></td>
-                                    <td>{f'<a href="https://orcid.org/{author["orcid"]}" target="_blank" class="doi-link">{author["orcid"][:8]}...</a>' if author.get('orcid') else '-'}</td>
-                                    <td>{', '.join([html.escape(a) for a in author.get('affiliations', [])[:3]])}{' +' + str(len(author.get('affiliations', []))-3) if len(author.get('affiliations', [])) > 3 else ''}</td>
-                                    <td>{', '.join(author.get('countries', [])[:3])}</td>
-                                    <td>{author.get('publications', 0)}</td>
-                                    <td>{author.get('citations', 0)}</td>
+                                    <th class="sortable" onclick="sortTable('author_table', 0)">{t('rank')}</th>
+                                    <th class="sortable" onclick="sortTable('author_table', 1)">{t('authors')}</th>
+                                    <th>ORCID</th>
+                                    <th>{t('affiliations')}</th>
+                                    <th>{t('countries')}</th>
+                                    <th class="sortable" onclick="sortTable('author_table', 5)">{t('publications_count')}</th>
+                                    <th class="sortable" onclick="sortTable('author_table', 6)">{t('citations_count')}</th>
                                 </tr>
-                                '''
-                                for i, author in enumerate(author_analysis.get('top_authors', [])[:30])
-                            ])}
-                        </tbody>
-                    </table>
-                </div>
-                
-                <!-- Top Affiliations -->
-                <h3 style="color: {primary}; margin-top: 20px;">{t('top_affiliations')}</h3>
-                <div class="scrollable-table">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>{t('rank')}</th>
-                                <th>{t('affiliations')}</th>
-                                <th>{t('publications_count')}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {''.join([
-                                f'''
-                                <tr>
-                                    <td>{i+1}</td>
-                                    <td>{html.escape(aff['name'])}</td>
-                                    <td>{aff['count']}</td>
-                                </tr>
-                                '''
-                                for i, aff in enumerate(affiliation_analysis.get('top_affiliations', [])[:30])
-                            ])}
-                        </tbody>
-                    </table>
-                </div>
-                
-                <!-- Geographic Analysis -->
-                <h3 style="color: {primary}; margin-top: 20px;">{t('geographic_analysis')}</h3>
-                
-                <div class="geo-grid">
-                    <div>
-                        <h4 style="color: {primary};">{t('unique_countries_per_publication')}</h4>
-                        <div style="font-size: 14px;">
-                            <div>Avg: {geographic.get('unique_countries_per_publication', {}).get('avg', 0):.2f}</div>
-                            <div>Min: {geographic.get('unique_countries_per_publication', {}).get('min', 0)}</div>
-                            <div>Max: {geographic.get('unique_countries_per_publication', {}).get('max', 0)}</div>
-                        </div>
-                    </div>
-                    <div>
-                        <h4 style="color: {primary};">{t('collaboration_patterns')}</h4>
-                        <div style="font-size: 14px;">
-                            <div>{t('single_country')}: {geographic.get('collaboration_patterns', {}).get('single_country', 0)} ({geographic.get('collaboration_patterns', {}).get('single_country_ratio', 0)*100:.1f}%)</div>
-                            <div>{t('multi_country')}: {geographic.get('collaboration_patterns', {}).get('multi_country', 0)} ({(1-geographic.get('collaboration_patterns', {}).get('single_country_ratio', 0))*100:.1f}%)</div>
-                        </div>
-                    </div>
-                </div>
-                
-                <h4 style="color: {primary}; margin-top: 15px;">{t('authors_per_country')}</h4>
-                <div class="scrollable-table" style="max-height: 300px;">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>{t('countries')}</th>
-                                <th>{t('authors')}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {''.join([
-                                f'<tr><td>{html.escape(country)}</td><td>{count}</td></tr>'
-                                for country, count in sorted(geographic.get('authors_per_country', {}).items(), key=lambda x: x[1], reverse=True)[:30]
-                            ])}
-                        </tbody>
-                    </table>
-                </div>
-                
-                <h4 style="color: {primary}; margin-top: 15px;">{t('collaboration_couples')}</h4>
-                <div class="scrollable-table" style="max-height: 300px;">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>{t('country_pair')}</th>
-                                <th>{t('frequency')}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {''.join([
-                                f'<tr><td>{html.escape(couple["country1"])} — {html.escape(couple["country2"])}</td><td>{couple["frequency"]}</td></tr>'
-                                for couple in geographic.get('collaboration_couples', [])[:30]
-                            ])}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            
-            <!-- Citation Analysis Section -->
-            <div id="citation_analysis" class="section">
-                <div class="section-title"><span class="icon">📈</span> {t('citation_analysis')}</div>
-                
-                <!-- Citation Dynamics by Year -->
-                <h3 style="color: {primary};">{t('citation_dynamics_by_year')}</h3>
-                <div class="scrollable-table" style="max-height: 400px;">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>{t('publication_year')}</th>
-                                <th>{t('citation_year')}</th>
-                                <th>{t('citations_count')}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {''.join([
-                                f'<tr><td>{row["publication_year"]}</td><td>{row["citation_year"]}</td><td>{row["citations_count"]}</td></tr>'
-                                for row in citation.get('dynamics', [])
-                            ])}
-                        </tbody>
-                    </table>
-                </div>
-                
-                <!-- First Citation Analysis -->
-                <h3 style="color: {primary}; margin-top: 20px;">{t('first_citation_analysis')}</h3>
-                <div class="metrics-grid" style="grid-template-columns: repeat(4, 1fr);">
-                    <div class="metric-card">
-                        <div class="metric-value">{citation.get('first_citation_stats', {}).get('min', 'N/A')}</div>
-                        <div class="metric-label">{t('min_lag')}</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-value">{citation.get('first_citation_stats', {}).get('max', 'N/A')}</div>
-                        <div class="metric-label">{t('max_lag')}</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-value">{citation.get('first_citation_stats', {}).get('avg', 0):.1f}</div>
-                        <div class="metric-label">{t('avg_lag')}</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-value">{citation.get('first_citation_stats', {}).get('median', 0):.1f}</div>
-                        <div class="metric-label">{t('median_lag')}</div>
-                    </div>
-                </div>
-                
-                <!-- Cumulative Citations -->
-                <h3 style="color: {primary}; margin-top: 20px;">{t('cumulative_citations')}</h3>
-                <div class="scrollable-table" style="max-height: 300px;">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>{t('year')}</th>
-                                <th>{t('citations')}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {''.join([
-                                f'<tr><td>{row["year"]}</td><td>{row["citations"]}</td></tr>'
-                                for row in citation.get('cumulative', [])
-                            ])}
-                        </tbody>
-                    </table>
-                </div>
-                
-                <!-- Citation Network Heatmap -->
-                heatmap_data = citation.get('heatmap', [])
-                all_values = []
-                for row in heatmap_data:
-                    for year, val in row.items():
-                        if year != 'publication_year' and isinstance(val, (int, float)):
-                            all_values.append(val)
-                max_val = max(all_values) if all_values else 0
-                
-                <h3 style="color: {primary}; margin-top: 20px;">{t('citation_network_heatmap')}</h3>
-                <div class="scrollable-table" style="max-height: 500px;">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>{t('publication_year')} \ {t('citation_year')}</th>
+                            </thead>
+                            <tbody id="author_table">
                                 {''.join([
-                                    f'<th>{year}</th>'
-                                    for year in sorted(set(
-                                        [y for row in citation.get('heatmap', []) for y in row.keys() if y != 'publication_year']
-                                    ))
+                                    f'''
+                                    <tr>
+                                        <td>{i+1}</td>
+                                        <td><strong>{html.escape(author['name'])}</strong></td>
+                                        <td>{f'<a href="https://orcid.org/{author["orcid"]}" target="_blank" class="doi-link">{author["orcid"][:8]}...</a>' if author.get('orcid') else '-'}</td>
+                                        <td>{', '.join([html.escape(a) for a in author.get('affiliations', [])[:3]])}{' +' + str(len(author.get('affiliations', []))-3) if len(author.get('affiliations', [])) > 3 else ''}</td>
+                                        <td>{', '.join(author.get('countries', [])[:3])}</td>
+                                        <td><span class="badge badge-primary">{author.get('publications', 0)}</span></td>
+                                        <td><span class="citation-count">{author.get('citations', 0)}</span></td>
+                                    </tr>
+                                    '''
+                                    for i, author in enumerate(author_analysis.get('top_authors', [])[:30])
                                 ])}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {''.join([
-                                f'''
-                                <tr>
-                                    <td><strong>{row.get("publication_year", "N/A")}</strong></td>
-                                    {''.join([
-                                        f'''
-                                        <td class="heatmap-cell" style="
-                                            background: {get_heatmap_color(row.get(year, 0), max_val, primary, secondary) if max_val > 0 else '#f0f0f0'};
-                                            color: {get_heatmap_text_color(row.get(year, 0), max_val) if max_val > 0 else '#999'};
-                                        ">
-                                            {row.get(year, 0) or '0'}
-                                        </td>
-                                        '''
-                                        for year in sorted(set(
-                                            [y for r in citation.get('heatmap', []) for y in r.keys() if y != 'publication_year']
-                                        ))
-                                    ])}
-                                </tr>
-                                '''
-                                for row in citation.get('heatmap', [])
-                            ])}
-                        </tbody>
-                    </table>
-                </div>
-                
-                <!-- Most Cited Publications -->
-                <h3 style="color: {primary}; margin-top: 20px;">{t('most_cited_publications')}</h3>
-                <div class="scrollable-table" style="max-height: 400px;">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>{t('rank')}</th>
-                                <th>{t('title')}</th>
-                                <th>{t('year')}</th>
-                                <th>{t('citations')}</th>
-                                <th>{t('citations_per_year_label')}</th>
-                                <th>{t('authors')}</th>
-                                <th>DOI</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {''.join([
-                                f'''
-                                <tr>
-                                    <td>{i+1}</td>
-                                    <td>{html.escape(pub['title'][:80])}{'...' if len(pub['title']) > 80 else ''}</td>
-                                    <td>{pub.get('year', 'N/A')}</td>
-                                    <td><strong>{pub['citations']}</strong></td>
-                                    <td>{pub.get('citations_per_year', 0):.1f}</td>
-                                    <td>{html.escape(pub.get('authors', 'N/A'))}</td>
-                                    <td><a href="https://doi.org/{html.escape(pub.get('doi', ''))}" target="_blank" class="doi-link">{html.escape(pub.get('doi', ''))[:20]}...</a></td>
-                                </tr>
-                                '''
-                                for i, pub in enumerate(citation.get('most_cited', [])[:10])
-                            ])}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            
-            <!-- Citing Works Analysis Section -->
-            <div id="citing_works" class="section">
-                <div class="section-title"><span class="icon">📚</span> {t('citing_works_analysis')}</div>
-                
-                <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
-                    <div class="metric-card">
-                        <div class="metric-value">{citing.get('total_citing_works', 0):,}</div>
-                        <div class="metric-label">{t('total_citing_works')}</div>
+                            </tbody>
+                        </table>
                     </div>
-                </div>
-                
-                <h3 style="color: {primary};">{t('top_citing_authors')}</h3>
-                <div class="scrollable-table" style="max-height: 300px;">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>{t('rank')}</th>
-                                <th>{t('authors')}</th>
-                                <th>{t('citations_count')}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {''.join([
-                                f'<tr><td>{i+1}</td><td>{html.escape(author["name"])}</td><td>{author["count"]}</td></tr>'
-                                for i, author in enumerate(citing.get('top_authors', [])[:30])
-                            ])}
-                        </tbody>
-                    </table>
-                </div>
-                
-                <h3 style="color: {primary}; margin-top: 20px;">{t('top_citing_affiliations')}</h3>
-                <div class="scrollable-table" style="max-height: 300px;">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>{t('rank')}</th>
-                                <th>{t('affiliations')}</th>
-                                <th>{t('citations_count')}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {''.join([
-                                f'<tr><td>{i+1}</td><td>{html.escape(aff["name"])}</td><td>{aff["count"]}</td></tr>'
-                                for i, aff in enumerate(citing.get('top_affiliations', [])[:30])
-                            ])}
-                        </tbody>
-                    </table>
-                </div>
-                
-                <h3 style="color: {primary}; margin-top: 20px;">{t('top_citing_countries')}</h3>
-                <div class="scrollable-table" style="max-height: 300px;">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>{t('rank')}</th>
-                                <th>{t('countries')}</th>
-                                <th>{t('citations_count')}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {''.join([
-                                f'<tr><td>{i+1}</td><td>{html.escape(country["name"])}</td><td>{country["count"]}</td></tr>'
-                                for i, country in enumerate(citing.get('top_countries', [])[:30])
-                            ])}
-                        </tbody>
-                    </table>
-                </div>
-                
-                <h3 style="color: {primary}; margin-top: 20px;">{t('top_citing_journals')}</h3>
-                <div class="scrollable-table" style="max-height: 300px;">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>{t('rank')}</th>
-                                <th>{t('journal')}</th>
-                                <th>{t('citations_count')}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {''.join([
-                                f'<tr><td>{i+1}</td><td>{html.escape(journal["name"])}</td><td>{journal["count"]}</td></tr>'
-                                for i, journal in enumerate(citing.get('top_journals', [])[:30])
-                            ])}
-                        </tbody>
-                    </table>
-                </div>
-                
-                <h3 style="color: {primary}; margin-top: 20px;">{t('top_citing_publishers')}</h3>
-                <div class="scrollable-table" style="max-height: 300px;">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>{t('rank')}</th>
-                                <th>{t('publishers')}</th>
-                                <th>{t('citations_count')}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {''.join([
-                                f'<tr><td>{i+1}</td><td>{html.escape(pub["name"])}</td><td>{pub["count"]}</td></tr>'
-                                for i, pub in enumerate(citing.get('top_publishers', [])[:30])
-                            ])}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            
-            <!-- Topics Analysis Section -->
-            <div id="topics_analysis" class="section">
-                <div class="section-title"><span class="icon">🏷️</span> {t('topics_analysis')}</div>
-                
-                <h3 style="color: {primary};">Topics</h3>
-                <div class="scrollable-table" style="max-height: 400px;">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Topic</th>
-                                <th>{t('analyzed_count')}</th>
-                                <th>{t('citing_count')}</th>
-                                <th>{t('analyzed_norm_count')}</th>
-                                <th>{t('citing_norm_count')}</th>
-                                <th>{t('total_norm_count')}</th>
-                                <th>{t('first_year')}</th>
-                                <th>{t('peak_year')}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {''.join([
-                                f'''
+                    
+                    <!-- Top Affiliations -->
+                    <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">{t('top_affiliations')}</h3>
+                    <div class="scrollable-table">
+                        <table>
+                            <thead>
                                 <tr>
-                                    <td>{html.escape(topic['topic'][:50])}{'...' if len(topic['topic']) > 50 else ''}</td>
-                                    <td>{topic['analyzed_count']}</td>
-                                    <td>{topic['citing_count']}</td>
-                                    <td>{topic['analyzed_norm_count']:.3f}</td>
-                                    <td>{topic['citing_norm_count']:.3f}</td>
-                                    <td><strong>{topic['total_norm_count']:.3f}</strong></td>
-                                    <td>{topic['first_year'] or 'N/A'}</td>
-                                    <td>{topic['peak_year'] or 'N/A'}</td>
+                                    <th class="sortable" onclick="sortTable('aff_table', 0)">{t('rank')}</th>
+                                    <th class="sortable" onclick="sortTable('aff_table', 1)">{t('affiliations')}</th>
+                                    <th class="sortable" onclick="sortTable('aff_table', 2)">{t('publications_count')}</th>
                                 </tr>
-                                '''
-                                for topic in topics.get('topics', [])[:30]
-                            ])}
-                        </tbody>
-                    </table>
-                </div>
-                
-                <h3 style="color: {primary}; margin-top: 20px;">{t('top_cited_topics')}</h3>
-                <div class="scrollable-table" style="max-height: 300px;">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>{t('rank')}</th>
-                                <th>Topic</th>
-                                <th>{t('citations')}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {''.join([
-                                f'<tr><td>{i+1}</td><td>{html.escape(topic[0][:60])}</td><td>{topic[1]}</td></tr>'
-                                for i, topic in enumerate(topics.get('top_cited_topics', [])[:10])
-                            ])}
-                        </tbody>
-                    </table>
-                </div>
-                
-                <h3 style="color: {primary}; margin-top: 20px;">{t('top_cited_subtopics')}</h3>
-                <div class="scrollable-table" style="max-height: 300px;">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>{t('rank')}</th>
-                                <th>Subtopic</th>
-                                <th>{t('citations')}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {''.join([
-                                f'<tr><td>{i+1}</td><td>{html.escape(subtopic[0][:60])}</td><td>{subtopic[1]}</td></tr>'
-                                for i, subtopic in enumerate(topics.get('top_cited_subtopics', [])[:10])
-                            ])}
-                        </tbody>
-                    </table>
-                </div>
-                
-                <h3 style="color: {primary}; margin-top: 20px;">{t('top_cited_fields')}</h3>
-                <div class="scrollable-table" style="max-height: 300px;">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>{t('rank')}</th>
-                                <th>Field</th>
-                                <th>{t('citations')}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {''.join([
-                                f'<tr><td>{i+1}</td><td>{html.escape(field[0][:60])}</td><td>{field[1]}</td></tr>'
-                                for i, field in enumerate(topics.get('top_cited_fields', [])[:10])
-                            ])}
-                        </tbody>
-                    </table>
-                </div>
-                
-                <h3 style="color: {primary}; margin-top: 20px;">{t('top_cited_domains')}</h3>
-                <div class="scrollable-table" style="max-height: 300px;">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>{t('rank')}</th>
-                                <th>Domain</th>
-                                <th>{t('citations')}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {''.join([
-                                f'<tr><td>{i+1}</td><td>{html.escape(domain[0][:60])}</td><td>{domain[1]}</td></tr>'
-                                for i, domain in enumerate(topics.get('top_cited_domains', [])[:10])
-                            ])}
-                        </tbody>
-                    </table>
-                </div>
-                
-                <h3 style="color: {primary}; margin-top: 20px;">{t('top_cited_concepts')}</h3>
-                <div class="scrollable-table" style="max-height: 300px;">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>{t('rank')}</th>
-                                <th>Concept</th>
-                                <th>{t('citations')}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {''.join([
-                                f'<tr><td>{i+1}</td><td>{html.escape(concept[0][:60])}</td><td>{concept[1]}</td></tr>'
-                                for i, concept in enumerate(topics.get('top_cited_concepts', [])[:10])
-                            ])}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            
-            <!-- Detailed Citations Section -->
-            <div id="detailed_citations" class="section">
-                <div class="section-title"><span class="icon">📋</span> {t('detailed_citations')}</div>
-                
-                {''.join([
-                    f'''
-                    <div class="collapser" onclick="toggleCitations('{html.escape(doi)}')">
-                        <strong>{html.escape(data['title'][:80])}{'...' if len(data['title']) > 80 else ''}</strong>
-                        <span class="badge badge-info">{data['year'] or 'N/A'}</span>
-                        <span class="citation-count">{data['total_citations']} {t('citations')}</span>
-                        <span style="font-size: 12px; color: #666; margin-left: 10px;">DOI: {data['doi'][:20]}...</span>
-                        <span style="float: right; font-size: 12px; color: #666;">{t('click_to_toggle')}</span>
+                            </thead>
+                            <tbody id="aff_table">
+                                {''.join([
+                                    f'''
+                                    <tr>
+                                        <td>{i+1}</td>
+                                        <td>{html.escape(aff['name'])}</td>
+                                        <td><span class="badge badge-primary">{aff['count']}</span></td>
+                                    </tr>
+                                    '''
+                                    for i, aff in enumerate(affiliation_analysis.get('top_affiliations', [])[:30])
+                                ])}
+                            </tbody>
+                        </table>
                     </div>
-                    <div id="citations_{html.escape(doi)}" style="display: none;">
-                        {''.join([
-                            f'''
-                            <div class="citation-detail">
-                                <div><strong>{html.escape(cite['citing_title'][:100])}{'...' if len(cite['citing_title']) > 100 else ''}</strong></div>
-                                <div class="cite-meta">
-                                    <strong>{t('citing_journal')}:</strong> {html.escape(cite['citing_journal'])} | 
-                                    <strong>{t('citing_year')}:</strong> {cite['citing_year'] or 'N/A'} | 
-                                    <strong>{t('citing_date')}:</strong> {cite['citing_date'][:10] if cite['citing_date'] else 'N/A'} |
-                                    <strong>{t('citation_lag')}:</strong> {cite['citation_lag'] or 'N/A'}
+                    
+                    <!-- Geographic Analysis -->
+                    <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">{t('geographic_analysis')}</h3>
+                    
+                    <div class="geo-grid">
+                        <div class="geo-card">
+                            <h4>{t('unique_countries_per_publication')}</h4>
+                            <div>
+                                <div><span class="geo-value">{geographic.get('unique_countries_per_publication', {}).get('avg', 0):.2f}</span> <span class="geo-label">Avg</span></div>
+                                <div><span class="geo-value">{geographic.get('unique_countries_per_publication', {}).get('min', 0)}</span> <span class="geo-label">Min</span></div>
+                                <div><span class="geo-value">{geographic.get('unique_countries_per_publication', {}).get('max', 0)}</span> <span class="geo-label">Max</span></div>
+                            </div>
+                        </div>
+                        <div class="geo-card">
+                            <h4>{t('collaboration_patterns')}</h4>
+                            <div>
+                                <div><span class="geo-value">{geographic.get('collaboration_patterns', {}).get('single_country', 0)}</span> <span class="geo-label">{t('single_country')} ({geographic.get('collaboration_patterns', {}).get('single_country_ratio', 0)*100:.1f}%)</span></div>
+                                <div><span class="geo-value">{geographic.get('collaboration_patterns', {}).get('multi_country', 0)}</span> <span class="geo-label">{t('multi_country')} ({(1-geographic.get('collaboration_patterns', {}).get('single_country_ratio', 0))*100:.1f}%)</span></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Collaboration Patterns Progress Bars -->
+                    <div style="margin: 10px 0 20px 0;">
+                        <div style="display: flex; gap: 20px;">
+                            <div style="flex: 1;">
+                                <div class="progress-bar-label">
+                                    <span>{t('single_country')}</span>
+                                    <span class="label-value">{geographic.get('collaboration_patterns', {}).get('single_country', 0)} ({geographic.get('collaboration_patterns', {}).get('single_country_ratio', 0)*100:.1f}%)</span>
                                 </div>
-                                <div class="cite-meta">
-                                    <strong>{t('authors')}:</strong> {', '.join([html.escape(a) for a in cite['citing_authors'][:5]])}{' +' + str(len(cite['citing_authors'])-5) if len(cite['citing_authors']) > 5 else ''} |
-                                    <strong>{t('countries')}:</strong> {', '.join(cite['citing_countries'][:3])}
-                                </div>
-                                <div class="cite-meta">
-                                    <a href="https://doi.org/{html.escape(cite['citing_doi'])}" target="_blank" class="doi-link">DOI: {html.escape(cite['citing_doi'])}</a>
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar-fill animate" style="width: {geographic.get('collaboration_patterns', {}).get('single_country_ratio', 0)*100:.1f}%; background: {primary};">
+                                        {geographic.get('collaboration_patterns', {}).get('single_country_ratio', 0)*100:.1f}%
+                                    </div>
                                 </div>
                             </div>
-                            ''' for cite in data['citations']
-                        ])}
-                        {f'<div style="padding: 10px; color: #999; font-style: italic;">{t("no_citations_found")}</div>' if not data['citations'] else ''}
+                            <div style="flex: 1;">
+                                <div class="progress-bar-label">
+                                    <span>{t('multi_country')}</span>
+                                    <span class="label-value">{geographic.get('collaboration_patterns', {}).get('multi_country', 0)} ({(1-geographic.get('collaboration_patterns', {}).get('single_country_ratio', 0))*100:.1f}%)</span>
+                                </div>
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar-fill animate" style="width: {(1-geographic.get('collaboration_patterns', {}).get('single_country_ratio', 0))*100:.1f}%; background: {secondary};">
+                                        {(1-geographic.get('collaboration_patterns', {}).get('single_country_ratio', 0))*100:.1f}%
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    ''' for doi, data in detailed_citations.items()
-                ])}
+                    
+                    <!-- Authors per Country -->
+                    <h4 style="color: {primary}; margin-top: 15px; font-size: 14px;">{t('authors_per_country')}</h4>
+                    <div class="scrollable-table" style="max-height: 300px;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th class="sortable" onclick="sortTable('country_table', 0)">{t('countries')}</th>
+                                    <th class="sortable" onclick="sortTable('country_table', 1)">{t('authors')}</th>
+                                </tr>
+                            </thead>
+                            <tbody id="country_table">
+                                {''.join([
+                                    f'<tr><td>{html.escape(country)}</td><td><span class="badge badge-primary">{count}</span></td></tr>'
+                                    for country, count in sorted(geographic.get('authors_per_country', {}).items(), key=lambda x: x[1], reverse=True)[:30]
+                                ])}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Collaboration Couples -->
+                    <h4 style="color: {primary}; margin-top: 15px; font-size: 14px;">{t('collaboration_couples')}</h4>
+                    <div class="scrollable-table" style="max-height: 300px;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th class="sortable" onclick="sortTable('couple_table', 0)">{t('country_pair')}</th>
+                                    <th class="sortable" onclick="sortTable('couple_table', 1)">{t('frequency')}</th>
+                                </tr>
+                            </thead>
+                            <tbody id="couple_table">
+                                {''.join([
+                                    f'<tr><td>{html.escape(couple["country1"])} — {html.escape(couple["country2"])}</td><td><span class="badge badge-primary">{couple["frequency"]}</span></td></tr>'
+                                    for couple in geographic.get('collaboration_couples', [])[:30]
+                                ])}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                </div>
             </div>
             
-            <!-- All Publications Section -->
-            <div id="all_publications" class="section">
-                <div class="section-title"><span class="icon">📚</span> {t('all_publications')}</div>
-                
-                <div class="filter-section">
-                    <div class="filter-row">
-                        <div>
-                            <label>{t('filter_by_title')}:</label>
-                            <input type="text" id="titleFilter" placeholder="Search..." onkeyup="filterPublications()">
-                        </div>
-                        <div>
-                            <label>{t('filter_by_year')}:</label>
-                            <select id="yearFilter" onchange="filterPublications()">
-                                <option value="">{t('all_years')}</option>
-                                {''.join([
-                                    f'<option value="{year}">{year}</option>'
-                                    for year in sorted(set([p.get('year') for p in all_publications if p.get('year')]), reverse=True)
-                                ])}
-                            </select>
-                        </div>
-                        <div>
-                            <label>{t('filter_by_author')}:</label>
-                            <input type="text" id="authorFilter" placeholder="Author name..." onkeyup="filterPublications()">
-                        </div>
-                        <div>
-                            <label>{t('filter_by_affiliation')}:</label>
-                            <input type="text" id="affiliationFilter" placeholder="Affiliation..." onkeyup="filterPublications()">
-                        </div>
-                        <div>
-                            <label>{t('filter_by_citations')}:</label>
-                            <input type="number" id="citationFilter" placeholder="Min..." min="0" onchange="filterPublications()">
-                        </div>
+            <!-- ============================================================ -->
+            <!-- SECTION 3: CITATION ANALYSIS -->
+            <!-- ============================================================ -->
+            <div id="citation_analysis" class="section">
+                <div class="section-header" onclick="toggleSection('citation_content')">
+                    <div class="section-title">
+                        <span class="icon">📈</span> {t('citation_analysis')}
+                        <span class="section-badge">{basic.get('total_citations', 0):,} {t('citations')}</span>
                     </div>
-                    <div style="margin-top: 10px; font-size: 13px; color: #555;">
-                        <span id="visibleCount">{t('visible_count', shown=len(all_publications), total=len(all_publications))}</span>
-                    </div>
+                    <span class="toggle-indicator" id="citation_indicator">▼</span>
                 </div>
-                
-                <div class="scrollable-table" style="max-height: 600px;">
-                    <table id="publicationsTable">
-                        <thead>
-                            <tr>
-                                <th onclick="sortTable(0)" style="cursor: pointer;">#</th>
-                                <th onclick="sortTable(1)" style="cursor: pointer;">{t('title')}</th>
-                                <th onclick="sortTable(2)" style="cursor: pointer;">{t('year')}</th>
-                                <th onclick="sortTable(3)" style="cursor: pointer;">{t('authors')}</th>
-                                <th onclick="sortTable(4)" style="cursor: pointer;">{t('affiliations')}</th>
-                                <th onclick="sortTable(5)" style="cursor: pointer;">{t('citations')}</th>
-                                <th onclick="sortTable(6)" style="cursor: pointer;">{t('citations_per_year_label')}</th>
-                                <th>DOI</th>
-                            </tr>
-                        </thead>
-                        <tbody>
+                <div class="section-divider"></div>
+                <div id="citation_content" class="section-content">
+                    
+                    <!-- Citation Dynamics by Year -->
+                    <h3 style="color: {primary}; font-size: 16px;">{t('citation_dynamics_by_year')}</h3>
+                    <div class="scrollable-table" style="max-height: 400px;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th class="sortable" onclick="sortTable('dynamics_table', 0)">{t('publication_year')}</th>
+                                    <th class="sortable" onclick="sortTable('dynamics_table', 1)">{t('citation_year')}</th>
+                                    <th class="sortable" onclick="sortTable('dynamics_table', 2)">{t('citations_count')}</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dynamics_table">
+                                {''.join([
+                                    f'<tr><td>{row["publication_year"]}</td><td>{row["citation_year"]}</td><td><span class="citation-count">{row["citations_count"]}</span></td></tr>'
+                                    for row in citation.get('dynamics', [])
+                                ])}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- First Citation Analysis -->
+                    <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">{t('first_citation_analysis')}</h3>
+                    <div class="metrics-grid metrics-grid-4" style="grid-template-columns: repeat(4, 1fr);">
+                        <div class="metric-card">
+                            <span class="metric-icon">⏱️</span>
+                            <div class="metric-value">{citation.get('first_citation_stats', {}).get('min', 'N/A')}</div>
+                            <div class="metric-label">{t('min_lag')}</div>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-icon">⏱️</span>
+                            <div class="metric-value">{citation.get('first_citation_stats', {}).get('max', 'N/A')}</div>
+                            <div class="metric-label">{t('max_lag')}</div>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-icon">⏱️</span>
+                            <div class="metric-value">{citation.get('first_citation_stats', {}).get('avg', 0):.1f}</div>
+                            <div class="metric-label">{t('avg_lag')}</div>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-icon">⏱️</span>
+                            <div class="metric-value">{citation.get('first_citation_stats', {}).get('median', 0):.1f}</div>
+                            <div class="metric-label">{t('median_lag')}</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Cumulative Citations -->
+                    <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">{t('cumulative_citations')}</h3>
+                    <div class="scrollable-table" style="max-height: 300px;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th class="sortable" onclick="sortTable('cum_table', 0)">{t('year')}</th>
+                                    <th class="sortable" onclick="sortTable('cum_table', 1)">{t('citations')}</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cum_table">
+                                {''.join([
+                                    f'<tr><td>{row["year"]}</td><td><span class="citation-count">{row["citations"]:,}</span></td></tr>'
+                                    for row in citation.get('cumulative', [])
+                                ])}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Citation Network Heatmap -->
+                    <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">{t('citation_network_heatmap')}</h3>
+                    <div class="scrollable-table" style="max-height: 500px;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>{t('publication_year')} \ {t('citation_year')}</th>
+                                    {''.join([
+                                        f'<th>{year}</th>'
+                                        for year in heatmap_years
+                                    ])}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {''.join([
+                                    f'''
+                                    <tr>
+                                        <td><strong>{row.get("publication_year", "N/A")}</strong></td>
+                                        {''.join([
+                                            f'''
+                                            <td class="heatmap-cell" style="
+                                                background: {get_heatmap_color(row.get(year, 0), heatmap_max) if heatmap_max > 0 else '#f0f0f0'};
+                                                color: {get_heatmap_text_color(row.get(year, 0), heatmap_max) if heatmap_max > 0 else '#999'};
+                                            ">
+                                                {row.get(year, 0) or '0'}
+                                            </td>
+                                            '''
+                                            for year in heatmap_years
+                                        ])}
+                                    </tr>
+                                    '''
+                                    for row in citation.get('heatmap', [])
+                                ])}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Most Cited Publications -->
+                    <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">{t('most_cited_publications')}</h3>
+                    <div class="scrollable-table" style="max-height: 400px;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th class="sortable" onclick="sortTable('mostcited_table', 0)">{t('rank')}</th>
+                                    <th class="sortable" onclick="sortTable('mostcited_table', 1)">{t('title')}</th>
+                                    <th class="sortable" onclick="sortTable('mostcited_table', 2)">{t('year')}</th>
+                                    <th class="sortable" onclick="sortTable('mostcited_table', 3)">{t('citations')}</th>
+                                    <th class="sortable" onclick="sortTable('mostcited_table', 4)">{t('citations_per_year_label')}</th>
+                                    <th>{t('authors')}</th>
+                                    <th>DOI</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mostcited_table">
+                                {''.join([
+                                    f'''
+                                    <tr>
+                                        <td><span class="badge badge-primary">{i+1}</span></td>
+                                        <td class="word-wrap">{html.escape(pub['title'][:80])}{'...' if len(pub['title']) > 80 else ''}</td>
+                                        <td>{pub.get('year', 'N/A')}</td>
+                                        <td><span class="citation-count">{pub['citations']}</span></td>
+                                        <td>{pub.get('citations_per_year', 0):.1f}</td>
+                                        <td>{html.escape(pub.get('authors', 'N/A'))}</td>
+                                        <td><a href="https://doi.org/{html.escape(pub.get('doi', ''))}" target="_blank" class="doi-link">{html.escape(pub.get('doi', ''))[:20]}...</a></td>
+                                    </tr>
+                                    '''
+                                    for i, pub in enumerate(citation.get('most_cited', [])[:10])
+                                ])}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                </div>
+            </div>
+            
+            <!-- ============================================================ -->
+            <!-- SECTION 4: CITING WORKS ANALYSIS -->
+            <!-- ============================================================ -->
+            <div id="citing_works" class="section">
+                <div class="section-header" onclick="toggleSection('citing_content')">
+                    <div class="section-title">
+                        <span class="icon">📚</span> {t('citing_works_analysis')}
+                        <span class="section-badge">{citing.get('total_citing_works', 0):,} {t('citations')}</span>
+                    </div>
+                    <span class="toggle-indicator" id="citing_indicator">▼</span>
+                </div>
+                <div class="section-divider"></div>
+                <div id="citing_content" class="section-content">
+                    
+                    <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                        <div class="metric-card">
+                            <span class="metric-icon">📚</span>
+                            <div class="metric-value">{citing.get('total_citing_works', 0):,}</div>
+                            <div class="metric-label">{t('total_citing_works')}</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Top Citing Authors -->
+                    <h3 style="color: {primary}; font-size: 16px;">{t('top_citing_authors')}</h3>
+                    <div class="scrollable-table" style="max-height: 300px;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th class="sortable" onclick="sortTable('citing_auth_table', 0)">{t('rank')}</th>
+                                    <th class="sortable" onclick="sortTable('citing_auth_table', 1)">{t('authors')}</th>
+                                    <th class="sortable" onclick="sortTable('citing_auth_table', 2)">{t('citations_count')}</th>
+                                </tr>
+                            </thead>
+                            <tbody id="citing_auth_table">
+                                {''.join([
+                                    f'<tr><td>{i+1}</td><td>{html.escape(author["name"])}</td><td><span class="badge badge-primary">{author["count"]}</span></td></tr>'
+                                    for i, author in enumerate(citing.get('top_authors', [])[:30])
+                                ])}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Top Citing Affiliations -->
+                    <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">{t('top_citing_affiliations')}</h3>
+                    <div class="scrollable-table" style="max-height: 300px;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th class="sortable" onclick="sortTable('citing_aff_table', 0)">{t('rank')}</th>
+                                    <th class="sortable" onclick="sortTable('citing_aff_table', 1)">{t('affiliations')}</th>
+                                    <th class="sortable" onclick="sortTable('citing_aff_table', 2)">{t('citations_count')}</th>
+                                </tr>
+                            </thead>
+                            <tbody id="citing_aff_table">
+                                {''.join([
+                                    f'<tr><td>{i+1}</td><td>{html.escape(aff["name"])}</td><td><span class="badge badge-primary">{aff["count"]}</span></td></tr>'
+                                    for i, aff in enumerate(citing.get('top_affiliations', [])[:30])
+                                ])}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Top Citing Countries -->
+                    <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">{t('top_citing_countries')}</h3>
+                    <div class="scrollable-table" style="max-height: 300px;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th class="sortable" onclick="sortTable('citing_country_table', 0)">{t('rank')}</th>
+                                    <th class="sortable" onclick="sortTable('citing_country_table', 1)">{t('countries')}</th>
+                                    <th class="sortable" onclick="sortTable('citing_country_table', 2)">{t('citations_count')}</th>
+                                </tr>
+                            </thead>
+                            <tbody id="citing_country_table">
+                                {''.join([
+                                    f'<tr><td>{i+1}</td><td>{html.escape(country["name"])}</td><td><span class="badge badge-primary">{country["count"]}</span></td></tr>'
+                                    for i, country in enumerate(citing.get('top_countries', [])[:30])
+                                ])}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Top Citing Journals -->
+                    <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">{t('top_citing_journals')}</h3>
+                    <div class="scrollable-table" style="max-height: 300px;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th class="sortable" onclick="sortTable('citing_journal_table', 0)">{t('rank')}</th>
+                                    <th class="sortable" onclick="sortTable('citing_journal_table', 1)">{t('journal')}</th>
+                                    <th class="sortable" onclick="sortTable('citing_journal_table', 2)">{t('citations_count')}</th>
+                                </tr>
+                            </thead>
+                            <tbody id="citing_journal_table">
+                                {''.join([
+                                    f'<tr><td>{i+1}</td><td>{html.escape(journal["name"])}</td><td><span class="badge badge-primary">{journal["count"]}</span></td></tr>'
+                                    for i, journal in enumerate(citing.get('top_journals', [])[:30])
+                                ])}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Top Citing Publishers -->
+                    <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">{t('top_citing_publishers')}</h3>
+                    <div class="scrollable-table" style="max-height: 300px;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th class="sortable" onclick="sortTable('citing_pub_table', 0)">{t('rank')}</th>
+                                    <th class="sortable" onclick="sortTable('citing_pub_table', 1)">{t('publishers')}</th>
+                                    <th class="sortable" onclick="sortTable('citing_pub_table', 2)">{t('citations_count')}</th>
+                                </tr>
+                            </thead>
+                            <tbody id="citing_pub_table">
+                                {''.join([
+                                    f'<tr><td>{i+1}</td><td>{html.escape(pub["name"])}</td><td><span class="badge badge-primary">{pub["count"]}</span></td></tr>'
+                                    for i, pub in enumerate(citing.get('top_publishers', [])[:30])
+                                ])}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                </div>
+            </div>
+            
+            <!-- ============================================================ -->
+            <!-- SECTION 5: TOPICS ANALYSIS -->
+            <!-- ============================================================ -->
+            <div id="topics_analysis" class="section">
+                <div class="section-header" onclick="toggleSection('topics_content')">
+                    <div class="section-title">
+                        <span class="icon">🏷️</span> {t('topics_analysis')}
+                        <span class="section-badge">{len(topics.get('topics', []))} {t('topics')}</span>
+                    </div>
+                    <span class="toggle-indicator" id="topics_indicator">▼</span>
+                </div>
+                <div class="section-divider"></div>
+                <div id="topics_content" class="section-content">
+                    
+                    <h3 style="color: {primary}; font-size: 16px;">Topics</h3>
+                    <div class="scrollable-table" style="max-height: 400px;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th class="sortable" onclick="sortTable('topics_table', 0)">Topic</th>
+                                    <th class="sortable" onclick="sortTable('topics_table', 1)">{t('analyzed_count')}</th>
+                                    <th class="sortable" onclick="sortTable('topics_table', 2)">{t('citing_count')}</th>
+                                    <th class="sortable" onclick="sortTable('topics_table', 3)">{t('analyzed_norm_count')}</th>
+                                    <th class="sortable" onclick="sortTable('topics_table', 4)">{t('citing_norm_count')}</th>
+                                    <th class="sortable" onclick="sortTable('topics_table', 5)">{t('total_norm_count')}</th>
+                                    <th>{t('first_year')}</th>
+                                    <th>{t('peak_year')}</th>
+                                </tr>
+                            </thead>
+                            <tbody id="topics_table">
+                                {''.join([
+                                    f'''
+                                    <tr>
+                                        <td class="word-wrap">{html.escape(topic['topic'][:50])}{'...' if len(topic['topic']) > 50 else ''}</td>
+                                        <td><span class="badge badge-info">{topic['analyzed_count']}</span></td>
+                                        <td><span class="badge badge-info">{topic['citing_count']}</span></td>
+                                        <td>{topic['analyzed_norm_count']:.3f}</td>
+                                        <td>{topic['citing_norm_count']:.3f}</td>
+                                        <td><span class="badge badge-primary">{topic['total_norm_count']:.3f}</span></td>
+                                        <td>{topic['first_year'] or 'N/A'}</td>
+                                        <td>{topic['peak_year'] or 'N/A'}</td>
+                                    </tr>
+                                    '''
+                                    for topic in topics.get('topics', [])[:30]
+                                ])}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Top Cited Topics with Progress Bars -->
+                    <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">{t('top_cited_topics')}</h3>
+                    {''.join([
+                        f'''
+                        <div style="margin: 4px 0;">
+                            <div class="progress-bar-label">
+                                <span>{i+1}. {html.escape(topic[0][:50])}{'...' if len(topic[0]) > 50 else ''}</span>
+                                <span class="label-value">{topic[1]} {t('citations')}</span>
+                            </div>
+                            <div class="progress-bar-container">
+                                <div class="progress-bar-fill animate" style="width: {topic[1]/topics.get('top_cited_topics', [{}])[0][1]*100 if topics.get('top_cited_topics') and topics.get('top_cited_topics')[0][1] > 0 else 0:.1f}%; background: linear-gradient(90deg, {primary}, {secondary});">
+                                    {topic[1]}
+                                </div>
+                            </div>
+                        </div>
+                        '''
+                        for i, topic in enumerate(topics.get('top_cited_topics', [])[:10])
+                    ])}
+                    
+                    <!-- Top Cited Subtopics -->
+                    <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">{t('top_cited_subtopics')}</h3>
+                    {''.join([
+                        f'''
+                        <div style="margin: 4px 0;">
+                            <div class="progress-bar-label">
+                                <span>{i+1}. {html.escape(subtopic[0][:50])}{'...' if len(subtopic[0]) > 50 else ''}</span>
+                                <span class="label-value">{subtopic[1]} {t('citations')}</span>
+                            </div>
+                            <div class="progress-bar-container">
+                                <div class="progress-bar-fill animate" style="width: {subtopic[1]/topics.get('top_cited_subtopics', [{}])[0][1]*100 if topics.get('top_cited_subtopics') and topics.get('top_cited_subtopics')[0][1] > 0 else 0:.1f}%; background: linear-gradient(90deg, {primary}, {secondary});">
+                                    {subtopic[1]}
+                                </div>
+                            </div>
+                        </div>
+                        '''
+                        for i, subtopic in enumerate(topics.get('top_cited_subtopics', [])[:10])
+                    ])}
+                    
+                    <!-- Top Cited Fields -->
+                    <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">{t('top_cited_fields')}</h3>
+                    {''.join([
+                        f'''
+                        <div style="margin: 4px 0;">
+                            <div class="progress-bar-label">
+                                <span>{i+1}. {html.escape(field[0][:50])}{'...' if len(field[0]) > 50 else ''}</span>
+                                <span class="label-value">{field[1]} {t('citations')}</span>
+                            </div>
+                            <div class="progress-bar-container">
+                                <div class="progress-bar-fill animate" style="width: {field[1]/topics.get('top_cited_fields', [{}])[0][1]*100 if topics.get('top_cited_fields') and topics.get('top_cited_fields')[0][1] > 0 else 0:.1f}%; background: linear-gradient(90deg, {primary}, {secondary});">
+                                    {field[1]}
+                                </div>
+                            </div>
+                        </div>
+                        '''
+                        for i, field in enumerate(topics.get('top_cited_fields', [])[:10])
+                    ])}
+                    
+                    <!-- Top Cited Domains -->
+                    <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">{t('top_cited_domains')}</h3>
+                    {''.join([
+                        f'''
+                        <div style="margin: 4px 0;">
+                            <div class="progress-bar-label">
+                                <span>{i+1}. {html.escape(domain[0][:50])}{'...' if len(domain[0]) > 50 else ''}</span>
+                                <span class="label-value">{domain[1]} {t('citations')}</span>
+                            </div>
+                            <div class="progress-bar-container">
+                                <div class="progress-bar-fill animate" style="width: {domain[1]/topics.get('top_cited_domains', [{}])[0][1]*100 if topics.get('top_cited_domains') and topics.get('top_cited_domains')[0][1] > 0 else 0:.1f}%; background: linear-gradient(90deg, {primary}, {secondary});">
+                                    {domain[1]}
+                                </div>
+                            </div>
+                        </div>
+                        '''
+                        for i, domain in enumerate(topics.get('top_cited_domains', [])[:10])
+                    ])}
+                    
+                    <!-- Top Cited Concepts -->
+                    <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">{t('top_cited_concepts')}</h3>
+                    {''.join([
+                        f'''
+                        <div style="margin: 4px 0;">
+                            <div class="progress-bar-label">
+                                <span>{i+1}. {html.escape(concept[0][:50])}{'...' if len(concept[0]) > 50 else ''}</span>
+                                <span class="label-value">{concept[1]} {t('citations')}</span>
+                            </div>
+                            <div class="progress-bar-container">
+                                <div class="progress-bar-fill animate" style="width: {concept[1]/topics.get('top_cited_concepts', [{}])[0][1]*100 if topics.get('top_cited_concepts') and topics.get('top_cited_concepts')[0][1] > 0 else 0:.1f}%; background: linear-gradient(90deg, {primary}, {secondary});">
+                                    {concept[1]}
+                                </div>
+                            </div>
+                        </div>
+                        '''
+                        for i, concept in enumerate(topics.get('top_cited_concepts', [])[:10])
+                    ])}
+                    
+                </div>
+            </div>
+            
+            <!-- ============================================================ -->
+            <!-- SECTION 6: DETAILED CITATIONS -->
+            <!-- ============================================================ -->
+            <div id="detailed_citations" class="section">
+                <div class="section-header" onclick="toggleSection('detailed_content')">
+                    <div class="section-title">
+                        <span class="icon">📋</span> {t('detailed_citations')}
+                        <span class="section-badge">{len(detailed_citations)} {t('publications')}</span>
+                    </div>
+                    <span class="toggle-indicator" id="detailed_indicator">▼</span>
+                </div>
+                <div class="section-divider"></div>
+                <div id="detailed_content" class="section-content">
+                    
+                    {''.join([
+                        f'''
+                        <div class="collapser" onclick="toggleCitations('{html.escape(doi)}')">
+                            <strong class="cite-title">{html.escape(data['title'][:100])}{'...' if len(data['title']) > 100 else ''}</strong>
+                            <span class="badge badge-info">{data['year'] or 'N/A'}</span>
+                            <span class="citation-count-badge">{data['total_citations']} {t('citations')}</span>
+                            <span style="font-size: 12px; color: #999;">DOI: {data['doi'][:20]}...</span>
+                            <span class="toggle-hint">{t('click_to_toggle')}</span>
+                        </div>
+                        <div id="citations_{html.escape(doi)}" style="display: none; margin-bottom: 8px;">
                             {''.join([
                                 f'''
-                                <tr 
-                                    data-year="{p.get('year', '')}" 
-                                    data-authors="{','.join([html.escape(a) for a in p.get('authors', [])])}" 
-                                    data-affiliations="{','.join([html.escape(a) for a in p.get('affiliations', [])])}"
-                                    data-citations="{p.get('citations', 0)}" 
-                                    data-title="{html.escape(p.get('title', '').lower())}"
-                                    data-doi="{html.escape(p.get('doi', '').lower())}"
-                                >
-                                    <td>{i+1}</td>
-                                    <td class="word-wrap">{html.escape(p.get('title', 'No title')[:120])}{'...' if len(p.get('title', '')) > 120 else ''}</td>
-                                    <td>{p.get('year', 'N/A')}</td>
-                                    <td>{', '.join([html.escape(a) for a in p.get('authors', [])[:3]])}{' +' + str(len(p.get('authors', []))-3) if len(p.get('authors', [])) > 3 else ''}</td>
-                                    <td>{', '.join([html.escape(a) for a in p.get('affiliations', [])[:3]])}{' +' + str(len(p.get('affiliations', []))-3) if len(p.get('affiliations', [])) > 3 else ''}</td>
-                                    <td><span class="citation-count">{p.get('citations', 0)}</span></td>
-                                    <td>{p.get('citations_per_year', 0):.1f}</td>
-                                    <td><a href="https://doi.org/{html.escape(p.get('doi', ''))}" target="_blank" class="doi-link">{html.escape(p.get('doi', ''))[:20]}...</a></td>
-                                </tr>
-                                '''
-                                for i, p in enumerate(all_publications)
+                                <div class="citation-detail">
+                                    <div class="cite-title">{html.escape(cite['citing_title'][:120])}{'...' if len(cite['citing_title']) > 120 else ''}</div>
+                                    <div class="cite-meta">
+                                        <strong>{t('citing_journal')}:</strong> {html.escape(cite['citing_journal'])} | 
+                                        <strong>{t('citing_year')}:</strong> {cite['citing_year'] or 'N/A'} | 
+                                        <strong>{t('citing_date')}:</strong> {cite['citing_date'][:10] if cite['citing_date'] else 'N/A'} |
+                                        <strong>{t('citation_lag')}:</strong> {cite['citation_lag'] or 'N/A'} {t('days') if cite['citation_lag'] else ''}
+                                    </div>
+                                    <div class="cite-meta">
+                                        <strong>{t('authors')}:</strong> {', '.join([html.escape(a) for a in cite['citing_authors'][:5]])}{' +' + str(len(cite['citing_authors'])-5) if len(cite['citing_authors']) > 5 else ''} |
+                                        <strong>{t('countries')}:</strong> {', '.join(cite['citing_countries'][:3])}
+                                    </div>
+                                    <div class="cite-meta">
+                                        <a href="https://doi.org/{html.escape(cite['citing_doi'])}" target="_blank" class="doi-link">DOI: {html.escape(cite['citing_doi'])}</a>
+                                    </div>
+                                </div>
+                                ''' for cite in data['citations'][:20]
                             ])}
-                        </tbody>
-                    </table>
+                            {f'<div style="padding: 8px 18px; color: #999; font-style: italic; font-size: 12px;">... and {len(data["citations"])-20} more citations</div>' if len(data['citations']) > 20 else ''}
+                            {f'<div style="padding: 10px 18px; color: #999; font-style: italic;">{t("no_citations_found")}</div>' if not data['citations'] else ''}
+                        </div>
+                        ''' for doi, data in list(detailed_citations.items())[:30]
+                    ])}
+                    
+                    {f'<div style="padding: 15px; text-align: center; color: #999; font-style: italic;">... and {len(detailed_citations)-30} more publications with citations</div>' if len(detailed_citations) > 30 else ''}
+                    
                 </div>
             </div>
             
-            <!-- Footer -->
+            <!-- ============================================================ -->
+            <!-- SECTION 7: ALL PUBLICATIONS -->
+            <!-- ============================================================ -->
+            <div id="all_publications" class="section">
+                <div class="section-header" onclick="toggleSection('all_content')">
+                    <div class="section-title">
+                        <span class="icon">📚</span> {t('all_publications')}
+                        <span class="section-badge">{len(all_publications)} {t('articles')}</span>
+                    </div>
+                    <span class="toggle-indicator" id="all_indicator">▼</span>
+                </div>
+                <div class="section-divider"></div>
+                <div id="all_content" class="section-content">
+                    
+                    <div class="filter-section">
+                        <div class="filter-row">
+                            <div class="filter-group">
+                                <label>🔍</label>
+                                <input type="text" id="titleFilter" placeholder="{t('filter_by_title')}..." onkeyup="filterPublications()">
+                            </div>
+                            <div class="filter-group">
+                                <label>📅</label>
+                                <select id="yearFilter" onchange="filterPublications()">
+                                    <option value="">{t('all_years')}</option>
+                                    {''.join([
+                                        f'<option value="{year}">{year}</option>'
+                                        for year in sorted(set([p.get('year') for p in all_publications if p.get('year')]), reverse=True)
+                                    ])}
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label>👤</label>
+                                <input type="text" id="authorFilter" placeholder="{t('filter_by_author')}..." onkeyup="filterPublications()">
+                            </div>
+                            <div class="filter-group">
+                                <label>🏛️</label>
+                                <input type="text" id="affiliationFilter" placeholder="{t('filter_by_affiliation')}..." onkeyup="filterPublications()">
+                            </div>
+                            <div class="filter-group">
+                                <label>📊</label>
+                                <input type="number" id="citationFilter" placeholder="{t('filter_by_citations')}..." min="0" onchange="filterPublications()">
+                            </div>
+                        </div>
+                        <div class="filter-stats">
+                            <span id="visibleCount">{t('visible_count', shown=len(all_publications), total=len(all_publications))}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="scrollable-table" style="max-height: 600px;">
+                        <table id="publicationsTable">
+                            <thead>
+                                <tr>
+                                    <th class="sortable" onclick="sortTable('publicationsTable', 0)">#</th>
+                                    <th class="sortable" onclick="sortTable('publicationsTable', 1)">{t('title')}</th>
+                                    <th class="sortable" onclick="sortTable('publicationsTable', 2)">{t('year')}</th>
+                                    <th class="sortable" onclick="sortTable('publicationsTable', 3)">{t('authors')}</th>
+                                    <th class="sortable" onclick="sortTable('publicationsTable', 4)">{t('affiliations')}</th>
+                                    <th class="sortable" onclick="sortTable('publicationsTable', 5)">{t('citations')}</th>
+                                    <th class="sortable" onclick="sortTable('publicationsTable', 6)">{t('citations_per_year_label')}</th>
+                                    <th>DOI</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {''.join([
+                                    f'''
+                                    <tr 
+                                        data-year="{p.get('year', '')}" 
+                                        data-authors="{','.join([html.escape(a) for a in p.get('authors', [])])}" 
+                                        data-affiliations="{','.join([html.escape(a) for a in p.get('affiliations', [])])}"
+                                        data-citations="{p.get('citations', 0)}" 
+                                        data-title="{html.escape(p.get('title', '').lower())}"
+                                        data-doi="{html.escape(p.get('doi', '').lower())}"
+                                    >
+                                        <td>{i+1}</td>
+                                        <td class="word-wrap">{html.escape(p.get('title', 'No title')[:120])}{'...' if len(p.get('title', '')) > 120 else ''}</td>
+                                        <td>{p.get('year', 'N/A')}</td>
+                                        <td>{', '.join([html.escape(a) for a in p.get('authors', [])[:3]])}{' +' + str(len(p.get('authors', []))-3) if len(p.get('authors', [])) > 3 else ''}</td>
+                                        <td>{', '.join([html.escape(a) for a in p.get('affiliations', [])[:3]])}{' +' + str(len(p.get('affiliations', []))-3) if len(p.get('affiliations', [])) > 3 else ''}</td>
+                                        <td><span class="citation-count">{p.get('citations', 0)}</span></td>
+                                        <td>{p.get('citations_per_year', 0):.1f}</td>
+                                        <td><a href="https://doi.org/{html.escape(p.get('doi', ''))}" target="_blank" class="doi-link">{html.escape(p.get('doi', ''))[:20]}...</a></td>
+                                    </tr>
+                                    '''
+                                    for i, p in enumerate(all_publications)
+                                ])}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                </div>
+            </div>
+            
+            <!-- ============================================================ -->
+            <!-- FOOTER -->
+            <!-- ============================================================ -->
             <div class="footer">
                 <p>{t('footer')}</p>
                 <p>{t('data_source')} | {t('generated_on')}: {datetime.now().strftime('%d.%m.%Y %H:%M')}</p>
                 <p><a href="{t('journal_url')}" target="_blank">{t('journal_url')}</a></p>
             </div>
+            
         </div>
     </div>
     
     <script>
+        // ===== TOGGLE SECTIONS =====
+        function toggleSection(sectionId) {{
+            var content = document.getElementById(sectionId);
+            var indicator = document.getElementById(sectionId.replace('_content', '_indicator'));
+            if (content) {{
+                if (content.style.display === 'none' || content.style.display === '') {{
+                    content.style.display = 'block';
+                    if (indicator) indicator.textContent = '▼';
+                    content.style.animation = 'fadeInUp 0.4s ease forwards';
+                }} else {{
+                    content.style.display = 'none';
+                    if (indicator) indicator.textContent = '▶';
+                }}
+            }}
+        }}
+        
+        // ===== TOGGLE CITATIONS =====
         function toggleCitations(id) {{
             var el = document.getElementById('citations_' + id);
             if (el) {{
@@ -3980,6 +4555,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
             }}
         }}
         
+        // ===== FILTER PUBLICATIONS =====
         function filterPublications() {{
             var titleFilter = document.getElementById('titleFilter').value.toLowerCase();
             var yearFilter = document.getElementById('yearFilter').value;
@@ -4013,19 +4589,22 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                 'Showing ' + visible + ' of ' + rows.length + ' publications';
         }}
         
+        // ===== SORT TABLE =====
         var sortOrder = {{}};
-        function sortTable(col) {{
-            var table = document.getElementById('publicationsTable');
+        function sortTable(tableId, col) {{
+            var table = document.getElementById(tableId);
+            if (!table) return;
             var tbody = table.querySelector('tbody');
+            if (!tbody) return;
             var rows = Array.from(tbody.querySelectorAll('tr'));
             
-            var key = col;
+            var key = tableId + '_' + col;
             if (!sortOrder[key]) sortOrder[key] = 1;
             else sortOrder[key] *= -1;
             
             rows.sort(function(a, b) {{
-                var valA = a.cells[col].textContent.trim();
-                var valB = b.cells[col].textContent.trim();
+                var valA = a.cells[col] ? a.cells[col].textContent.trim() : '';
+                var valB = b.cells[col] ? b.cells[col].textContent.trim() : '';
                 
                 var numA = parseFloat(valA);
                 var numB = parseFloat(valB);
@@ -4040,6 +4619,25 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                 tbody.appendChild(row);
             }});
         }}
+        
+        // ===== AUTO-OPEN FIRST SECTION =====
+        document.addEventListener('DOMContentLoaded', function() {{
+            // Overview section is open by default, others closed
+            var sections = ['analyzed_content', 'citation_content', 'citing_content', 'topics_content', 'detailed_content', 'all_content'];
+            sections.forEach(function(id) {{
+                var el = document.getElementById(id);
+                if (el) {{
+                    el.style.display = 'none';
+                }}
+            }});
+            var indicators = ['analyzed_indicator', 'citation_indicator', 'citing_indicator', 'topics_indicator', 'detailed_indicator', 'all_indicator'];
+            indicators.forEach(function(id) {{
+                var el = document.getElementById(id);
+                if (el) {{
+                    el.textContent = '▶';
+                }}
+            }});
+        }});
     </script>
     
     </body>
