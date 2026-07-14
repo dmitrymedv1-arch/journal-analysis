@@ -1924,10 +1924,14 @@ def parse_publication(work_data: Dict, is_analyzed: bool = True) -> Union[Analyz
             domains.append(topic.domain)
     
     # Основная информация о журнале/источнике
-    primary_location = work_data.get("primary_location", {})
-    source = primary_location.get("source", {})
-    journal_name = source.get("display_name", "Unknown")
-    publisher = source.get("host_organization_name") or source.get("publisher", "Unknown")
+    primary_location = work_data.get("primary_location")
+    if primary_location and isinstance(primary_location, dict):
+        source = primary_location.get("source", {})
+        journal_name = source.get("display_name", "Unknown") if source else "Unknown"
+        publisher = source.get("host_organization_name") or source.get("publisher", "Unknown") if source else "Unknown"
+    else:
+        journal_name = "Unknown"
+        publisher = "Unknown"
     
     # Дата публикации
     publication_date = work_data.get("publication_date", "")
