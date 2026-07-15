@@ -2146,58 +2146,44 @@ class JournalAnalyzer:
         return publications
     
     def fetch_citing_works(self, progress_callback=None):
-        """
-        Stage 2: Fetch citing works for all publications.
-        Uses hybrid approach: batch requests for most works, individual for highly cited.
-        """
+        """Stage 2: Fetch citing works for all publications in parallel"""
         if not self.publications:
             return {}
         
-        # Получаем список работ с цитированиями
-        works_with_citations = []
-        for p in self.publications:
-            cited_count = p.get('Cited_by_count', 0)
-            oa_id = p.get('OpenAlex_ID')
-            if cited_count > 0 and oa_id:
-                works_with_citations.append({
-                    'doi': p.get('DOI'),
-                    'openalex_id': oa_id,
-                    'cited_by_count': cited_count
-                })
-        
-        if not works_with_citations:
-            if SHOW_DEBUG_LOGS:
-                print("ℹ️ Нет работ с цитированиями для сбора")
-            self.citing_works = {}
-            return {}
+        citing_map = {}
+        to_process = [row for row in self.publications if row.get('Cited_by_count', 0) > 0 and row.get('DOI')]
         
         if SHOW_DEBUG_LOGS:
-            print(f"⚡ Запуск сбора цитирующих для {len(works_with_citations)} работ")
-            print(f"   Максимум параллельных потоков: {self.max_workers}")
-            print(f"   Используется гибридный подход (batch + индивидуальный)")
+            print(f"⚡ Запуск параллельного сбора цитирующих ({self.max_workers} потоков)...")
         
-        # Собираем OA IDs
-        oa_ids = [w['openalex_id'] for w in works_with_citations]
-        
-        # Используем гибридный подход
-        citing_map_raw = self._fetch_citing_works_hybrid(oa_ids, progress_callback)
-        
-        # Преобразуем результат к формату {doi: [citing_dois]}
-        citing_map = {}
-        for p in self.publications:
-            doi = p.get('DOI')
-            oa_id = p.get('OpenAlex_ID')
-            if doi and oa_id and oa_id in citing_map_raw:
-                citing_map[doi] = citing_map_raw[oa_id]
-            else:
-                citing_map[doi] = []
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            future_to_doi = {}
+            for row in to_process:
+                oa_id = row.get('OpenAlex_ID')
+                doi = row.get('DOI')
+                if oa_id:
+                    future = executor.submit(self._get_citing_dois_batch, oa_id)
+                    future_to_doi[future] = doi
+            
+            total = len(future_to_doi)
+            completed = 0
+            
+            for future in as_completed(future_to_doi):
+                doi = future_to_doi[future]
+                try:
+                    citing_map[doi] = future.result()
+                except:
+                    citing_map[doi] = []
+                
+                completed += 1
+                if progress_callback:
+                    progress_callback(completed, total)
         
         self.citing_works = citing_map
         
         if SHOW_DEBUG_LOGS:
             total_citing = sum(len(v) for v in citing_map.values())
             print(f"✅ Собрано цитирующих работ: {total_citing}")
-            print(f"   Среднее цитирований на статью: {total_citing / len(works_with_citations):.1f}")
         
         return citing_map
     
@@ -2230,240 +2216,6 @@ class JournalAnalyzer:
                 break
         
         return citing
-
-    def _get_citing_dois_batch_optimized(self, oa_id: str) -> List[str]:
-        """Get citing DOIs for a single work using optimized single-request approach"""
-        citing = []
-        cursor = "*"
-        max_citations_to_fetch = 500  # Ограничиваем количество цитирующих работ для предотвращения перегрузки
-        
-        for attempt in range(3):
-            try:
-                data = smart_request({
-                    "filter": f"cites:{oa_id}",
-                    "per_page": 200,
-                    "select": "doi,publication_date",
-                    "cursor": cursor
-                })
-                
-                if not data or not data.get("results"):
-                    break
-                
-                for item in data["results"]:
-                    d = item.get("doi")
-                    if d:
-                        citing.append({
-                            'doi': d.replace("https://doi.org/", ""),
-                            'publication_date': item.get('publication_date')
-                        })
-                    
-                    # Ограничиваем количество собираемых цитирований
-                    if len(citing) >= max_citations_to_fetch:
-                        if SHOW_DEBUG_LOGS:
-                            print(f"⚠️ Достигнут лимит цитирований ({max_citations_to_fetch}) для {oa_id}")
-                        return citing
-                
-                cursor = data.get("meta", {}).get("next_cursor")
-                if not cursor:
-                    break
-                    
-                # Небольшая задержка между пагинационными запросами
-                time.sleep(random.uniform(0.1, 0.3))
-                
-            except Exception as e:
-                if SHOW_DEBUG_LOGS:
-                    print(f"⚠️ Ошибка при получении цитирующих для {oa_id}: {e}")
-                if attempt < 2:
-                    time.sleep(1.5 ** (attempt + 1))
-                else:
-                    break
-        
-        return citing
-
-    def _fetch_citing_works_batch(self, oa_ids_batch: List[str]) -> Dict[str, List[Dict]]:
-        """
-        Batch fetch citing works for multiple works at once using filter with OR operator.
-        This significantly reduces the number of API calls.
-        
-        Args:
-            oa_ids_batch: List of OpenAlex IDs (e.g., ['W123', 'W456'])
-            
-        Returns:
-            Dictionary mapping work ID to list of citing works
-        """
-        if not oa_ids_batch:
-            return {}
-        
-        # Инициализируем результат для каждого ID
-        result_map = {oid: [] for oid in oa_ids_batch}
-        
-        # Строим filter: cites:W123|cites:W456|...
-        filter_parts = [f'cites:{oid}' for oid in oa_ids_batch]
-        filter_str = '|'.join(filter_parts)
-        
-        cursor = "*"
-        total_fetched = 0
-        max_citing_per_work = 300  # Максимум цитирующих на одну работу
-        
-        while True:
-            try:
-                data = smart_request({
-                    "filter": filter_str,
-                    "per_page": 200,
-                    "select": "doi,publication_date,referenced_works",
-                    "cursor": cursor
-                })
-                
-                if not data or not data.get("results"):
-                    break
-                
-                # Обрабатываем каждый результат
-                for work in data["results"]:
-                    referenced = work.get("referenced_works", [])
-                    if not referenced:
-                        continue
-                    
-                    # Находим, какую из наших работ цитирует эта работа
-                    doi = work.get("doi", "")
-                    if doi:
-                        doi = doi.replace("https://doi.org/", "")
-                    
-                    publication_date = work.get("publication_date")
-                    
-                    # Проверяем каждую нашу работу из батча
-                    for our_oid in oa_ids_batch:
-                        if our_oid in referenced:
-                            # Проверяем лимит для этой работы
-                            if len(result_map[our_oid]) >= max_citing_per_work:
-                                if SHOW_DEBUG_LOGS:
-                                    print(f"⚠️ Достигнут лимит цитирующих ({max_citing_per_work}) для {our_oid}")
-                                continue
-                            
-                            # Добавляем цитирующую работу
-                            result_map[our_oid].append({
-                                'doi': doi,
-                                'publication_date': publication_date
-                            })
-                            break  # Переходим к следующей работе
-                
-                total_fetched += len(data["results"])
-                
-                cursor = data.get("meta", {}).get("next_cursor")
-                if not cursor:
-                    break
-                
-                # Задержка между пагинационными запросами
-                time.sleep(random.uniform(0.3, 0.6))
-                
-            except Exception as e:
-                if SHOW_DEBUG_LOGS:
-                    print(f"⚠️ Ошибка в batch-запросе: {e}")
-                break
-        
-        if SHOW_DEBUG_LOGS:
-            total_citing = sum(len(v) for v in result_map.values())
-            print(f"📊 Batch-запрос: получено {total_citing} цитирующих для {len(oa_ids_batch)} работ")
-        
-        return result_map
-
-    def _fetch_citing_works_hybrid(self, oa_ids: List[str], progress_callback=None) -> Dict[str, List[Dict]]:
-        """
-        Hybrid approach: use batch for works with low citation counts,
-        and individual requests for highly cited works.
-        
-        Args:
-            oa_ids: List of OpenAlex IDs
-            progress_callback: Callback for progress updates
-            
-        Returns:
-            Dictionary mapping work ID to list of citing works
-        """
-        if not oa_ids:
-            return {}
-        
-        result_map = {oid: [] for oid in oa_ids}
-        
-        # Определяем, у каких работ есть цитирования и сколько
-        works_with_citations = {}
-        for p in self.publications:
-            oid = p.get('OpenAlex_ID')
-            if oid and oid in oa_ids:
-                cited_count = p.get('Cited_by_count', 0)
-                if cited_count > 0:
-                    works_with_citations[oid] = cited_count
-        
-        if not works_with_citations:
-            return result_map
-        
-        # Сортируем по количеству цитирований (сначала те, у кого мало цитирований)
-        sorted_works = sorted(works_with_citations.items(), key=lambda x: x[1])
-        
-        # Разделяем на группы
-        low_citation_works = []  # <= 50 цитирований - можно батчем
-        medium_citation_works = []  # 51-200 цитирований - батчем с ограничением
-        high_citation_works = []  # > 200 цитирований - индивидуально
-        
-        for oid, count in sorted_works:
-            if count <= 50:
-                low_citation_works.append(oid)
-            elif count <= 200:
-                medium_citation_works.append(oid)
-            else:
-                high_citation_works.append(oid)
-        
-        if SHOW_DEBUG_LOGS:
-            print(f"📊 Стратегия сбора цитирующих:")
-            print(f"   - Малые (≤50): {len(low_citation_works)} работ")
-            print(f"   - Средние (51-200): {len(medium_citation_works)} работ")
-            print(f"   - Большие (>200): {len(high_citation_works)} работ")
-        
-        # Обрабатываем малые работы батчами
-        if low_citation_works:
-            for batch in chunks(low_citation_works, 30):  # Меньше батч для надежности
-                batch_results = self._fetch_citing_works_batch(batch)
-                for oid, citing_list in batch_results.items():
-                    if oid in result_map:
-                        result_map[oid].extend(citing_list)
-                
-                if progress_callback:
-                    progress_callback(len(low_citation_works), len(low_citation_works) + len(medium_citation_works) + len(high_citation_works))
-                
-                # Задержка между батчами
-                time.sleep(random.uniform(0.5, 1.0))
-        
-        # Обрабатываем средние работы батчами меньшего размера
-        if medium_citation_works:
-            for batch in chunks(medium_citation_works, 15):
-                batch_results = self._fetch_citing_works_batch(batch)
-                for oid, citing_list in batch_results.items():
-                    if oid in result_map:
-                        result_map[oid].extend(citing_list)
-                
-                if progress_callback:
-                    progress_callback(len(low_citation_works) + len(medium_citation_works), 
-                                    len(low_citation_works) + len(medium_citation_works) + len(high_citation_works))
-                
-                # Большая задержка для средних работ
-                time.sleep(random.uniform(0.8, 1.5))
-        
-        # Обрабатываем большие работы индивидуально с задержками
-        if high_citation_works:
-            for idx, oid in enumerate(high_citation_works):
-                if SHOW_DEBUG_LOGS:
-                    print(f"🔄 Индивидуальный сбор для {oid} ({idx+1}/{len(high_citation_works)})")
-                
-                citing_list = self._get_citing_dois_batch_optimized(oid)
-                if oid in result_map:
-                    result_map[oid].extend(citing_list)
-                
-                if progress_callback:
-                    progress_callback(len(low_citation_works) + len(medium_citation_works) + idx + 1,
-                                    len(low_citation_works) + len(medium_citation_works) + len(high_citation_works))
-                
-                # Значительная задержка для больших работ
-                time.sleep(random.uniform(1.0, 2.0))
-        
-        return result_map
     
     def fetch_publications_metadata(self, progress_callback=None):
         """Stage 3: Fetch extended metadata for all publications"""
