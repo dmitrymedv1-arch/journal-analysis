@@ -4765,7 +4765,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
             <!-- ============================================================ -->
             <div class="footer">
                 <p>{t('footer')}</p>
-                <p>{t('data_source')} | {t('generated_on')}: {datetime.now().strftime('%d.%m.%Y %H:%M')}</p>
+                <p> {t('generated_on')}: {datetime.now().strftime('%d.%m.%Y %H:%M')}</p>
                 <p><a href="{t('journal_url')}" target="_blank">{t('journal_url')}</a></p>
             </div>
             
