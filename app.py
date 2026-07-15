@@ -4329,7 +4329,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                         <td class="word-wrap">{html.escape(pub['title'][:80])}{'...' if len(pub['title']) > 80 else ''}</td>
                                         <td>{pub.get('year', 'N/A')}</td>
                                         <td>{get_color_scale_html(pub['citations'], max_most_cited)}</td>
-                                        <td>{get_color_scale_html(pub.get('citations_per_year', 0), max_most_cited_py, unit='')}</td>
+                                        <td>{get_color_scale_html(round(pub.get('citations_per_year', 0), 1), max_most_cited_py, unit='')}</td>
                                         <td>{html.escape(pub.get('authors', 'N/A'))}</td>
                                         <td><a href="https://doi.org/{html.escape(pub.get('doi', ''))}" target="_blank" class="doi-link">{html.escape(pub.get('doi', ''))[:20]}...</a></td>
                                     </tr>
@@ -4662,10 +4662,8 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                             {f'<div style="padding: 8px 18px; color: #999; font-style: italic; font-size: 12px;">... and {len(data["citations"])-20} more citations</div>' if len(data['citations']) > 20 else ''}
                             {f'<div style="padding: 10px 18px; color: #999; font-style: italic;">{t("no_citations_found")}</div>' if not data['citations'] else ''}
                         </div>
-                        ''' for doi, data in list(detailed_citations.items())[:30]
+                        ''' for doi, data in list(detailed_citations.items())
                     ])}
-                    
-                    {f'<div style="padding: 15px; text-align: center; color: #999; font-style: italic;">... and {len(detailed_citations)-30} more publications with citations</div>' if len(detailed_citations) > 30 else ''}
                     
                 </div>
             </div>
@@ -4749,7 +4747,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                         <td>{', '.join([html.escape(a) for a in p.get('authors', [])[:3]])}{' +' + str(len(p.get('authors', []))-3) if len(p.get('authors', [])) > 3 else ''}</td>
                                         <td>{', '.join([html.escape(a) for a in p.get('affiliations', [])[:3]])}{' +' + str(len(p.get('affiliations', []))-3) if len(p.get('affiliations', [])) > 3 else ''}</td>
                                         <td>{get_color_scale_html(p.get('citations', 0), max([pub.get('citations', 0) for pub in all_publications]) if all_publications else 1)}</td>
-                                        <td>{get_color_scale_html(p.get('citations_per_year', 0), max([pub.get('citations_per_year', 0) for pub in all_publications]) if all_publications else 1)}</td>
+                                        <td>{get_color_scale_html(round(p.get('citations_per_year', 0), 1), max([pub.get('citations_per_year', 0) for pub in all_publications]) if all_publications else 1)}</td>
                                         <td><a href="https://doi.org/{html.escape(p.get('doi', ''))}" target="_blank" class="doi-link">{html.escape(p.get('doi', ''))[:20]}...</a></td>
                                     </tr>
                                     '''
