@@ -1922,7 +1922,7 @@ def parse_work_metadata(work: Dict) -> Dict:
             parsed['source_type'] = 'unknown'
             parsed['issn'] = []
         
-        # Authors
+        # Authors - ИСПОЛЬЗУЕМ raw_author_name для латиницы
         authors = []
         author_orcids = []
         authors_with_orcids = []
@@ -1931,22 +1931,44 @@ def parse_work_metadata(work: Dict) -> Dict:
         institutions = []
         
         for auth in work.get('authorships', []):
-            if auth.get('author'):
-                author_name = auth['author'].get('display_name', '')
-                author_orcid = auth['author'].get('orcid', '')
-                if author_name:
-                    authors.append(author_name)
-                    if author_orcid:
-                        author_orcids.append(author_orcid)
-                    authors_with_orcids.append({
-                        'name': author_name,
-                        'orcid': author_orcid.replace('https://orcid.org/', '') if author_orcid else None
-                    })
+            # Получаем raw_author_name (всегда латиница) вместо display_name
+            raw_author_name = auth.get('raw_author_name', '')
             
+            # Если raw_author_name пустой, пробуем взять display_name
+            if not raw_author_name:
+                author_data = auth.get('author', {})
+                raw_author_name = author_data.get('display_name', '')
+            
+            # Получаем ORCID из author
+            author_orcid = ''
+            author_data = auth.get('author', {})
+            if author_data:
+                author_orcid = author_data.get('orcid', '')
+            
+            if raw_author_name:
+                authors.append(raw_author_name)
+                if author_orcid:
+                    author_orcids.append(author_orcid)
+                authors_with_orcids.append({
+                    'name': raw_author_name,
+                    'orcid': author_orcid.replace('https://orcid.org/', '') if author_orcid else None
+                })
+            
+            # Получаем аффилиации из raw_affiliation_strings
+            raw_affiliation_strings = auth.get('raw_affiliation_strings', [])
+            if raw_affiliation_strings:
+                for affil in raw_affiliation_strings:
+                    if affil and affil not in affiliations:
+                        affiliations.append(affil)
+                        country = extract_country_from_affiliation(affil)
+                        if country:
+                            affiliation_countries.append(country)
+            
+            # Также берем аффилиации из institutions если есть
             if auth.get('institutions'):
                 for inst in auth['institutions']:
                     affil = inst.get('display_name', '')
-                    if affil:
+                    if affil and affil not in affiliations:
                         affiliations.append(affil)
                         country = extract_country_from_affiliation(affil)
                         if country:
@@ -1964,8 +1986,8 @@ def parse_work_metadata(work: Dict) -> Dict:
         parsed['author_orcids'] = author_orcids
         parsed['authors_with_orcids'] = authors_with_orcids
         parsed['author_count'] = len(authors)
-        parsed['affiliations'] = affiliations
-        parsed['affiliation_countries'] = affiliation_countries
+        parsed['affiliations'] = list(dict.fromkeys(affiliations))  # Удаляем дубликаты
+        parsed['affiliation_countries'] = list(dict.fromkeys(affiliation_countries))  # Удаляем дубликаты
         parsed['institutions'] = institutions
         
         if affiliations:
@@ -1988,7 +2010,7 @@ def parse_work_metadata(work: Dict) -> Dict:
         fields = []
         domains = []
         subtopics = []
-        topic_names = []  # Это теперь для subfields (уровень 1)
+        subfields = []
         
         for concept in work.get('concepts', []):
             concept_name = concept.get('display_name', '')
@@ -2007,7 +2029,7 @@ def parse_work_metadata(work: Dict) -> Dict:
             elif concept_level == 2:
                 fields.append(concept_name)
             elif concept_level == 1:
-                topic_names.append(concept_name)  # Это SUBFIELDS (уровень 1)
+                subfields.append(concept_name)  # Это SUBFIELDS (уровень 1)
             elif concept_level == 0:
                 subtopics.append(concept_name)
         
@@ -2016,10 +2038,10 @@ def parse_work_metadata(work: Dict) -> Dict:
         parsed['fields'] = fields[:10]
         parsed['domains'] = domains[:5]
         parsed['subtopics'] = subtopics[:20]
-        parsed['subfields'] = topic_names[:15]  # Переименовано для ясности
+        parsed['subfields'] = subfields[:15]
         
         # Для обратной совместимости ставим subfields в topics_old
-        parsed['topics_old'] = topic_names[:15]  # Это SUBFIELDS, не TOPICS!
+        parsed['topics_old'] = subfields[:15]  # Это SUBFIELDS, не TOPICS!
         
         return parsed
         
