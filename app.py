@@ -4816,8 +4816,8 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                         data-authors="{','.join([html.escape(a) for a in p.get('authors', [])])}" 
                                         data-affiliations="{','.join([html.escape(a) for a in p.get('affiliations', [])])}"
                                         data-citations="{p.get('citations', 0)}" 
-                                        data-title="{html.escape(p.get('title', '').lower())}"
-                                        data-doi="{html.escape(p.get('doi', '').lower())}"
+                                        data-title="{html.escape((p.get('title') or '').lower())}"
+                                        data-doi="{html.escape((p.get('doi') or '').lower())}"
                                     >
                                         <td>{i+1}</td>
                                         <td class="word-wrap">{html.escape(p.get('title', 'No title')[:120])}{'...' if len(p.get('title', '')) > 120 else ''}</td>
