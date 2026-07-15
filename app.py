@@ -4820,13 +4820,13 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                         data-doi="{html.escape((p.get('doi') or '').lower())}"
                                     >
                                         <td>{i+1}</td>
-                                        <td class="word-wrap">{html.escape(p.get('title', 'No title')[:120])}{'...' if len(p.get('title', '')) > 120 else ''}</td>
+                                        <td class="word-wrap">{html.escape((p.get('title') or 'No title')[:120])}{'...' if len(p.get('title') or '') > 120 else ''}</td>
                                         <td>{p.get('year', 'N/A')}</td>
                                         <td>{', '.join([html.escape(a) for a in p.get('authors', [])[:3]])}{' +' + str(len(p.get('authors', []))-3) if len(p.get('authors', [])) > 3 else ''}</td>
                                         <td>{', '.join([html.escape(a) for a in list(dict.fromkeys(p.get('affiliations', [])))[:3]])}{' +' + str(len(list(dict.fromkeys(p.get('affiliations', []))))-3) if len(list(dict.fromkeys(p.get('affiliations', [])))) > 3 else ''}</td>
                                         <td>{get_color_scale_html(p.get('citations', 0), max([pub.get('citations', 0) for pub in all_publications]) if all_publications else 1)}</td>
                                         <td>{get_color_scale_html(round(p.get('citations_per_year', 0), 1), max([pub.get('citations_per_year', 0) for pub in all_publications]) if all_publications else 1)}</td>
-                                        <td><a href="https://doi.org/{html.escape(p.get('doi', ''))}" target="_blank" class="doi-link">{html.escape(p.get('doi', ''))[:20]}...</a></td>
+                                        <td><a href="https://doi.org/{html.escape(p.get('doi') or '')}" target="_blank" class="doi-link">{html.escape((p.get('doi') or '')[:20])}...</a></td>
                                     </tr>
                                     '''
                                     for i, p in enumerate(all_publications)
