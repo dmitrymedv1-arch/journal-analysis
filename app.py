@@ -4722,17 +4722,17 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                 <div class="citation-detail">
                                     <div class="cite-title">{html.escape((cite['citing_title'] or 'No title')[:120])}{'...' if len(cite['citing_title'] or 'No title') > 120 else ''}</div>
                                     <div class="cite-meta">
-                                        <strong>{t('citing_journal')}:</strong> {html.escape(cite['citing_journal'])} | 
+                                        <strong>{t('citing_journal')}:</strong> {html.escape(cite['citing_journal'] or 'Unknown')} | 
                                         <strong>{t('citing_year')}:</strong> {cite['citing_year'] or 'N/A'} | 
                                         <strong>{t('citing_date')}:</strong> {cite['citing_date'][:10] if cite['citing_date'] else 'N/A'} |
                                         <strong>{t('citation_lag')}:</strong> {cite['citation_lag'] or 'N/A'} {t('days') if cite['citation_lag'] else ''}
                                     </div>
                                     <div class="cite-meta">
-                                        <strong>{t('authors')}:</strong> {', '.join([html.escape(a) for a in cite['citing_authors'][:5]])}{' +' + str(len(cite['citing_authors'])-5) if len(cite['citing_authors']) > 5 else ''} |
-                                        <strong>{t('countries')}:</strong> {', '.join(cite['citing_countries'][:3])}
+                                        <strong>{t('authors')}:</strong> {', '.join([html.escape(a) for a in cite['citing_authors'][:5]]) if cite.get('citing_authors') else 'N/A'}{' +' + str(len(cite['citing_authors'])-5) if cite.get('citing_authors') and len(cite['citing_authors']) > 5 else ''} |
+                                        <strong>{t('countries')}:</strong> {', '.join(cite['citing_countries'][:3]) if cite.get('citing_countries') else 'N/A'}
                                     </div>
                                     <div class="cite-meta">
-                                        <a href="https://doi.org/{html.escape(cite['citing_doi'])}" target="_blank" class="doi-link">DOI: {html.escape(cite['citing_doi'])}</a>
+                                        <a href="https://doi.org/{html.escape(cite['citing_doi'])}" target="_blank" class="doi-link">DOI: {html.escape(cite['citing_doi'] or 'N/A')}</a>
                                     </div>
                                 </div>
                                 ''' for cite in data['citations'][:20]
