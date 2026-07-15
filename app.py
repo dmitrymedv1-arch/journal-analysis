@@ -3054,7 +3054,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
             'title': meta.get('title', 'No title'),
             'year': p.get('Year'),
             'authors': meta.get('authors', []),
-            'affiliations': meta.get('affiliations', []),
+            'affiliations': list(set(meta.get('affiliations', []))),
             'citations': p.get('Cited_by_count', 0),
             'citations_per_year': p.get('Cited_by_count', 0) / (datetime.now().year - p.get('Year') + 1) if p.get('Year') else 0,
             'journal': meta.get('journal_name', 'Unknown'),
