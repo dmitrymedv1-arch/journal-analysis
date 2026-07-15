@@ -3881,107 +3881,86 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                     <!-- Metrics Grid -->
                     <div class="metrics-grid">
                         <div class="metric-card">
-                            <span class="metric-icon">📄</span>
                             <div class="metric-value">{basic.get('total_publications', 0)}</div>
                             <div class="metric-label">{t('total_publications')}</div>
                         </div>
                         <div class="metric-card">
-                            <span class="metric-icon">📊</span>
                             <div class="metric-value">{basic.get('total_citations', 0):,}</div>
                             <div class="metric-label">{t('total_citations')}</div>
                         </div>
                         <div class="metric-card">
-                            <span class="metric-icon">📈</span>
                             <div class="metric-value">{basic.get('h_index', 0)}</div>
                             <div class="metric-label">{t('h_index')}</div>
                         </div>
                         <div class="metric-card">
-                            <span class="metric-icon">📈</span>
                             <div class="metric-value">{basic.get('g_index', 0)}</div>
                             <div class="metric-label">{t('g_index')}</div>
                         </div>
                         <div class="metric-card">
-                            <span class="metric-icon">📈</span>
                             <div class="metric-value">{basic.get('i10_index', 0)}</div>
                             <div class="metric-label">{t('i10_index')}</div>
                         </div>
                         <div class="metric-card">
-                            <span class="metric-icon">📈</span>
                             <div class="metric-value">{basic.get('i100_index', 0)}</div>
                             <div class="metric-label">{t('i100_index')}</div>
                         </div>
                         <div class="metric-card">
-                            <span class="metric-icon">📊</span>
                             <div class="metric-value">{basic.get('avg_citations', 0):.1f}</div>
                             <div class="metric-label">{t('avg_citations')}</div>
                         </div>
                         <div class="metric-card">
-                            <span class="metric-icon">🔓</span>
                             <div class="metric-value">{basic.get('oa_percentage', 0):.1f}%</div>
                             <div class="metric-label">{t('open_access')}</div>
                         </div>
                         <div class="metric-card">
-                            <span class="metric-icon">📅</span>
                             <div class="metric-value">{basic.get('active_years', 0)}</div>
                             <div class="metric-label">{t('active_years')}</div>
                         </div>
                         <div class="metric-card">
-                            <span class="metric-icon">👤</span>
                             <div class="metric-value">{basic.get('unique_authors', 0):,}</div>
                             <div class="metric-label">{t('unique_authors')}</div>
                         </div>
                         <div class="metric-card">
-                            <span class="metric-icon">🏛️</span>
                             <div class="metric-value">{basic.get('unique_affiliations', 0):,}</div>
                             <div class="metric-label">{t('unique_affiliations')}</div>
                         </div>
                         <div class="metric-card">
-                            <span class="metric-icon">🌍</span>
                             <div class="metric-value">{basic.get('unique_countries', 0)}</div>
                             <div class="metric-label">{t('unique_countries')}</div>
                         </div>
                         <div class="metric-card">
-                            <span class="metric-icon">👥</span>
                             <div class="metric-value">{basic.get('avg_authors_per_paper', 0):.1f}</div>
                             <div class="metric-label">{t('avg_authors_per_paper')}</div>
                         </div>
                         <div class="metric-card">
-                            <span class="metric-icon">🏛️</span>
                             <div class="metric-value">{basic.get('avg_affiliations_per_paper', 0):.1f}</div>
                             <div class="metric-label">{t('avg_affiliations_per_paper')}</div>
                         </div>
                         <div class="metric-card">
-                            <span class="metric-icon">🌍</span>
                             <div class="metric-value">{basic.get('avg_countries_per_paper', 0):.1f}</div>
                             <div class="metric-label">{t('avg_countries_per_paper')}</div>
                         </div>
                         <div class="metric-card">
-                            <span class="metric-icon">🌐</span>
                             <div class="metric-value">{basic.get('international_collaboration_rate', 0):.1f}%</div>
                             <div class="metric-label">{t('international_collaboration_rate')}</div>
                         </div>
                         <div class="metric-card">
-                            <span class="metric-icon">👤</span>
                             <div class="metric-value">{basic.get('unique_citing_authors', 0):,}</div>
                             <div class="metric-label">{t('unique_citing_authors')}</div>
                         </div>
                         <div class="metric-card">
-                            <span class="metric-icon">🏛️</span>
                             <div class="metric-value">{basic.get('unique_citing_affiliations', 0):,}</div>
                             <div class="metric-label">{t('unique_citing_affiliations')}</div>
                         </div>
                         <div class="metric-card">
-                            <span class="metric-icon">🌍</span>
                             <div class="metric-value">{basic.get('unique_citing_countries', 0)}</div>
                             <div class="metric-label">{t('unique_citing_countries')}</div>
                         </div>
                         <div class="metric-card">
-                            <span class="metric-icon">📰</span>
                             <div class="metric-value">{basic.get('unique_citing_journals', 0):,}</div>
                             <div class="metric-label">{t('unique_citing_journals')}</div>
                         </div>
                         <div class="metric-card">
-                            <span class="metric-icon">📚</span>
                             <div class="metric-value">{basic.get('unique_citing_publishers', 0):,}</div>
                             <div class="metric-label">{t('unique_citing_publishers')}</div>
                         </div>
