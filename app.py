@@ -1973,26 +1973,22 @@ def parse_work_metadata(work: Dict) -> Dict:
         else:
             parsed['country'] = 'Unknown'
         
-        # Topics
-        topics_list = work.get('topics', [])
-        parsed['topics'] = [
-            {
-                'display_name': t.get('display_name', ''),
-                'subfield': t.get('subfield', {}).get('display_name', ''),
-                'field': t.get('field', {}).get('display_name', ''),
-                'domain': t.get('domain', {}).get('display_name', ''),
-                'score': t.get('score', 0)
-            }
-            for t in topics_list
-        ]
+        # ===== НАСТОЯЩИЕ TOPICS ИЗ ПОЛЯ topics =====
+        topics_from_field = []
+        for topic in work.get('topics', []):
+            topic_name = topic.get('display_name', '')
+            if topic_name:
+                topics_from_field.append(topic_name)
         
-        # Concepts
+        parsed['topics'] = topics_from_field[:15]  # Настоящие Topics
+        
+        # Concepts (для обратной совместимости и других полей)
         concepts = []
         concept_levels = {}
         fields = []
         domains = []
-        topic_names = []
         subtopics = []
+        topic_names = []  # Это теперь для subfields (уровень 1)
         
         for concept in work.get('concepts', []):
             concept_name = concept.get('display_name', '')
@@ -2011,7 +2007,7 @@ def parse_work_metadata(work: Dict) -> Dict:
             elif concept_level == 2:
                 fields.append(concept_name)
             elif concept_level == 1:
-                topic_names.append(concept_name)
+                topic_names.append(concept_name)  # Это SUBFIELDS (уровень 1)
             elif concept_level == 0:
                 subtopics.append(concept_name)
         
@@ -2019,8 +2015,11 @@ def parse_work_metadata(work: Dict) -> Dict:
         parsed['concept_levels'] = concept_levels
         parsed['fields'] = fields[:10]
         parsed['domains'] = domains[:5]
-        parsed['topics_old'] = topic_names[:15]
         parsed['subtopics'] = subtopics[:20]
+        parsed['subfields'] = topic_names[:15]  # Переименовано для ясности
+        
+        # Для обратной совместимости ставим subfields в topics_old
+        parsed['topics_old'] = topic_names[:15]  # Это SUBFIELDS, не TOPICS!
         
         return parsed
         
@@ -2451,6 +2450,23 @@ class JournalAnalyzer:
                     all_citing_journals.add(meta.get('journal_name', 'Unknown'))
                     all_citing_publishers.add(meta.get('publisher', 'Unknown'))
         
+        # Topics distribution - используем настоящие Topics
+        all_topics_analyzed = set()
+        all_topics_citing = set()
+        
+        for p in pubs:
+            doi = p.get('DOI')
+            if doi and doi in self.publications_metadata:
+                meta = self.publications_metadata[doi]
+                all_topics_analyzed.update(meta.get('topics', []))
+        
+        for citing_list in self.citing_works.values():
+            for cite in citing_list:
+                doi = cite.get('doi') if isinstance(cite, dict) else cite
+                if doi and doi in self.citations_metadata:
+                    meta = self.citations_metadata[doi]
+                    all_topics_citing.update(meta.get('topics', []))
+        
         return {
             'total_publications': total_pubs,
             'total_citations': total_citations,
@@ -2475,7 +2491,9 @@ class JournalAnalyzer:
             'unique_citing_affiliations': len(all_citing_affiliations),
             'unique_citing_countries': len(all_citing_countries),
             'unique_citing_journals': len(all_citing_journals),
-            'unique_citing_publishers': len(all_citing_publishers)
+            'unique_citing_publishers': len(all_citing_publishers),
+            'unique_topics_analyzed': len(all_topics_analyzed),
+            'unique_topics_citing': len(all_topics_citing)
         }
     
     def _analyze_authors(self) -> Dict:
@@ -2826,7 +2844,7 @@ class JournalAnalyzer:
         }
     
     def _analyze_topics(self) -> Dict:
-        """Analyze topics"""
+        """Analyze topics using real Topics from OpenAlex topics field"""
         # Collect topics from analyzed publications
         analyzed_topics = defaultdict(lambda: {
             'count': 0,
@@ -2841,7 +2859,7 @@ class JournalAnalyzer:
             'citations': []
         })
         
-        # Process analyzed publications
+        # Process analyzed publications - используем НАСТОЯЩИЕ TOPICS
         for p in self.publications:
             doi = p.get('DOI')
             if doi and doi in self.publications_metadata:
@@ -2849,14 +2867,14 @@ class JournalAnalyzer:
                 year = p.get('Year')
                 citations = p.get('Cited_by_count', 0)
                 
-                # Topics from concepts
-                for topic in meta.get('topics_old', []):
+                # Используем поле 'topics' (настоящие Topics из OpenAlex)
+                for topic in meta.get('topics', []):
                     analyzed_topics[topic]['count'] += 1
                     if year:
                         analyzed_topics[topic]['years'].append(year)
                     analyzed_topics[topic]['citations'].append(citations)
         
-        # Process citing works
+        # Process citing works - используем НАСТОЯЩИЕ TOPICS
         for citing_list in self.citing_works.values():
             for cite in citing_list:
                 doi = cite.get('doi') if isinstance(cite, dict) else cite
@@ -2865,7 +2883,8 @@ class JournalAnalyzer:
                     year = meta.get('publication_year')
                     citations = meta.get('cited_by_count', 0)
                     
-                    for topic in meta.get('topics_old', []):
+                    # Используем поле 'topics' (настоящие Topics из OpenAlex)
+                    for topic in meta.get('topics', []):
                         citing_topics[topic]['count'] += 1
                         if year:
                             citing_topics[topic]['years'].append(year)
@@ -2917,22 +2936,31 @@ class JournalAnalyzer:
                 doi = p.get('DOI')
                 if doi and doi in self.publications_metadata:
                     meta = self.publications_metadata[doi]
-                    for item in meta.get(items, []):
-                        counter[item] += p.get('Cited_by_count', 0)
+                    # Используем поле 'topics' для настоящих Topics
+                    if items == 'topics':
+                        for item in meta.get('topics', []):
+                            counter[item] += p.get('Cited_by_count', 0)
+                    else:
+                        for item in meta.get(items, []):
+                            counter[item] += p.get('Cited_by_count', 0)
             
             for citing_list in self.citing_works.values():
                 for cite in citing_list:
                     doi = cite.get('doi') if isinstance(cite, dict) else cite
                     if doi and doi in self.citations_metadata:
                         meta = self.citations_metadata[doi]
-                        for item in meta.get(items, []):
-                            counter[item] += meta.get('cited_by_count', 0)
+                        if items == 'topics':
+                            for item in meta.get('topics', []):
+                                counter[item] += meta.get('cited_by_count', 0)
+                        else:
+                            for item in meta.get(items, []):
+                                counter[item] += meta.get('cited_by_count', 0)
             
             return sorted(counter.items(), key=lambda x: x[1], reverse=True)[:10]
         
         return {
             'topics': topic_results[:30],
-            'top_cited_topics': get_top_cited('topics_old', 'topics'),
+            'top_cited_topics': get_top_cited('topics', 'topics'),
             'top_cited_subtopics': get_top_cited('subtopics', 'subtopics'),
             'top_cited_fields': get_top_cited('fields', 'fields'),
             'top_cited_domains': get_top_cited('domains', 'domains'),
@@ -2980,7 +3008,7 @@ class JournalAnalyzer:
                     'citation_lag': citation_lag,
                     'citing_authors': meta.get('authors', []),
                     'citing_countries': meta.get('affiliation_countries', []),
-                    'citing_topics': meta.get('topics_old', [])
+                    'citing_topics': meta.get('topics', [])  # Используем настоящие Topics
                 })
             
             pub_meta = self.publications_metadata.get(doi, {})
