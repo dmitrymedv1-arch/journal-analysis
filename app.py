@@ -2719,7 +2719,7 @@ class JournalAnalyzer:
         first_citation_stats = {}
         if first_citation_lags:
             first_citation_stats = {
-                'min': min(first_citation_lags),
+                'min': min([lag for lag in first_citation_lags if lag > 0]) if any(lag > 0 for lag in first_citation_lags) else 0,
                 'max': max(first_citation_lags),
                 'avg': np.mean(first_citation_lags),
                 'median': np.median(first_citation_lags),
