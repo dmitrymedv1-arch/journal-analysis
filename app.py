@@ -4720,7 +4720,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                             {''.join([
                                 f'''
                                 <div class="citation-detail">
-                                    <div class="cite-title">{html.escape(cite['citing_title'][:120])}{'...' if len(cite['citing_title']) > 120 else ''}</div>
+                                    <div class="cite-title">{html.escape((cite['citing_title'] or 'No title')[:120])}{'...' if len(cite['citing_title'] or 'No title') > 120 else ''}</div>
                                     <div class="cite-meta">
                                         <strong>{t('citing_journal')}:</strong> {html.escape(cite['citing_journal'])} | 
                                         <strong>{t('citing_year')}:</strong> {cite['citing_year'] or 'N/A'} | 
