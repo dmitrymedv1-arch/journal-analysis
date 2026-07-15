@@ -4710,17 +4710,17 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                     {''.join([
                         f'''
                         <div class="collapser" onclick="toggleCitations('{html.escape(doi)}')">
-                            <strong class="cite-title">{html.escape(data['title'][:100])}{'...' if len(data['title']) > 100 else ''}</strong>
+                            <strong class="cite-title">{html.escape((data['title'] or 'No title')[:100])}{'...' if len(data['title'] or '') > 100 else ''}</strong>
                             <span class="badge badge-info">{data['year'] or 'N/A'}</span>
                             <span class="citation-count-badge">{data['total_citations']} {t('citations')}</span>
-                            <span style="font-size: 12px; color: #999;">DOI: {data['doi'][:20]}...</span>
+                            <span style="font-size: 12px; color: #999;">DOI: {data['doi'][:20] if data['doi'] else 'N/A'}...</span>
                             <span class="toggle-hint">{t('click_to_toggle')}</span>
                         </div>
                         <div id="citations_{html.escape(doi)}" style="display: none; margin-bottom: 8px;">
                             {''.join([
                                 f'''
                                 <div class="citation-detail">
-                                    <div class="cite-title">{html.escape((cite['citing_title'] or 'No title')[:120])}{'...' if len(cite['citing_title'] or 'No title') > 120 else ''}</div>
+                                    <div class="cite-title">{html.escape((cite['citing_title'] or 'No title')[:120])}{'...' if len(cite['citing_title'] or '') > 120 else ''}</div>
                                     <div class="cite-meta">
                                         <strong>{t('citing_journal')}:</strong> {html.escape(cite['citing_journal'] or 'Unknown')} | 
                                         <strong>{t('citing_year')}:</strong> {cite['citing_year'] or 'N/A'} | 
@@ -4732,18 +4732,15 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                         <strong>{t('countries')}:</strong> {', '.join(cite['citing_countries'][:3]) if cite.get('citing_countries') else 'N/A'}
                                     </div>
                                     <div class="cite-meta">
-                                        <a href="https://doi.org/{html.escape(cite['citing_doi'])}" target="_blank" class="doi-link">DOI: {html.escape(cite['citing_doi'] or 'N/A')}</a>
+                                        <a href="https://doi.org/{html.escape(cite['citing_doi'] or '')}" target="_blank" class="doi-link">DOI: {html.escape(cite['citing_doi'] or 'N/A')}</a>
                                     </div>
                                 </div>
-                                ''' for cite in data['citations']
+                                ''' for cite in sorted(data['citations'], key=lambda x: x.get('citation_lag') or 0, reverse=True)  # ← СОРТИРОВКА
                             ])}
                             {f'<div style="padding: 10px 18px; color: #999; font-style: italic;">{t("no_citations_found")}</div>' if not data['citations'] else ''}
                         </div>
                         ''' for doi, data in list(detailed_citations.items())
                     ])}
-                    
-                </div>
-            </div>
             
             <!-- ============================================================ -->
             <!-- SECTION 7: ALL PUBLICATIONS -->
