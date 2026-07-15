@@ -1922,7 +1922,7 @@ def parse_work_metadata(work: Dict) -> Dict:
             parsed['source_type'] = 'unknown'
             parsed['issn'] = []
         
-        # Authors - ИСПОЛЬЗУЕМ raw_author_name для латиницы
+        # Authors - используем raw_author_name для латиницы
         authors = []
         author_orcids = []
         authors_with_orcids = []
@@ -1930,8 +1930,11 @@ def parse_work_metadata(work: Dict) -> Dict:
         affiliation_countries = []
         institutions = []
         
+        # Для каждого автора собираем его аффилиации
+        author_affiliations_map = {}
+        
         for auth in work.get('authorships', []):
-            # Получаем raw_author_name (всегда латиница) вместо display_name
+            # Получаем raw_author_name (всегда латиница)
             raw_author_name = auth.get('raw_author_name', '')
             
             # Если raw_author_name пустой, пробуем взять display_name
@@ -1954,43 +1957,64 @@ def parse_work_metadata(work: Dict) -> Dict:
                     'orcid': author_orcid.replace('https://orcid.org/', '') if author_orcid else None
                 })
             
-            # Получаем аффилиации из raw_affiliation_strings
+            # ===== СОБИРАЕМ АФФИЛИАЦИИ И СТРАНЫ =====
+            # 1. Сначала берем из raw_affiliation_strings (полные названия)
             raw_affiliation_strings = auth.get('raw_affiliation_strings', [])
-            if raw_affiliation_strings:
-                for affil in raw_affiliation_strings:
-                    if affil and affil not in affiliations:
-                        affiliations.append(affil)
-                        country = extract_country_from_affiliation(affil)
-                        if country:
-                            affiliation_countries.append(country)
+            for affil in raw_affiliation_strings:
+                if affil and affil not in affiliations:
+                    affiliations.append(affil)
             
-            # Также берем аффилиации из institutions если есть
+            # 2. Берем аффилиации из institutions с country_code
             if auth.get('institutions'):
                 for inst in auth['institutions']:
-                    affil = inst.get('display_name', '')
-                    if affil and affil not in affiliations:
-                        affiliations.append(affil)
-                        country = extract_country_from_affiliation(affil)
-                        if country:
-                            affiliation_countries.append(country)
-                        
-                        institutions.append({
-                            'id': inst.get('id', ''),
-                            'display_name': inst.get('display_name', ''),
-                            'country_code': inst.get('country_code', ''),
-                            'ror': inst.get('ror', ''),
-                            'type': inst.get('type', '')
-                        })
+                    inst_name = inst.get('display_name', '')
+                    country_code = inst.get('country_code', '')
+                    
+                    if inst_name and inst_name not in affiliations:
+                        affiliations.append(inst_name)
+                    
+                    # Добавляем страну из country_code
+                    if country_code:
+                        country_name = get_full_country_name(country_code)
+                        if country_name and country_name not in affiliation_countries:
+                            affiliation_countries.append(country_name)
+                    
+                    # Сохраняем institution для детальной информации
+                    institutions.append({
+                        'id': inst.get('id', ''),
+                        'display_name': inst.get('display_name', ''),
+                        'country_code': inst.get('country_code', ''),
+                        'ror': inst.get('ror', ''),
+                        'type': inst.get('type', '')
+                    })
+        
+        # Удаляем дубликаты из affiliations (сохраняя порядок)
+        unique_affiliations = []
+        for aff in affiliations:
+            if aff not in unique_affiliations:
+                unique_affiliations.append(aff)
+        affiliations = unique_affiliations
+        
+        # Удаляем дубликаты из affiliation_countries (сохраняя порядок)
+        unique_countries = []
+        for country in affiliation_countries:
+            if country not in unique_countries:
+                unique_countries.append(country)
+        affiliation_countries = unique_countries
         
         parsed['authors'] = authors
         parsed['author_orcids'] = author_orcids
         parsed['authors_with_orcids'] = authors_with_orcids
         parsed['author_count'] = len(authors)
-        parsed['affiliations'] = list(dict.fromkeys(affiliations))  # Удаляем дубликаты
-        parsed['affiliation_countries'] = list(dict.fromkeys(affiliation_countries))  # Удаляем дубликаты
+        parsed['affiliations'] = affiliations
+        parsed['affiliation_countries'] = affiliation_countries
         parsed['institutions'] = institutions
         
-        if affiliations:
+        # Определяем основную страну из первой аффилиации
+        if affiliation_countries:
+            parsed['country'] = affiliation_countries[0]
+        elif affiliations:
+            # Fallback: пытаемся извлечь страну из текста аффилиации
             parsed['country'] = extract_country_from_affiliation(affiliations[0])
         else:
             parsed['country'] = 'Unknown'
@@ -2002,9 +2026,9 @@ def parse_work_metadata(work: Dict) -> Dict:
             if topic_name:
                 topics_from_field.append(topic_name)
         
-        parsed['topics'] = topics_from_field[:15]  # Настоящие Topics
+        parsed['topics'] = topics_from_field[:15]
         
-        # Concepts (для обратной совместимости и других полей)
+        # Concepts
         concepts = []
         concept_levels = {}
         fields = []
@@ -2029,7 +2053,7 @@ def parse_work_metadata(work: Dict) -> Dict:
             elif concept_level == 2:
                 fields.append(concept_name)
             elif concept_level == 1:
-                subfields.append(concept_name)  # Это SUBFIELDS (уровень 1)
+                subfields.append(concept_name)
             elif concept_level == 0:
                 subtopics.append(concept_name)
         
@@ -2039,9 +2063,7 @@ def parse_work_metadata(work: Dict) -> Dict:
         parsed['domains'] = domains[:5]
         parsed['subtopics'] = subtopics[:20]
         parsed['subfields'] = subfields[:15]
-        
-        # Для обратной совместимости ставим subfields в topics_old
-        parsed['topics_old'] = subfields[:15]  # Это SUBFIELDS, не TOPICS!
+        parsed['topics_old'] = subfields[:15]
         
         return parsed
         
@@ -2545,11 +2567,14 @@ class JournalAnalyzer:
                         if orcid:
                             author_stats[name]['orcid'] = orcid
                         
-                        # Добавляем аффилиации и страны
+                        # Добавляем аффилиации и страны (используем set для уникальности)
                         for aff in meta.get('affiliations', []):
-                            author_stats[name]['affiliations'].add(aff)
+                            if aff:
+                                author_stats[name]['affiliations'].add(aff)
+                        
                         for country in meta.get('affiliation_countries', []):
-                            author_stats[name]['countries'].add(country)
+                            if country:
+                                author_stats[name]['countries'].add(country)
         
         # Сортируем по количеству публикаций
         sorted_authors = sorted(
@@ -2614,15 +2639,24 @@ class JournalAnalyzer:
                 countries = set(meta.get('affiliation_countries', []))
                 countries = {c for c in countries if c and c != 'Unknown'}
                 
+                # Также пробуем получить страны из institutions
+                if not countries:
+                    for inst in meta.get('institutions', []):
+                        country_code = inst.get('country_code', '')
+                        if country_code:
+                            country_name = get_full_country_name(country_code)
+                            if country_name and country_name != 'Unknown':
+                                countries.add(country_name)
+                
                 if countries:
                     unique_countries_per_pub.append(len(countries))
                     
-                    # Authors per country
+                    # Authors per country - используем данные из authorships
                     for auth in meta.get('authors_with_orcids', []):
-                        # Определяем страну автора по его аффилиациям
-                        # Для упрощения используем первую страну из аффилиаций
-                        if meta.get('affiliation_countries'):
-                            author_country = meta['affiliation_countries'][0] if meta['affiliation_countries'] else 'Unknown'
+                        # Пытаемся определить страну автора
+                        # Для простоты используем первую страну из аффилиаций
+                        if countries:
+                            author_country = list(countries)[0]
                             authors_per_country[author_country] += 1
                     
                     # Collaboration Patterns
@@ -2637,6 +2671,21 @@ class JournalAnalyzer:
                         for j in range(i+1, len(country_list)):
                             pair = tuple(sorted([country_list[i], country_list[j]]))
                             country_pairs[pair] += 1
+        
+        # Если нет стран, пробуем определить по institutions
+        if not authors_per_country:
+            for p in self.publications:
+                doi = p.get('DOI')
+                if doi and doi in self.publications_metadata:
+                    meta = self.publications_metadata[doi]
+                    for inst in meta.get('institutions', []):
+                        country_code = inst.get('country_code', '')
+                        if country_code:
+                            country_name = get_full_country_name(country_code)
+                            if country_name and country_name != 'Unknown':
+                                # Для каждого автора добавляем эту страну
+                                for auth in meta.get('authors_with_orcids', []):
+                                    authors_per_country[country_name] += 1
         
         # Сортируем пары стран по частоте
         sorted_pairs = sorted(country_pairs.items(), key=lambda x: x[1], reverse=True)[:20]
