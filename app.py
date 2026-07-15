@@ -4735,9 +4735,8 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                         <a href="https://doi.org/{html.escape(cite['citing_doi'])}" target="_blank" class="doi-link">DOI: {html.escape(cite['citing_doi'] or 'N/A')}</a>
                                     </div>
                                 </div>
-                                ''' for cite in data['citations'][:20]
+                                ''' for cite in data['citations']
                             ])}
-                            {f'<div style="padding: 8px 18px; color: #999; font-style: italic; font-size: 12px;">... and {len(data["citations"])-20} more citations</div>' if len(data['citations']) > 20 else ''}
                             {f'<div style="padding: 10px 18px; color: #999; font-style: italic;">{t("no_citations_found")}</div>' if not data['citations'] else ''}
                         </div>
                         ''' for doi, data in list(detailed_citations.items())
