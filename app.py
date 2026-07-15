@@ -3,13 +3,13 @@
 # ============================================
 
 # Параметры API запросов
-BATCH_SIZE = 50  # Размер батча для всех API
-MAX_RETRIES = 3  # Количество попыток при ошибке
-TIMEOUT = 30  # Таймаут на запрос в секундах
-DELAY_BETWEEN_BATCHES = 0.5  # Задержка между батчами (сек)
-MAX_CONCURRENT_REQUESTS = 10  # Максимум параллельных запросов
-RETRY_DELAY = 2  # Задержка перед повторной попыткой (сек)
-ORCID_REQUEST_DELAY = 0.2  # Задержка между запросами к ORCID API (сек)
+BATCH_SIZE = 50 
+MAX_RETRIES = 3 
+TIMEOUT = 30 
+DELAY_BETWEEN_BATCHES = 0.5 
+MAX_CONCURRENT_REQUESTS = 3
+RETRY_DELAY = 2 
+ORCID_REQUEST_DELAY = 0.2 
 
 # Параметры вывода
 SHOW_DEBUG_LOGS = True  # Показывать детальные логи
