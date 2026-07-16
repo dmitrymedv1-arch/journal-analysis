@@ -3266,6 +3266,14 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
         color = get_color_for_value(value, max_val, min_val)
         bg_color = get_color_for_value_text(value, max_val, min_val)
         return f'<span class="color-scale-value" style="background: {bg_color}; color: #1a1a1a;">{value}{unit}</span>'
+
+    # ===== ВЫЧИСЛЯЕМ МАКСИМАЛЬНЫЕ ЗНАЧЕНИЯ ДЛЯ ТАБЛИЦЫ TOPICS =====
+    topics_data = topics.get('topics', [])
+    max_analyzed = max([t['analyzed_count'] for t in topics_data]) if topics_data else 1
+    max_citing = max([t['citing_count'] for t in topics_data]) if topics_data else 1
+    max_analyzed_norm = max([t['analyzed_norm_count'] for t in topics_data]) if topics_data else 1
+    max_citing_norm = max([t['citing_norm_count'] for t in topics_data]) if topics_data else 1
+    max_total_norm = max([t['total_norm_count'] for t in topics_data]) if topics_data else 1
     
     # Max values for color scales
     max_publications = max([a.get('publications', 0) for a in author_analysis.get('top_authors', [])]) if author_analysis.get('top_authors') else 1
