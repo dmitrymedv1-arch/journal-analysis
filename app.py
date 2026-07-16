@@ -2990,21 +2990,21 @@ class JournalAnalyzer:
     
     def _analyze_topics(self) -> Dict:
         """Analyze topics using real Topics from OpenAlex topics field"""
-        # Collect topics from analyzed publications
+        # Collect topics from analyzed publications - считаем КОЛИЧЕСТВО ПУБЛИКАЦИЙ
         analyzed_topics = defaultdict(lambda: {
             'count': 0,
             'years': [],
-            'citations': []
+            'citations': []  # оставляем для статистики, но для top_cited используем count
         })
         
-        # Collect topics from citing works
+        # Collect topics from citing works - считаем КОЛИЧЕСТВО ЦИТИРУЮЩИХ РАБОТ
         citing_topics = defaultdict(lambda: {
             'count': 0,
             'years': [],
             'citations': []
         })
         
-        # Process analyzed publications - используем НАСТОЯЩИЕ TOPICS
+        # Process analyzed publications
         for p in self.publications:
             doi = p.get('DOI')
             if doi and doi in self.publications_metadata:
@@ -3012,14 +3012,13 @@ class JournalAnalyzer:
                 year = p.get('Year')
                 citations = p.get('Cited_by_count', 0)
                 
-                # Используем поле 'topics' (настоящие Topics из OpenAlex)
                 for topic in meta.get('topics', []):
-                    analyzed_topics[topic]['count'] += 1
+                    analyzed_topics[topic]['count'] += 1  # ← СЧИТАЕМ КОЛИЧЕСТВО
                     if year:
                         analyzed_topics[topic]['years'].append(year)
                     analyzed_topics[topic]['citations'].append(citations)
         
-        # Process citing works - используем НАСТОЯЩИЕ TOPICS
+        # Process citing works - считаем КОЛИЧЕСТВО ЦИТИРУЮЩИХ РАБОТ
         for citing_list in self.citing_works.values():
             for cite in citing_list:
                 doi = cite.get('doi') if isinstance(cite, dict) else cite
@@ -3028,9 +3027,8 @@ class JournalAnalyzer:
                     year = meta.get('publication_year')
                     citations = meta.get('cited_by_count', 0)
                     
-                    # Используем поле 'topics' (настоящие Topics из OpenAlex)
                     for topic in meta.get('topics', []):
-                        citing_topics[topic]['count'] += 1
+                        citing_topics[topic]['count'] += 1  # ← СЧИТАЕМ КОЛИЧЕСТВО
                         if year:
                             citing_topics[topic]['years'].append(year)
                         citing_topics[topic]['citations'].append(citations)
@@ -3053,7 +3051,6 @@ class JournalAnalyzer:
             years = analyzed_topics[topic]['years'] + citing_topics[topic]['years']
             first_year = min(years) if years else None
             
-            # Peak year (year with most publications in this topic)
             if years:
                 year_counts = Counter(years)
                 peak_year = max(year_counts.items(), key=lambda x: x[1])[0]
@@ -3074,42 +3071,39 @@ class JournalAnalyzer:
         # Sort by total normalized count
         topic_results.sort(key=lambda x: x['total_norm_count'], reverse=True)
         
-        # Top cited topics, subtopics, fields, domains, concepts
-        def get_top_cited(items, key):
+        # ===== ИСПРАВЛЕННЫЕ ФУНКЦИИ ДЛЯ TOP CITED =====
+        # Теперь считаем КОЛИЧЕСТВО ПУБЛИКАЦИЙ, а не сумму цитирований
+        
+        def get_top_cited_count(items_key):
+            """Считает количество публикаций по каждому топику/концепту"""
             counter = defaultdict(int)
+            
+            # Анализируемые публикации
             for p in self.publications:
                 doi = p.get('DOI')
                 if doi and doi in self.publications_metadata:
                     meta = self.publications_metadata[doi]
-                    # Используем поле 'topics' для настоящих Topics
-                    if items == 'topics':
-                        for item in meta.get('topics', []):
-                            counter[item] += p.get('Cited_by_count', 0)
-                    else:
-                        for item in meta.get(items, []):
-                            counter[item] += p.get('Cited_by_count', 0)
+                    for item in meta.get(items_key, []):
+                        counter[item] += 1  # ← СЧИТАЕМ ПУБЛИКАЦИИ
             
+            # Цитирующие работы
             for citing_list in self.citing_works.values():
                 for cite in citing_list:
                     doi = cite.get('doi') if isinstance(cite, dict) else cite
                     if doi and doi in self.citations_metadata:
                         meta = self.citations_metadata[doi]
-                        if items == 'topics':
-                            for item in meta.get('topics', []):
-                                counter[item] += meta.get('cited_by_count', 0)
-                        else:
-                            for item in meta.get(items, []):
-                                counter[item] += meta.get('cited_by_count', 0)
+                        for item in meta.get(items_key, []):
+                            counter[item] += 1  # ← СЧИТАЕМ ЦИТИРУЮЩИЕ РАБОТЫ
             
             return sorted(counter.items(), key=lambda x: x[1], reverse=True)[:10]
         
         return {
             'topics': topic_results[:30],
-            'top_cited_topics': get_top_cited('topics', 'topics'),
-            'top_cited_subtopics': get_top_cited('subtopics', 'subtopics'),
-            'top_cited_fields': get_top_cited('fields', 'fields'),
-            'top_cited_domains': get_top_cited('domains', 'domains'),
-            'top_cited_concepts': get_top_cited('concepts', 'concepts')
+            'top_cited_topics': get_top_cited_count('topics'),  # ← ИСПРАВЛЕНО
+            'top_cited_subtopics': get_top_cited_count('subtopics'),  # ← ИСПРАВЛЕНО
+            'top_cited_fields': get_top_cited_count('fields'),  # ← ИСПРАВЛЕНО
+            'top_cited_domains': get_top_cited_count('domains'),  # ← ИСПРАВЛЕНО
+            'top_cited_concepts': get_top_cited_count('concepts')  # ← ИСПРАВЛЕНО
         }
     
     def _get_detailed_citations(self) -> Dict:
