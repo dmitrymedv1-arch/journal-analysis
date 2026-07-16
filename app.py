@@ -4715,9 +4715,9 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                         <td class="word-wrap">{html.escape(topic['topic'][:50])}{'...' if len(topic['topic']) > 50 else ''}</td>
                                         <td>{get_color_scale_html(topic['analyzed_count'], max_analyzed)}</td>
                                         <td>{get_color_scale_html(topic['citing_count'], max_citing)}</td>
-                                        <td>{get_color_scale_html(f"{topic['analyzed_norm_count']:.3f}", max_analyzed_norm)}</td>
-                                        <td>{get_color_scale_html(f"{topic['citing_norm_count']:.3f}", max_citing_norm)}</td>
-                                        <td>{get_color_scale_html(f"{topic['total_norm_count']:.3f}", max_total_norm)}</td>
+                                        <td>{get_color_scale_html(topic['analyzed_norm_count'], max_analyzed_norm)}</td>
+                                        <td>{get_color_scale_html(topic['citing_norm_count'], max_citing_norm)}</td>
+                                        <td>{get_color_scale_html(topic['total_norm_count'], max_total_norm)}</td>
                                         <td>{topic['first_year'] or 'N/A'}</td>
                                         <td>{topic['peak_year'] or 'N/A'}</td>
                                     </tr>
