@@ -2230,7 +2230,7 @@ class JournalAnalyzer:
         if SHOW_DEBUG_LOGS:
             print(f"⚡ Запуск параллельного сбора цитирующих...")
         
-        citing_workers = max(1, self.max_workers // 50) # скорость обработки
+        citing_workers = max(1, self.max_workers // 5) # скорость обработки
         if SHOW_DEBUG_LOGS:
             print(f"   Используется {citing_workers} потоков (было {self.max_workers})")
         
@@ -2293,7 +2293,7 @@ class JournalAnalyzer:
             if not cursor:
                 break
                 
-            time.sleep(8) # замедление на 2 этапе
+            time.sleep(15) # замедление на 2 этапе
         
         return citing
     
