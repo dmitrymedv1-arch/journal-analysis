@@ -1,4 +1,19 @@
 # ============================================
+# ПАРАМЕТРЫ ДЛЯ КОНТРОЛЯ СКОРОСТИ API ЗАПРОСОВ
+# ============================================
+
+# Параметры для замедления сбора цитирующих работ
+CITING_FETCH_DELAY = 1.0  # Базовая задержка между запросами (сек)
+CITING_FETCH_BATCH_DELAY = 3.0  # Задержка между батчами (сек)
+CITING_FETCH_MAX_WORKERS = 2  # Максимум параллельных потоков для цитирующих
+CITING_FETCH_RETRY_DELAY = 5  # Задержка при повторных попытках (сек)
+CITING_FETCH_MAX_RETRIES = 3  # Максимум повторных попыток
+
+# Параметры для получения метаданных (тоже замедляем для надежности)
+METADATA_FETCH_DELAY = 0.5  # Задержка между запросами метаданных
+METADATA_BATCH_DELAY = 2.0  # Задержка между батчами метаданных
+
+# ============================================
 # СЕКЦИЯ ПАРАМЕТРОВ (настройка запросов)
 # ============================================
 
@@ -1894,24 +1909,38 @@ def smart_request(params, retries=5):
     base_url = "https://api.openalex.org/works"
     lock = Lock()
     
+    # Используем увеличенный базовый delay
+    base_delay = CITING_FETCH_DELAY * 0.5
+    
     for attempt in range(retries):
         try:
             with lock:
-                time.sleep(random.uniform(0.2, 0.45))
+                # Увеличиваем задержку
+                time.sleep(base_delay + random.uniform(0.1, 0.5))
             
             resp = requests.get(base_url, params=params, timeout=30)
             
             if resp.status_code == 429:
-                wait = int(resp.headers.get("Retry-After", 3))
-                time.sleep(wait + random.uniform(1, 2))
+                # Rate limit - ждем значительно дольше
+                wait = int(resp.headers.get("Retry-After", CITING_FETCH_RETRY_DELAY))
+                if SHOW_DEBUG_LOGS:
+                    print(f"⚠️ Rate limit! Ожидание {wait}с...")
+                time.sleep(wait + random.uniform(1, 3))
                 continue
                 
             if resp.status_code == 200:
+                # Небольшая задержка после успешного запроса
+                time.sleep(base_delay * 0.3)
                 return resp.json()
             
-            time.sleep(1.2 ** attempt)
-        except:
-            time.sleep(1.5 ** attempt)
+            # Другие ошибки
+            time.sleep(CITING_FETCH_DELAY * (attempt + 1))
+            
+        except Exception as e:
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ Ошибка запроса (попытка {attempt+1}): {e}")
+            time.sleep(CITING_FETCH_RETRY_DELAY * (attempt + 1))
+    
     return None
 
 def get_work_metadata_batch(work_ids: List[str]) -> List[Dict]:
@@ -2220,7 +2249,7 @@ class JournalAnalyzer:
         return publications
     
     def fetch_citing_works(self, progress_callback=None):
-        """Stage 2: Fetch citing works for all publications in parallel"""
+        """Stage 2: Fetch citing works for all publications with controlled rate limiting"""
         if not self.publications:
             return {}
         
@@ -2228,28 +2257,51 @@ class JournalAnalyzer:
         to_process = [row for row in self.publications if row.get('Cited_by_count', 0) > 0 and row.get('DOI')]
         
         if SHOW_DEBUG_LOGS:
-            print(f"⚡ Запуск параллельного сбора цитирующих ({self.max_workers} потоков)...")
+            print(f"⚡ Запуск сбора цитирующих с замедлением (макс. {CITING_FETCH_MAX_WORKERS} потоков, задержка {CITING_FETCH_DELAY}с)...")
         
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+        # Используем меньше потоков для замедления
+        with ThreadPoolExecutor(max_workers=CITING_FETCH_MAX_WORKERS) as executor:
+            # Создаем задачи с приоритетом по количеству цитирований (сначала самые цитируемые)
+            sorted_works = sorted(to_process, key=lambda x: x.get('Cited_by_count', 0), reverse=True)
+            
             future_to_doi = {}
-            for row in to_process:
+            submitted_count = 0
+            
+            for row in sorted_works:
                 oa_id = row.get('OpenAlex_ID')
                 doi = row.get('DOI')
                 if oa_id:
-                    future = executor.submit(self._get_citing_dois_batch, oa_id)
+                    # Добавляем задержку между отправкой задач
+                    time.sleep(CITING_FETCH_DELAY * 0.5)  # Половина задержки между отправками
+                    future = executor.submit(self._get_citing_dois_batch_with_delay, oa_id)
                     future_to_doi[future] = doi
+                    submitted_count += 1
+                    
+                    # Периодически делаем паузу для разгрузки API
+                    if submitted_count % 10 == 0:
+                        if SHOW_DEBUG_LOGS:
+                            print(f"⏳ Пауза после {submitted_count} запросов...")
+                        time.sleep(CITING_FETCH_BATCH_DELAY)
             
             total = len(future_to_doi)
             completed = 0
             
+            # Обрабатываем результаты с задержкой
             for future in as_completed(future_to_doi):
                 doi = future_to_doi[future]
                 try:
                     citing_map[doi] = future.result()
-                except:
+                except Exception as e:
+                    if SHOW_DEBUG_LOGS:
+                        print(f"⚠️ Ошибка при получении цитирований для {doi}: {e}")
                     citing_map[doi] = []
                 
                 completed += 1
+                
+                # Искусственная задержка между обработкой результатов
+                if completed < total:
+                    time.sleep(CITING_FETCH_DELAY * 0.3)
+                
                 if progress_callback:
                     progress_callback(completed, total)
         
@@ -2261,33 +2313,55 @@ class JournalAnalyzer:
         
         return citing_map
     
-    def _get_citing_dois_batch(self, oa_id: str) -> List[str]:
-        """Get citing DOIs for a single work"""
+    def _get_citing_dois_batch_with_delay(self, oa_id: str) -> List[str]:
+        """Get citing DOIs for a single work with built-in delays and retries"""
         citing = []
         cursor = "*"
+        attempt = 0
         
-        for _ in range(6):  # ограничение
-            data = smart_request({
-                "filter": f"cites:{oa_id}",
-                "per_page": 200,
-                "select": "doi,publication_date",
-                "cursor": cursor
-            })
-            
-            if not data or not data.get("results"):
-                break
-            
-            for item in data["results"]:
-                d = item.get("doi")
-                if d:
-                    citing.append({
-                        'doi': d.replace("https://doi.org/", ""),
-                        'publication_date': item.get('publication_date')
-                    })
-            
-            cursor = data.get("meta", {}).get("next_cursor")
-            if not cursor:
-                break
+        while attempt < CITING_FETCH_MAX_RETRIES:
+            try:
+                # Добавляем случайную задержку перед запросом
+                time.sleep(CITING_FETCH_DELAY + random.uniform(0, 0.5))
+                
+                data = smart_request({
+                    "filter": f"cites:{oa_id}",
+                    "per_page": 200,
+                    "select": "doi,publication_date",
+                    "cursor": cursor
+                })
+                
+                if not data or not data.get("results"):
+                    break
+                
+                for item in data["results"]:
+                    d = item.get("doi")
+                    if d:
+                        citing.append({
+                            'doi': d.replace("https://doi.org/", ""),
+                            'publication_date': item.get('publication_date')
+                        })
+                
+                cursor = data.get("meta", {}).get("next_cursor")
+                if not cursor:
+                    break
+                
+                # Задержка между пагинационными запросами
+                time.sleep(CITING_FETCH_DELAY * 0.5)
+                attempt = 0  # Сброс счетчика попыток при успехе
+                
+            except Exception as e:
+                attempt += 1
+                if SHOW_DEBUG_LOGS:
+                    print(f"⚠️ Ошибка при получении цитирований для {oa_id} (попытка {attempt}/{CITING_FETCH_MAX_RETRIES}): {e}")
+                
+                if attempt < CITING_FETCH_MAX_RETRIES:
+                    wait_time = CITING_FETCH_RETRY_DELAY * (attempt + 1)
+                    if SHOW_DEBUG_LOGS:
+                        print(f"⏳ Ожидание {wait_time}с перед повторной попыткой...")
+                    time.sleep(wait_time)
+                else:
+                    break
         
         return citing
     
