@@ -3384,7 +3384,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                 gap: 20px;
             }}
             .header-left img {{
-                max-height: 105px;
+                max-height: 130px;
                 filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
             }}
             .header h1 {{
@@ -3403,8 +3403,8 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                 text-shadow: 0 1px 2px rgba(0,0,0,0.15);
             }}
             .header-right img {{
-                max-height: 80px;
-                max-width: 200px;
+                max-height: 120px;
+                max-width: 250px;
                 filter: drop-shadow(0 2px 8px rgba(0,0,0,0.2));
                 background: rgba(255,255,255,0.1);
                 border-radius: 8px;
