@@ -2587,7 +2587,7 @@ class JournalAnalyzer:
         }
     
     def _analyze_affiliations(self) -> Dict:
-        """Analyze affiliations with ROR-based aggregation for analyzed publications"""
+        """Analyze affiliations with ROR-based aggregation (per work, not per author)"""
         # Используем ROR ID для группировки аффилиаций
         affiliations_by_ror = defaultdict(lambda: {
             'name': '',
@@ -2601,32 +2601,51 @@ class JournalAnalyzer:
             if doi and doi in self.publications_metadata:
                 meta = self.publications_metadata[doi]
                 
-                # Используем institutions для получения ROR
+                # Собираем уникальные ROR ID для этой работы
+                work_ror_ids = set()
+                
                 for inst in meta.get('institutions', []):
                     ror = inst.get('ror', '')
                     inst_name = inst.get('display_name', '')
                     
                     if ror:
-                        # Извлекаем короткий ROR ID (без https://ror.org/)
-                        ror_short = ror.replace('https://ror.org/', '') if ror else ''
-                        
-                        # Группируем по ROR
-                        if not affiliations_by_ror[ror]['name']:
-                            affiliations_by_ror[ror]['name'] = inst_name
-                            affiliations_by_ror[ror]['ror'] = ror
-                            affiliations_by_ror[ror]['ror_short'] = ror_short
-                        affiliations_by_ror[ror]['count'] += 1
+                        work_ror_ids.add(ror)
                     elif inst_name:
                         # Если нет ROR, используем название как ключ
                         key = f"no_ror_{inst_name}"
-                        if not affiliations_by_ror.get(key):
-                            affiliations_by_ror[key] = {
+                        work_ror_ids.add(key)
+                
+                # Теперь увеличиваем счетчики для каждого уникального ROR в этой работе
+                for ror_id in work_ror_ids:
+                    if ror_id.startswith('no_ror_'):
+                        # Это запись без ROR
+                        inst_name = ror_id.replace('no_ror_', '')
+                        if not affiliations_by_ror.get(ror_id):
+                            affiliations_by_ror[ror_id] = {
                                 'name': inst_name,
                                 'count': 0,
                                 'ror': '',
                                 'ror_short': ''
                             }
-                        affiliations_by_ror[key]['count'] += 1
+                        affiliations_by_ror[ror_id]['count'] += 1
+                    else:
+                        # Это ROR ID
+                        # Находим название института для этого ROR
+                        inst_name = ''
+                        for inst in meta.get('institutions', []):
+                            if inst.get('ror', '') == ror_id:
+                                inst_name = inst.get('display_name', '')
+                                break
+                        
+                        if not affiliations_by_ror[ror_id]['name']:
+                            ror_short = ror_id.replace('https://ror.org/', '') if ror_id else ''
+                            affiliations_by_ror[ror_id] = {
+                                'name': inst_name,
+                                'count': 0,
+                                'ror': ror_id,
+                                'ror_short': ror_short
+                            }
+                        affiliations_by_ror[ror_id]['count'] += 1
         
         # Сортируем по частоте
         sorted_affs = sorted(
@@ -2645,7 +2664,7 @@ class JournalAnalyzer:
         }
     
     def _analyze_geographic(self) -> Dict:
-        """Analyze geographic data"""
+        """Analyze geographic data (unique countries per work)"""
         # Unique Countries per Publication (Collaboration Level)
         unique_countries_per_pub = []
         
@@ -2663,56 +2682,49 @@ class JournalAnalyzer:
             doi = p.get('DOI')
             if doi and doi in self.publications_metadata:
                 meta = self.publications_metadata[doi]
-                countries = set(meta.get('affiliation_countries', []))
-                countries = {c for c in countries if c and c != 'Unknown'}
                 
-                # Также пробуем получить страны из institutions
-                if not countries:
-                    for inst in meta.get('institutions', []):
-                        country_code = inst.get('country_code', '')
-                        if country_code:
-                            country_name = get_full_country_name(country_code)
-                            if country_name and country_name != 'Unknown':
-                                countries.add(country_name)
+                # Собираем уникальные страны для этой работы
+                work_countries = set()
                 
-                if countries:
-                    unique_countries_per_pub.append(len(countries))
+                for inst in meta.get('institutions', []):
+                    country_code = inst.get('country_code', '')
+                    if country_code:
+                        country_name = get_full_country_name(country_code)
+                        if country_name and country_name != 'Unknown':
+                            work_countries.add(country_name)
+                
+                # Если нет стран из institutions, пробуем из affiliation_countries
+                if not work_countries:
+                    work_countries = set(meta.get('affiliation_countries', []))
+                    work_countries = {c for c in work_countries if c and c != 'Unknown'}
+                
+                if work_countries:
+                    unique_countries_per_pub.append(len(work_countries))
                     
                     # Authors per country - используем данные из authorships
+                    # Для каждого автора определяем страну (берем первую страну из аффилиаций автора)
                     for auth in meta.get('authors_with_orcids', []):
-                        # Пытаемся определить страну автора
-                        # Для простоты используем первую страну из аффилиаций
-                        if countries:
-                            author_country = list(countries)[0]
+                        # Пытаемся найти страну автора через его аффилиации
+                        author_country = None
+                        # Ищем в institutions с этим автором
+                        # Для простоты используем первую страну из общих аффилиаций работы
+                        if work_countries:
+                            author_country = list(work_countries)[0]
+                        if author_country:
                             authors_per_country[author_country] += 1
                     
                     # Collaboration Patterns
-                    if len(countries) == 1:
+                    if len(work_countries) == 1:
                         single_country_papers += 1
                     else:
                         multi_country_papers += 1
                     
                     # Collaboration Couples
-                    country_list = list(countries)
+                    country_list = list(work_countries)
                     for i in range(len(country_list)):
                         for j in range(i+1, len(country_list)):
                             pair = tuple(sorted([country_list[i], country_list[j]]))
                             country_pairs[pair] += 1
-        
-        # Если нет стран, пробуем определить по institutions
-        if not authors_per_country:
-            for p in self.publications:
-                doi = p.get('DOI')
-                if doi and doi in self.publications_metadata:
-                    meta = self.publications_metadata[doi]
-                    for inst in meta.get('institutions', []):
-                        country_code = inst.get('country_code', '')
-                        if country_code:
-                            country_name = get_full_country_name(country_code)
-                            if country_name and country_name != 'Unknown':
-                                # Для каждого автора добавляем эту страну
-                                for auth in meta.get('authors_with_orcids', []):
-                                    authors_per_country[country_name] += 1
         
         # Сортируем пары стран по частоте
         sorted_pairs = sorted(country_pairs.items(), key=lambda x: x[1], reverse=True)[:20]
@@ -2893,7 +2905,7 @@ class JournalAnalyzer:
         }
     
     def _analyze_citing_works(self) -> Dict:
-        """Analyze citing works with ROR-based affiliation aggregation"""
+        """Analyze citing works with ROR-based affiliation aggregation (per work, not per author)"""
         total_citing = sum(len(v) for v in self.citing_works.values())
         
         # Используем ROR ID для группировки аффилиаций
@@ -2916,12 +2928,13 @@ class JournalAnalyzer:
                 if doi and doi in self.citations_metadata:
                     meta = self.citations_metadata[doi]
                     
-                    # --- АВТОРЫ ---
+                    # --- АВТОРЫ (считаем каждого автора) ---
                     for author in meta.get('authors', []):
                         authors[author] += 1
                     
-                    # --- СТРАНЫ ---
-                    for country in meta.get('affiliation_countries', []):
+                    # --- СТРАНЫ (уникальные страны на работу) ---
+                    work_countries = set(meta.get('affiliation_countries', []))
+                    for country in work_countries:
                         countries[country] += 1
                     
                     # --- ЖУРНАЛЫ ---
@@ -2932,34 +2945,52 @@ class JournalAnalyzer:
                     publisher = meta.get('publisher', 'Unknown')
                     publishers[publisher] += 1
                     
-                    # --- АФФИЛИАЦИИ (группировка по ROR) ---
+                    # --- АФФИЛИАЦИИ (УНИКАЛЬНЫЕ НА РАБОТУ, а не на автора) ---
+                    # Собираем уникальные ROR ID для этой работы
+                    work_ror_ids = set()
+                    
                     for inst in meta.get('institutions', []):
                         ror = inst.get('ror', '')
                         inst_name = inst.get('display_name', '')
                         
                         if ror:
-                            # Извлекаем короткий ROR ID (без https://ror.org/)
-                            ror_short = ror.replace('https://ror.org/', '') if ror else ''
-                            
-                            # Группируем по ROR
-                            if not affiliations_by_ror[ror]['name']:
-                                # Сохраняем название с ROR
-                                affiliations_by_ror[ror]['name'] = inst_name
-                                affiliations_by_ror[ror]['ror'] = ror
-                                affiliations_by_ror[ror]['ror_short'] = ror_short
-                            affiliations_by_ror[ror]['count'] += 1
+                            work_ror_ids.add(ror)
                         elif inst_name:
                             # Если нет ROR, используем название как ключ
-                            # Но такие случаи редки в OpenAlex
                             key = f"no_ror_{inst_name}"
-                            if not affiliations_by_ror.get(key):
-                                affiliations_by_ror[key] = {
+                            work_ror_ids.add(key)
+                    
+                    # Теперь увеличиваем счетчики для каждого уникального ROR в этой работе
+                    for ror_id in work_ror_ids:
+                        if ror_id.startswith('no_ror_'):
+                            # Это запись без ROR
+                            inst_name = ror_id.replace('no_ror_', '')
+                            if not affiliations_by_ror.get(ror_id):
+                                affiliations_by_ror[ror_id] = {
                                     'name': inst_name,
                                     'count': 0,
                                     'ror': '',
                                     'ror_short': ''
                                 }
-                            affiliations_by_ror[key]['count'] += 1
+                            affiliations_by_ror[ror_id]['count'] += 1
+                        else:
+                            # Это ROR ID
+                            # Находим название института для этого ROR
+                            inst_name = ''
+                            for inst in meta.get('institutions', []):
+                                if inst.get('ror', '') == ror_id:
+                                    inst_name = inst.get('display_name', '')
+                                    break
+                            
+                            if not affiliations_by_ror[ror_id]['name']:
+                                ror_short = ror_id.replace('https://ror.org/', '') if ror_id else ''
+                                affiliations_by_ror[ror_id] = {
+                                    'name': inst_name,
+                                    'count': 0,
+                                    'ror': ror_id,
+                                    'ror_short': ror_short
+                                }
+                            affiliations_by_ror[ror_id]['count'] += 1
         
         # Сортируем аффилиации по частоте
         top_affiliations = sorted(
