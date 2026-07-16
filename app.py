@@ -4675,6 +4675,16 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                 <div class="section-divider"></div>
                 <div id="topics_content" class="section-content">
                     
+                    <!-- ===== ВЫЧИСЛЯЕМ МАКСИМАЛЬНЫЕ ЗНАЧЕНИЯ ДЛЯ ЦВЕТОВОЙ ШКАЛЫ ===== -->
+                    {{
+                        topics_list = topics.get('topics', [])
+                        max_analyzed = max([t['analyzed_count'] for t in topics_list]) if topics_list else 1
+                        max_citing = max([t['citing_count'] for t in topics_list]) if topics_list else 1
+                        max_analyzed_norm = max([t['analyzed_norm_count'] for t in topics_list]) if topics_list else 1
+                        max_citing_norm = max([t['citing_norm_count'] for t in topics_list]) if topics_list else 1
+                        max_total_norm = max([t['total_norm_count'] for t in topics_list]) if topics_list else 1
+                    }}
+                    
                     <h3 style="color: {primary}; font-size: 16px;">Topics</h3>
                     <div class="scrollable-table" style="max-height: 400px;">
                         <table id="topics_table">
@@ -4695,16 +4705,16 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                     f'''
                                     <tr>
                                         <td class="word-wrap">{html.escape(topic['topic'][:50])}{'...' if len(topic['topic']) > 50 else ''}</td>
-                                        <td><span class="badge badge-info">{topic['analyzed_count']}</span></td>
-                                        <td><span class="badge badge-info">{topic['citing_count']}</span></td>
-                                        <td>{topic['analyzed_norm_count']:.3f}</td>
-                                        <td>{topic['citing_norm_count']:.3f}</td>
-                                        <td><span class="badge badge-primary">{topic['total_norm_count']:.3f}</span></td>
+                                        <td>{get_color_scale_html(topic['analyzed_count'], max_analyzed)}</td>
+                                        <td>{get_color_scale_html(topic['citing_count'], max_citing)}</td>
+                                        <td>{get_color_scale_html(topic['analyzed_norm_count'], max_analyzed_norm)}</td>
+                                        <td>{get_color_scale_html(topic['citing_norm_count'], max_citing_norm)}</td>
+                                        <td>{get_color_scale_html(topic['total_norm_count'], max_total_norm)}</td>
                                         <td>{topic['first_year'] or 'N/A'}</td>
                                         <td>{topic['peak_year'] or 'N/A'}</td>
                                     </tr>
                                     '''
-                                    for topic in topics.get('topics', [])[:30]
+                                    for topic in topics_list[:30]
                                 ])}
                             </tbody>
                         </table>
