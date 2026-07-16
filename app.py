@@ -1922,27 +1922,17 @@ def parse_work_metadata(work: Dict) -> Dict:
             parsed['source_type'] = 'unknown'
             parsed['issn'] = []
         
-        # Authors - используем raw_author_name для латиницы
+        # Authors
         authors = []
         author_orcids = []
         authors_with_orcids = []
-        affiliations = []
-        affiliation_countries = []
-        institutions = []
-        
-        # Для каждого автора собираем его аффилиации
-        author_affiliations_map = {}
         
         for auth in work.get('authorships', []):
-            # Получаем raw_author_name (всегда латиница)
             raw_author_name = auth.get('raw_author_name', '')
-            
-            # Если raw_author_name пустой, пробуем взять display_name
             if not raw_author_name:
                 author_data = auth.get('author', {})
                 raw_author_name = author_data.get('display_name', '')
             
-            # Получаем ORCID из author
             author_orcid = ''
             author_data = auth.get('author', {})
             if author_data:
@@ -1956,15 +1946,13 @@ def parse_work_metadata(work: Dict) -> Dict:
                     'name': raw_author_name,
                     'orcid': author_orcid.replace('https://orcid.org/', '') if author_orcid else None
                 })
-            
-            # ===== СОБИРАЕМ АФФИЛИАЦИИ И СТРАНЫ =====
-            # 1. Сначала берем из raw_affiliation_strings (полные названия)
-            raw_affiliation_strings = auth.get('raw_affiliation_strings', [])
-            for affil in raw_affiliation_strings:
-                if affil and affil not in affiliations:
-                    affiliations.append(affil)
-            
-            # 2. Берем аффилиации из institutions с country_code
+        
+        # ===== СОБИРАЕМ АФФИЛИАЦИИ ТОЛЬКО ИЗ institutions (КАК ДЛЯ ЦИТИРУЮЩИХ) =====
+        affiliations = []
+        affiliation_countries = []
+        institutions = []
+        
+        for auth in work.get('authorships', []):
             if auth.get('institutions'):
                 for inst in auth['institutions']:
                     inst_name = inst.get('display_name', '')
@@ -1973,13 +1961,11 @@ def parse_work_metadata(work: Dict) -> Dict:
                     if inst_name and inst_name not in affiliations:
                         affiliations.append(inst_name)
                     
-                    # Добавляем страну из country_code
                     if country_code:
                         country_name = get_full_country_name(country_code)
                         if country_name and country_name not in affiliation_countries:
                             affiliation_countries.append(country_name)
                     
-                    # Сохраняем institution для детальной информации
                     institutions.append({
                         'id': inst.get('id', ''),
                         'display_name': inst.get('display_name', ''),
@@ -1987,20 +1973,6 @@ def parse_work_metadata(work: Dict) -> Dict:
                         'ror': inst.get('ror', ''),
                         'type': inst.get('type', '')
                     })
-        
-        # Удаляем дубликаты из affiliations (сохраняя порядок)
-        unique_affiliations = []
-        for aff in affiliations:
-            if aff not in unique_affiliations:
-                unique_affiliations.append(aff)
-        affiliations = unique_affiliations
-        
-        # Удаляем дубликаты из affiliation_countries (сохраняя порядок)
-        unique_countries = []
-        for country in affiliation_countries:
-            if country not in unique_countries:
-                unique_countries.append(country)
-        affiliation_countries = unique_countries
         
         parsed['authors'] = authors
         parsed['author_orcids'] = author_orcids
@@ -2014,18 +1986,16 @@ def parse_work_metadata(work: Dict) -> Dict:
         if affiliation_countries:
             parsed['country'] = affiliation_countries[0]
         elif affiliations:
-            # Fallback: пытаемся извлечь страну из текста аффилиации
             parsed['country'] = extract_country_from_affiliation(affiliations[0])
         else:
             parsed['country'] = 'Unknown'
         
-        # ===== НАСТОЯЩИЕ TOPICS ИЗ ПОЛЯ topics =====
+        # Topics
         topics_from_field = []
         for topic in work.get('topics', []):
             topic_name = topic.get('display_name', '')
             if topic_name:
                 topics_from_field.append(topic_name)
-        
         parsed['topics'] = topics_from_field[:15]
         
         # Concepts
