@@ -4714,7 +4714,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                         <td>{topic['peak_year'] or 'N/A'}</td>
                                     </tr>
                                     '''
-                                    for topic in topics_list[:30]
+                                    for topic in topics.get('topics', [])[:30
                                 ])}
                             </tbody>
                         </table>
