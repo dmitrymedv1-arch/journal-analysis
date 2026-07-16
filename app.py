@@ -1500,6 +1500,22 @@ def get_heatmap_cell_color(value: float, max_value: float) -> str:
     # More opaque for heatmap
     return f"rgba({r}, {g}, {b}, 0.45)"
 
+def format_ror_link(ror_short: str) -> str:
+    """
+    Format ROR ID for display in HTML
+    
+    Args:
+        ror_short: ROR ID without https://ror.org/ prefix
+        
+    Returns:
+        str: HTML link to colab.ws
+    """
+    if not ror_short:
+        return '-'
+    # Показываем только первые 8 символов для компактности
+    display_id = ror_short[:8] + '...' if len(ror_short) > 8 else ror_short
+    return f'<a href="https://colab.ws/organizations/{ror_short}" target="_blank" class="doi-link" style="font-family: monospace; font-size: 11px;">{display_id}</a>'
+
 # ============================================
 # НАСТРОЙКА НАУЧНОГО СТИЛЯ ДЛЯ ГРАФИКОВ
 # ============================================
@@ -1891,7 +1907,7 @@ def get_work_metadata_batch(work_ids: List[str]) -> List[Dict]:
     return results
 
 def parse_work_metadata(work: Dict) -> Dict:
-    """Parse work metadata from OpenAlex API response"""
+    """Parse work metadata from OpenAlex API response with ROR information"""
     try:
         parsed = {}
         
@@ -1947,7 +1963,7 @@ def parse_work_metadata(work: Dict) -> Dict:
                     'orcid': author_orcid.replace('https://orcid.org/', '') if author_orcid else None
                 })
         
-        # ===== СОБИРАЕМ АФФИЛИАЦИИ ТОЛЬКО ИЗ institutions (КАК ДЛЯ ЦИТИРУЮЩИХ) =====
+        # ===== СОБИРАЕМ АФФИЛИАЦИИ ТОЛЬКО ИЗ institutions (С ROR) =====
         affiliations = []
         affiliation_countries = []
         institutions = []
@@ -1957,6 +1973,8 @@ def parse_work_metadata(work: Dict) -> Dict:
                 for inst in auth['institutions']:
                     inst_name = inst.get('display_name', '')
                     country_code = inst.get('country_code', '')
+                    ror = inst.get('ror', '')
+                    inst_type = inst.get('type', '')
                     
                     if inst_name and inst_name not in affiliations:
                         affiliations.append(inst_name)
@@ -1966,12 +1984,13 @@ def parse_work_metadata(work: Dict) -> Dict:
                         if country_name and country_name not in affiliation_countries:
                             affiliation_countries.append(country_name)
                     
+                    # Сохраняем institution с ROR для детальной информации
                     institutions.append({
                         'id': inst.get('id', ''),
                         'display_name': inst.get('display_name', ''),
                         'country_code': inst.get('country_code', ''),
-                        'ror': inst.get('ror', ''),
-                        'type': inst.get('type', '')
+                        'ror': ror,
+                        'type': inst_type
                     })
         
         parsed['authors'] = authors
@@ -2568,23 +2587,61 @@ class JournalAnalyzer:
         }
     
     def _analyze_affiliations(self) -> Dict:
-        """Analyze affiliations"""
-        aff_stats = defaultdict(int)
+        """Analyze affiliations with ROR-based aggregation for analyzed publications"""
+        # Используем ROR ID для группировки аффилиаций
+        affiliations_by_ror = defaultdict(lambda: {
+            'name': '',
+            'count': 0,
+            'ror': '',
+            'ror_short': ''
+        })
         
         for p in self.publications:
             doi = p.get('DOI')
             if doi and doi in self.publications_metadata:
                 meta = self.publications_metadata[doi]
-                for aff in meta.get('affiliations', []):
-                    aff_stats[aff] += 1
+                
+                # Используем institutions для получения ROR
+                for inst in meta.get('institutions', []):
+                    ror = inst.get('ror', '')
+                    inst_name = inst.get('display_name', '')
+                    
+                    if ror:
+                        # Извлекаем короткий ROR ID (без https://ror.org/)
+                        ror_short = ror.replace('https://ror.org/', '') if ror else ''
+                        
+                        # Группируем по ROR
+                        if not affiliations_by_ror[ror]['name']:
+                            affiliations_by_ror[ror]['name'] = inst_name
+                            affiliations_by_ror[ror]['ror'] = ror
+                            affiliations_by_ror[ror]['ror_short'] = ror_short
+                        affiliations_by_ror[ror]['count'] += 1
+                    elif inst_name:
+                        # Если нет ROR, используем название как ключ
+                        key = f"no_ror_{inst_name}"
+                        if not affiliations_by_ror.get(key):
+                            affiliations_by_ror[key] = {
+                                'name': inst_name,
+                                'count': 0,
+                                'ror': '',
+                                'ror_short': ''
+                            }
+                        affiliations_by_ror[key]['count'] += 1
         
-        sorted_affs = sorted(aff_stats.items(), key=lambda x: x[1], reverse=True)[:30]
+        # Сортируем по частоте
+        sorted_affs = sorted(
+            [{
+                'name': data['name'],
+                'count': data['count'],
+                'ror': data['ror'],
+                'ror_short': data['ror_short']
+            } for data in affiliations_by_ror.values() if data['count'] > 0],
+            key=lambda x: x['count'],
+            reverse=True
+        )[:30]
         
         return {
-            'top_affiliations': [
-                {'name': name, 'count': count}
-                for name, count in sorted_affs
-            ]
+            'top_affiliations': sorted_affs
         }
     
     def _analyze_geographic(self) -> Dict:
@@ -2836,13 +2893,19 @@ class JournalAnalyzer:
         }
     
     def _analyze_citing_works(self) -> Dict:
-        """Analyze citing works"""
-        # Total Citing Works
+        """Analyze citing works with ROR-based affiliation aggregation"""
         total_citing = sum(len(v) for v in self.citing_works.values())
         
-        # Collect stats
+        # Используем ROR ID для группировки аффилиаций
+        affiliations_by_ror = defaultdict(lambda: {
+            'name': '',
+            'count': 0,
+            'ror': '',
+            'ror_short': ''
+        })
+        
+        # Также собираем статистику по авторам, странам, журналам, издателям
         authors = defaultdict(int)
-        affiliations = defaultdict(int)
         countries = defaultdict(int)
         journals = defaultdict(int)
         publishers = defaultdict(int)
@@ -2853,24 +2916,65 @@ class JournalAnalyzer:
                 if doi and doi in self.citations_metadata:
                     meta = self.citations_metadata[doi]
                     
+                    # --- АВТОРЫ ---
                     for author in meta.get('authors', []):
                         authors[author] += 1
                     
-                    for aff in meta.get('affiliations', []):
-                        affiliations[aff] += 1
-                    
+                    # --- СТРАНЫ ---
                     for country in meta.get('affiliation_countries', []):
                         countries[country] += 1
                     
+                    # --- ЖУРНАЛЫ ---
                     journal = meta.get('journal_name', 'Unknown')
                     journals[journal] += 1
                     
+                    # --- ИЗДАТЕЛИ ---
                     publisher = meta.get('publisher', 'Unknown')
                     publishers[publisher] += 1
+                    
+                    # --- АФФИЛИАЦИИ (группировка по ROR) ---
+                    for inst in meta.get('institutions', []):
+                        ror = inst.get('ror', '')
+                        inst_name = inst.get('display_name', '')
+                        
+                        if ror:
+                            # Извлекаем короткий ROR ID (без https://ror.org/)
+                            ror_short = ror.replace('https://ror.org/', '') if ror else ''
+                            
+                            # Группируем по ROR
+                            if not affiliations_by_ror[ror]['name']:
+                                # Сохраняем название с ROR
+                                affiliations_by_ror[ror]['name'] = inst_name
+                                affiliations_by_ror[ror]['ror'] = ror
+                                affiliations_by_ror[ror]['ror_short'] = ror_short
+                            affiliations_by_ror[ror]['count'] += 1
+                        elif inst_name:
+                            # Если нет ROR, используем название как ключ
+                            # Но такие случаи редки в OpenAlex
+                            key = f"no_ror_{inst_name}"
+                            if not affiliations_by_ror.get(key):
+                                affiliations_by_ror[key] = {
+                                    'name': inst_name,
+                                    'count': 0,
+                                    'ror': '',
+                                    'ror_short': ''
+                                }
+                            affiliations_by_ror[key]['count'] += 1
         
-        # Sort
+        # Сортируем аффилиации по частоте
+        top_affiliations = sorted(
+            [{
+                'name': data['name'],
+                'count': data['count'],
+                'ror': data['ror'],
+                'ror_short': data['ror_short']
+            } for data in affiliations_by_ror.values() if data['count'] > 0],
+            key=lambda x: x['count'],
+            reverse=True
+        )[:30]
+        
+        # Сортируем остальные списки
         top_authors = sorted(authors.items(), key=lambda x: x[1], reverse=True)[:30]
-        top_affiliations = sorted(affiliations.items(), key=lambda x: x[1], reverse=True)[:30]
         top_countries = sorted(countries.items(), key=lambda x: x[1], reverse=True)[:30]
         top_journals = sorted(journals.items(), key=lambda x: x[1], reverse=True)[:30]
         top_publishers = sorted(publishers.items(), key=lambda x: x[1], reverse=True)[:30]
@@ -2878,7 +2982,7 @@ class JournalAnalyzer:
         return {
             'total_citing_works': total_citing,
             'top_authors': [{'name': name, 'count': count} for name, count in top_authors],
-            'top_affiliations': [{'name': name, 'count': count} for name, count in top_affiliations],
+            'top_affiliations': top_affiliations,
             'top_countries': [{'name': name, 'count': count} for name, count in top_countries],
             'top_journals': [{'name': name, 'count': count} for name, count in top_journals],
             'top_publishers': [{'name': name, 'count': count} for name, count in top_publishers]
@@ -4125,13 +4229,14 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                     
                     <!-- Top Affiliations -->
                     <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">{t('top_affiliations')}</h3>
-                    <div class="scrollable-table">
+                    <div class="scrollable-table" style="max-height: 300px;">
                         <table id="aff_table">
                             <thead>
                                 <tr>
                                     <th class="sortable" onclick="sortTable('aff_table', 0)">{t('rank')}</th>
                                     <th class="sortable" onclick="sortTable('aff_table', 1)">{t('affiliations')}</th>
                                     <th class="sortable" onclick="sortTable('aff_table', 2)">{t('publications_count')}</th>
+                                    <th>ROR ID</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -4141,6 +4246,10 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                         <td>{i+1}</td>
                                         <td>{html.escape(aff['name'])}</td>
                                         <td>{get_color_scale_html(aff['count'], max_aff_count)}</td>
+                                        <td>
+                                            {f'<a href="https://colab.ws/organizations/{aff["ror_short"]}" target="_blank" class="doi-link" style="font-family: monospace; font-size: 11px;">{aff["ror_short"][:8]}...</a>' 
+                                             if aff.get('ror_short') and aff['ror_short'] else '-'}
+                                        </td>
                                     </tr>
                                     '''
                                     for i, aff in enumerate(affiliation_analysis.get('top_affiliations', [])[:30])
@@ -4442,11 +4551,22 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                     <th class="sortable" onclick="sortTable('citing_aff_table', 0)">{t('rank')}</th>
                                     <th class="sortable" onclick="sortTable('citing_aff_table', 1)">{t('affiliations')}</th>
                                     <th class="sortable" onclick="sortTable('citing_aff_table', 2)">{t('citations_count')}</th>
+                                    <th>ROR ID</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {''.join([
-                                    f'<tr><td>{i+1}</td><td>{html.escape(aff["name"])}</td><td>{get_color_scale_html(aff["count"], max_citing_aff)}</td></tr>'
+                                    f'''
+                                    <tr>
+                                        <td>{i+1}</td>
+                                        <td>{html.escape(aff['name'])}</td>
+                                        <td>{get_color_scale_html(aff['count'], max_citing_aff)}</td>
+                                        <td>
+                                            {f'<a href="https://colab.ws/organizations/{aff["ror_short"]}" target="_blank" class="doi-link" style="font-family: monospace; font-size: 11px;">{aff["ror_short"][:8]}...</a>' 
+                                             if aff.get('ror_short') and aff['ror_short'] else '-'}
+                                        </td>
+                                    </tr>
+                                    '''
                                     for i, aff in enumerate(citing.get('top_affiliations', [])[:30])
                                 ])}
                             </tbody>
