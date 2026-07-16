@@ -4727,7 +4727,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                         <div style="margin: 4px 0;">
                             <div class="progress-bar-label">
                                 <span>{i+1}. {html.escape(topic[0][:50])}{'...' if len(topic[0]) > 50 else ''}</span>
-                                <span class="label-value">{topic[1]} {t('citations')}</span>
+                                <span class="label-value">{topic[1]} {t('publications')}</span>
                             </div>
                             <div class="progress-bar-container">
                                 <div class="progress-bar-fill animate" style="width: {topic[1]/topics.get('top_cited_topics', [{}])[0][1]*100 if topics.get('top_cited_topics') and topics.get('top_cited_topics')[0][1] > 0 else 0:.1f}%; background: linear-gradient(90deg, {primary}, {secondary});">
@@ -4746,7 +4746,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                         <div style="margin: 4px 0;">
                             <div class="progress-bar-label">
                                 <span>{i+1}. {html.escape(subtopic[0][:50])}{'...' if len(subtopic[0]) > 50 else ''}</span>
-                                <span class="label-value">{subtopic[1]} {t('citations')}</span>
+                                <span class="label-value">{subtopic[1]} {t('publications')}</span>
                             </div>
                             <div class="progress-bar-container">
                                 <div class="progress-bar-fill animate" style="width: {subtopic[1]/topics.get('top_cited_subtopics', [{}])[0][1]*100 if topics.get('top_cited_subtopics') and topics.get('top_cited_subtopics')[0][1] > 0 else 0:.1f}%; background: linear-gradient(90deg, {primary}, {secondary});">
@@ -4765,7 +4765,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                         <div style="margin: 4px 0;">
                             <div class="progress-bar-label">
                                 <span>{i+1}. {html.escape(field[0][:50])}{'...' if len(field[0]) > 50 else ''}</span>
-                                <span class="label-value">{field[1]} {t('citations')}</span>
+                                <span class="label-value">{field[1]} {t('publications')}</span>
                             </div>
                             <div class="progress-bar-container">
                                 <div class="progress-bar-fill animate" style="width: {field[1]/topics.get('top_cited_fields', [{}])[0][1]*100 if topics.get('top_cited_fields') and topics.get('top_cited_fields')[0][1] > 0 else 0:.1f}%; background: linear-gradient(90deg, {primary}, {secondary});">
@@ -4784,7 +4784,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                         <div style="margin: 4px 0;">
                             <div class="progress-bar-label">
                                 <span>{i+1}. {html.escape(domain[0][:50])}{'...' if len(domain[0]) > 50 else ''}</span>
-                                <span class="label-value">{domain[1]} {t('citations')}</span>
+                                <span class="label-value">{domain[1]} {t('publications')}</span>
                             </div>
                             <div class="progress-bar-container">
                                 <div class="progress-bar-fill animate" style="width: {domain[1]/topics.get('top_cited_domains', [{}])[0][1]*100 if topics.get('top_cited_domains') and topics.get('top_cited_domains')[0][1] > 0 else 0:.1f}%; background: linear-gradient(90deg, {primary}, {secondary});">
@@ -4803,7 +4803,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                         <div style="margin: 4px 0;">
                             <div class="progress-bar-label">
                                 <span>{i+1}. {html.escape(concept[0][:50])}{'...' if len(concept[0]) > 50 else ''}</span>
-                                <span class="label-value">{concept[1]} {t('citations')}</span>
+                                <span class="label-value">{concept[1]} {t('publications')}</span>
                             </div>
                             <div class="progress-bar-container">
                                 <div class="progress-bar-fill animate" style="width: {concept[1]/topics.get('top_cited_concepts', [{}])[0][1]*100 if topics.get('top_cited_concepts') and topics.get('top_cited_concepts')[0][1] > 0 else 0:.1f}%; background: linear-gradient(90deg, {primary}, {secondary});">
