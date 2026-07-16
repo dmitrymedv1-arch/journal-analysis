@@ -2293,7 +2293,7 @@ class JournalAnalyzer:
             if not cursor:
                 break
                 
-            time.sleep(15) # замедление на 2 этапе
+            time.sleep(25) # замедление на 2 этапе
         
         return citing
     
