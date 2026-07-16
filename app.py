@@ -1972,6 +1972,7 @@ def parse_work_metadata(work: Dict) -> Dict:
         authors = []
         author_orcids = []
         authors_with_orcids = []
+        authorships_raw = []  # Сохраняем сырые данные об авторах с их аффилиациями
         
         for auth in work.get('authorships', []):
             raw_author_name = auth.get('raw_author_name', '')
@@ -1992,6 +1993,18 @@ def parse_work_metadata(work: Dict) -> Dict:
                     'name': raw_author_name,
                     'orcid': author_orcid.replace('https://orcid.org/', '') if author_orcid else None
                 })
+                
+                # Сохраняем сырые данные об авторах с их аффилиациями
+                authorships_raw.append({
+                    'author': raw_author_name,
+                    'orcid': author_orcid,
+                    'institutions': auth.get('institutions', []),
+                    'countries': auth.get('countries', []),
+                    'raw_affiliation_strings': auth.get('raw_affiliation_strings', [])
+                })
+        
+        # Сохраняем authorships_raw для детального анализа стран
+        parsed['authorships_raw'] = authorships_raw
         
         # ===== СОБИРАЕМ АФФИЛИАЦИИ ТОЛЬКО ИЗ institutions (С ROR) =====
         affiliations = []
@@ -2014,7 +2027,6 @@ def parse_work_metadata(work: Dict) -> Dict:
                         if country_name and country_name not in affiliation_countries:
                             affiliation_countries.append(country_name)
                     
-                    # Сохраняем institution с ROR для детальной информации
                     institutions.append({
                         'id': inst.get('id', ''),
                         'display_name': inst.get('display_name', ''),
@@ -2694,11 +2706,13 @@ class JournalAnalyzer:
         }
     
     def _analyze_geographic(self) -> Dict:
-        """Analyze geographic data (unique countries per work)"""
-        # Unique Countries per Publication (Collaboration Level)
-        unique_countries_per_pub = []
+        """Analyze geographic data with two metrics: Unique (per work) and Author-based (per author)"""
         
-        # Authors per Country (Individual Distribution)
+        # ---- METRIC 1: UNIQUE COUNTRIES PER WORK (Collaboration Level) ----
+        unique_countries_per_pub = []
+        unique_countries_distribution = defaultdict(int)
+        
+        # ---- METRIC 2: AUTHOR-BASED COUNTRIES (Individual Distribution) ----
         authors_per_country = defaultdict(int)
         
         # Collaboration Patterns
@@ -2715,33 +2729,55 @@ class JournalAnalyzer:
                 
                 # Собираем уникальные страны для этой работы
                 work_countries = set()
+                work_countries_with_authors = []  # Список стран для каждого автора
                 
-                for inst in meta.get('institutions', []):
-                    country_code = inst.get('country_code', '')
-                    if country_code:
-                        country_name = get_full_country_name(country_code)
-                        if country_name and country_name != 'Unknown':
-                            work_countries.add(country_name)
+                # Собираем страны из institutions для каждого автора
+                authorships = meta.get('authorships_raw', [])
+                if not authorships:
+                    # Если нет authorships_raw, пытаемся получить из institutions
+                    for inst in meta.get('institutions', []):
+                        country_code = inst.get('country_code', '')
+                        if country_code:
+                            country_name = get_full_country_name(country_code)
+                            if country_name and country_name != 'Unknown':
+                                work_countries.add(country_name)
+                                # Для каждого автора добавляем эту страну (приблизительно)
+                                for _ in meta.get('authors', []):
+                                    authors_per_country[country_name] += 1
+                else:
+                    # Для каждого автора определяем его страны
+                    for auth in authorships:
+                        author_countries = set()
+                        for inst in auth.get('institutions', []):
+                            country_code = inst.get('country_code', '')
+                            if country_code:
+                                country_name = get_full_country_name(country_code)
+                                if country_name and country_name != 'Unknown':
+                                    author_countries.add(country_name)
+                                    work_countries.add(country_name)
+                        
+                        # Если у автора есть страны, добавляем их в authors_per_country
+                        # Каждый автор учитывается отдельно
+                        if author_countries:
+                            for country in author_countries:
+                                authors_per_country[country] += 1
+                        else:
+                            # Если у автора нет стран, используем первую страну из работы
+                            if work_countries:
+                                country = list(work_countries)[0]
+                                authors_per_country[country] += 1
                 
-                # Если нет стран из institutions, пробуем из affiliation_countries
-                if not work_countries:
-                    work_countries = set(meta.get('affiliation_countries', []))
-                    work_countries = {c for c in work_countries if c and c != 'Unknown'}
+                # Если нет данных по авторам, но есть страны из institutions
+                if not authors_per_country and work_countries:
+                    for country in work_countries:
+                        # Приблизительно: предполагаем, что у каждого автора та же страна
+                        for _ in meta.get('authors', []):
+                            authors_per_country[country] += 1
                 
                 if work_countries:
-                    unique_countries_per_pub.append(len(work_countries))
-                    
-                    # Authors per country - используем данные из authorships
-                    # Для каждого автора определяем страну (берем первую страну из аффилиаций автора)
-                    for auth in meta.get('authors_with_orcids', []):
-                        # Пытаемся найти страну автора через его аффилиации
-                        author_country = None
-                        # Ищем в institutions с этим автором
-                        # Для простоты используем первую страну из общих аффилиаций работы
-                        if work_countries:
-                            author_country = list(work_countries)[0]
-                        if author_country:
-                            authors_per_country[author_country] += 1
+                    unique_count = len(work_countries)
+                    unique_countries_per_pub.append(unique_count)
+                    unique_countries_distribution[unique_count] += 1
                     
                     # Collaboration Patterns
                     if len(work_countries) == 1:
@@ -2759,14 +2795,21 @@ class JournalAnalyzer:
         # Сортируем пары стран по частоте
         sorted_pairs = sorted(country_pairs.items(), key=lambda x: x[1], reverse=True)[:20]
         
+        # Сортируем authors_per_country
+        sorted_authors_per_country = sorted(
+            authors_per_country.items(), 
+            key=lambda x: x[1], 
+            reverse=True
+        )
+        
         return {
             'unique_countries_per_publication': {
                 'avg': np.mean(unique_countries_per_pub) if unique_countries_per_pub else 0,
                 'max': max(unique_countries_per_pub) if unique_countries_per_pub else 0,
                 'min': min(unique_countries_per_pub) if unique_countries_per_pub else 0,
-                'distribution': dict(Counter(unique_countries_per_pub))
+                'distribution': dict(unique_countries_distribution)
             },
-            'authors_per_country': dict(authors_per_country),
+            'authors_per_country': dict(sorted_authors_per_country),
             'collaboration_patterns': {
                 'single_country': single_country_papers,
                 'multi_country': multi_country_papers,
@@ -3304,6 +3347,11 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
     max_analyzed_norm = max([t['analyzed_norm_count'] for t in topics_data]) if topics_data else 1
     max_citing_norm = max([t['citing_norm_count'] for t in topics_data]) if topics_data else 1
     max_total_norm = max([t['total_norm_count'] for t in topics_data]) if topics_data else 1
+
+    # ===== ВЫЧИСЛЯЕМ МАКСИМУМЫ ДЛЯ СТРАН =====
+    unique_distribution = geographic.get('unique_countries_per_publication', {}).get('distribution', {})
+    max_unique_distribution = max(unique_distribution.values()) if unique_distribution else 1
+    max_country_count_author = max(geographic.get('authors_per_country', {}).values()) if geographic.get('authors_per_country') else 1
     
     # Max values for color scales
     max_publications = max([a.get('publications', 0) for a in author_analysis.get('top_authors', [])]) if author_analysis.get('top_authors') else 1
@@ -4370,23 +4418,61 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                         </div>
                     </div>
                     
-                    <!-- Authors per Country -->
-                    <h4 style="color: {primary}; margin-top: 15px; font-size: 14px;">{t('authors_per_country')}</h4>
-                    <div class="scrollable-table" style="max-height: 300px;">
-                        <table id="country_table">
-                            <thead>
-                                <tr>
-                                    <th class="sortable" onclick="sortTable('country_table', 0)">{t('countries')}</th>
-                                    <th class="sortable" onclick="sortTable('country_table', 1)">{t('authors')}</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {''.join([
-                                    f'<tr><td>{html.escape(country)}</td><td>{get_color_scale_html(count, max_country_count)}</td></tr>'
-                                    for country, count in sorted(geographic.get('authors_per_country', {}).items(), key=lambda x: x[1], reverse=True)[:30]
-                                ])}
-                            </tbody>
-                        </table>
+                    <!-- Countries -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 15px;">
+                        
+                        <!-- UNIQUE COUNTRIES PER PUBLICATION -->
+                        <div>
+                            <h4 style="color: {primary}; font-size: 14px; margin-bottom: 10px;">{t('unique_countries_per_publication')}</h4>
+                            <div class="scrollable-table" style="max-height: 300px;">
+                                <table id="country_unique_table">
+                                    <thead>
+                                        <tr>
+                                            <th>{t('country_count')}</th>
+                                            <th>{t('publications')}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {''.join([
+                                            f'''
+                                            <tr>
+                                                <td>{count}</td>
+                                                <td>{get_color_scale_html(freq, max_unique_distribution)}</td>
+                                            </tr>
+                                            '''
+                                            for count, freq in sorted(geographic.get('unique_countries_per_publication', {}).get('distribution', {}).items())
+                                        ])}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        <!-- AUTHORS PER COUNTRY -->
+                        <div>
+                            <h4 style="color: {primary}; font-size: 14px; margin-bottom: 10px;">{t('authors_per_country')}</h4>
+                            <div class="scrollable-table" style="max-height: 300px;">
+                                <table id="country_author_table">
+                                    <thead>
+                                        <tr>
+                                            <th class="sortable" onclick="sortTable('country_author_table', 0)">{t('countries')}</th>
+                                            <th class="sortable" onclick="sortTable('country_author_table', 1)">{t('authors')}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {''.join([
+                                            f'''
+                                            <tr>
+                                                <td>{html.escape(country)}</td>
+                                                <td>{get_color_scale_html(count, max_country_count_author)}</td>
+                                            </tr>
+                                            '''
+                                            for country, count in sorted(geographic.get('authors_per_country', {}).items(), key=lambda x: x[1], reverse=True)[:30]
+                                        ])}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        
                     </div>
                     
                     <!-- Collaboration Couples -->
