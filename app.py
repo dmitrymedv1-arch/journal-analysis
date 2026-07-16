@@ -2230,6 +2230,8 @@ class JournalAnalyzer:
         
         citing_map = {}
         to_process = [row for row in self.publications if row.get('Cited_by_count', 0) > 0 and row.get('DOI')]
+
+        citing_workers = max(1, self.max_workers // 3)
         
         if SHOW_DEBUG_LOGS:
             print(f"⚡ Запуск параллельного сбора цитирующих ({self.max_workers} потоков)...")
