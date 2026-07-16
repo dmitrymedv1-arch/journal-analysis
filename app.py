@@ -1500,6 +1500,36 @@ def get_heatmap_cell_color(value: float, max_value: float) -> str:
     # More opaque for heatmap
     return f"rgba({r}, {g}, {b}, 0.45)"
 
+def get_color_scale_html_with_format(value: float, max_value: float, min_value: float = 0, decimals: int = 3) -> str:
+    """
+    Get color scale HTML with formatted number (for Topics table with 3 decimal places)
+    """
+    if max_value == min_value:
+        return f'<span class="color-scale-value" style="background: rgba(200,200,200,0.15); color: #1a1a1a;">{value:.{decimals}f}</span>'
+    
+    # Normalize value to 0-1 range
+    normalized = (value - min_value) / (max_value - min_value)
+    normalized = max(0, min(1, normalized))
+    
+    # Define colors: Red (0) -> Yellow (0.5) -> Green (1)
+    if normalized < 0.5:
+        ratio = normalized / 0.5
+        r = 200
+        g = int(200 * ratio)
+        b = 50
+    else:
+        ratio = (normalized - 0.5) / 0.5
+        r = int(200 * (1 - ratio))
+        g = 200
+        b = 50
+    
+    bg_color = f"rgba({r}, {g}, {b}, 0.35)"
+    
+    # Форматируем число с нужным количеством знаков
+    formatted_value = f"{value:.{decimals}f}"
+    
+    return f'<span class="color-scale-value" style="background: {bg_color}; color: #1a1a1a;">{formatted_value}</span>'
+
 def format_ror_link(ror_short: str) -> str:
     """
     Format ROR ID for display in HTML
