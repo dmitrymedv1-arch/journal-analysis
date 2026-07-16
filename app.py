@@ -4453,34 +4453,6 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                             </tbody>
                         </table>
                     </div>
-                        
-                        <!-- AUTHORS PER COUNTRY -->
-                        <div>
-                            <h4 style="color: {primary}; font-size: 14px; margin-bottom: 10px;">{t('authors_per_country')}</h4>
-                            <div class="scrollable-table" style="max-height: 300px;">
-                                <table id="country_author_table">
-                                    <thead>
-                                        <tr>
-                                            <th class="sortable" onclick="sortTable('country_author_table', 0)">{t('countries')}</th>
-                                            <th class="sortable" onclick="sortTable('country_author_table', 1)">{t('authors')}</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {''.join([
-                                            f'''
-                                            <tr>
-                                                <td>{html.escape(country)}</td>
-                                                <td>{get_color_scale_html(count, max_country_count_author)}</td>
-                                            </tr>
-                                            '''
-                                            for country, count in sorted(geographic.get('authors_per_country', {}).items(), key=lambda x: x[1], reverse=True)[:30]
-                                        ])}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                        
-                    </div>
                     
                     <!-- Collaboration Couples -->
                     <h4 style="color: {primary}; margin-top: 15px; font-size: 14px;">{t('collaboration_couples')}</h4>
