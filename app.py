@@ -2216,6 +2216,10 @@ class JournalAnalyzer:
         
         if SHOW_DEBUG_LOGS:
             print(f"✅ Загружено публикаций: {len(self.publications)}")
+            
+        citing_workers = max(1, self.max_workers // 3)  # было self.max_workers, стало self.max_workers // 3
+        if SHOW_DEBUG_LOGS:
+            print(f"   Используется {citing_workers} потоков (было {self.max_workers})")
         
         return publications
     
