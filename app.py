@@ -1800,6 +1800,95 @@ def normalize_author_name(name: str) -> str:
     else:
         return name
 
+def normalize_author_name_for_grouping(name: str) -> str:
+    """
+    Нормализует имя автора для группировки (фамилия + первая буква имени)
+    
+    Примеры:
+    - "D.A. Osinkin" → "Osinkin D"
+    - "Denis Osinkin" → "Osinkin D"
+    - "Dmitry A. Medvedev" → "Medvedev D"
+    - "D. Medvedev" → "Medvedev D"
+    - "Osinkin D.A." → "Osinkin D"
+    """
+    if not name:
+        return name
+    
+    name = name.strip()
+    
+    # Удаляем точки и лишние пробелы
+    name = name.replace('.', ' ')
+    name = ' '.join(name.split())
+    
+    parts = name.split()
+    
+    if len(parts) == 0:
+        return name
+    
+    # Определяем фамилию и инициалы
+    # Если имя в формате "Фамилия И.О." или "Фамилия И"
+    if len(parts) == 2:
+        # Проверяем, является ли первый элемент фамилией (не содержит коротких инициалов)
+        first_part = parts[0]
+        second_part = parts[1]
+        
+        # Если первый элемент короткий (1-2 символа) - это инициал, значит фамилия в конце
+        if len(first_part) <= 2:
+            last_name = second_part
+            first_initial = first_part[0]
+        else:
+            # Иначе фамилия в начале
+            last_name = first_part
+            first_initial = second_part[0]
+        
+        return f"{last_name} {first_initial}"
+    
+    # Если имя в формате "И.О. Фамилия"
+    elif len(parts) >= 3:
+        # Проверяем, есть ли короткие инициалы в начале
+        first_part = parts[0]
+        last_part = parts[-1]
+        
+        if len(first_part) <= 2:
+            # Инициалы в начале, фамилия в конце
+            last_name = last_part
+            first_initial = first_part[0]
+        else:
+            # Имя в начале, фамилия в конце (обычный порядок)
+            last_name = last_part
+            first_initial = parts[0][0]
+        
+        return f"{last_name} {first_initial}"
+    
+    # Если имя в формате "Фамилия И.О." с точками
+    elif len(parts) == 1:
+        # Одиночное имя - пробуем разделить по точке
+        if '.' in name:
+            subparts = name.split('.')
+            if len(subparts) >= 2:
+                last_name = subparts[0].strip()
+                first_initial = subparts[1].strip() if subparts[1] else ''
+                if first_initial:
+                    return f"{last_name} {first_initial[0]}"
+        return name
+    
+    # Если имя в формате "Фамилия, И."
+    elif ',' in name:
+        parts_comma = name.split(',')
+        if len(parts_comma) == 2:
+            last_name = parts_comma[0].strip()
+            first_part = parts_comma[1].strip()
+            first_initial = first_part[0] if first_part else ''
+            return f"{last_name} {first_initial}"
+    
+    # Fallback: берем последнее слово как фамилию, первое как инициал
+    elif len(parts) >= 2:
+        last_name = parts[-1]
+        first_initial = parts[0][0]
+        return f"{last_name} {first_initial}"
+    
+    return name
+
 def format_orcid_id(orcid: str) -> str:
     """Format ORCID ID to full URL"""
     if not orcid or not isinstance(orcid, str):
@@ -3039,7 +3128,7 @@ class JournalAnalyzer:
     
     def _analyze_citing_works(self) -> Dict:
         """Analyze citing works with ROR-based affiliation aggregation (per work, not per author)
-        and author aggregation with ORCID deduplication"""
+        and author aggregation with ORCID deduplication and name normalization"""
         
         total_citing = sum(len(v) for v in self.citing_works.values())
         
@@ -3052,12 +3141,15 @@ class JournalAnalyzer:
         })
         
         # Также собираем статистику по авторам, странам, журналам, издателям
-        # Используем (name, orcid) как ключ для дедупликации авторов
-        authors = defaultdict(lambda: {
-            'name': '',
-            'orcid': None,
-            'count': 0
-        })
+        # Используем словарь для агрегации авторов с дедупликацией
+        # Структура: key -> {'name': best_name, 'orcid': orcid, 'count': count, 'names_seen': set()}
+        authors_aggregated = {}
+        
+        # Для быстрого поиска по ORCID
+        orcid_to_key = {}
+        # Для быстрого поиска по нормализованному имени
+        normalized_to_keys = defaultdict(list)
+        
         countries = defaultdict(int)
         journals = defaultdict(int)
         publishers = defaultdict(int)
@@ -3068,19 +3160,92 @@ class JournalAnalyzer:
                 if doi and doi in self.citations_metadata:
                     meta = self.citations_metadata[doi]
                     
-                    # --- АВТОРЫ (считаем каждого автора, группируем по имени и ORCID) ---
+                    # --- АВТОРЫ (считаем каждого автора, группируем по ORCID и нормализованному имени) ---
                     authors_with_orcids = meta.get('authors_with_orcids', [])
                     for auth in authors_with_orcids:
                         name = auth.get('name', '')
                         orcid = auth.get('orcid')
                         
-                        if name:
-                            # Используем (name, orcid) как ключ для агрегации
-                            key = f"{name}|{orcid if orcid else ''}"
-                            if authors[key]['name'] == '':
-                                authors[key]['name'] = name
-                                authors[key]['orcid'] = orcid
-                            authors[key]['count'] += 1
+                        if not name:
+                            continue
+                        
+                        # Нормализуем имя для группировки
+                        normalized_name = normalize_author_name_for_grouping(name)
+                        
+                        # Определяем ключ для группировки
+                        # Приоритет: ORCID > нормализованное имя
+                        key = None
+                        
+                        # 1. Если есть ORCID, ищем по ORCID
+                        if orcid:
+                            if orcid in orcid_to_key:
+                                key = orcid_to_key[orcid]
+                            else:
+                                # Проверяем, есть ли уже автор с таким нормализованным именем
+                                for existing_key in normalized_to_keys.get(normalized_name, []):
+                                    if existing_key in authors_aggregated:
+                                        # Нашли автора с таким же нормализованным именем
+                                        # Проверяем, есть ли у него ORCID
+                                        existing_orcid = authors_aggregated[existing_key].get('orcid')
+                                        if not existing_orcid:
+                                            # У существующего нет ORCID, перепривязываем к нему
+                                            key = existing_key
+                                            # Обновляем ORCID у существующего
+                                            authors_aggregated[key]['orcid'] = orcid
+                                            # Обновляем маппинг ORCID
+                                            orcid_to_key[orcid] = key
+                                            break
+                                
+                                if key is None:
+                                    # Создаем новую запись
+                                    key = f"orcid_{orcid}"
+                                    authors_aggregated[key] = {
+                                        'name': name,
+                                        'orcid': orcid,
+                                        'count': 0,
+                                        'names_seen': set([name])
+                                    }
+                                    orcid_to_key[orcid] = key
+                                    normalized_to_keys[normalized_name].append(key)
+                        
+                        # 2. Если нет ORCID, используем нормализованное имя
+                        else:
+                            # Ищем по нормализованному имени
+                            found = False
+                            for existing_key in normalized_to_keys.get(normalized_name, []):
+                                if existing_key in authors_aggregated:
+                                    # Проверяем, не привязан ли уже этот автор к другому ORCID
+                                    # Если у найденного есть ORCID, мы не можем объединить без ORCID
+                                    existing_orcid = authors_aggregated[existing_key].get('orcid')
+                                    if not existing_orcid:
+                                        key = existing_key
+                                        found = True
+                                        break
+                            
+                            if not found:
+                                # Создаем новую запись
+                                key = f"name_{normalized_name}_{len(authors_aggregated)}"
+                                authors_aggregated[key] = {
+                                    'name': name,
+                                    'orcid': None,
+                                    'count': 0,
+                                    'names_seen': set([name])
+                                }
+                                normalized_to_keys[normalized_name].append(key)
+                        
+                        # Увеличиваем счетчик для автора
+                        if key:
+                            authors_aggregated[key]['count'] += 1
+                            # Сохраняем все варианты имени для выбора лучшего
+                            authors_aggregated[key]['names_seen'].add(name)
+                            
+                            # Если у нас есть более полное имя, обновляем
+                            current_name = authors_aggregated[key]['name']
+                            # Предпочитаем имена с ORCID или более длинные
+                            if orcid and (not current_name or len(name) > len(current_name)):
+                                authors_aggregated[key]['name'] = name
+                            elif not orcid and len(name) > len(current_name):
+                                authors_aggregated[key]['name'] = name
                     
                     # --- СТРАНЫ (уникальные страны на работу) ---
                     work_countries = set(meta.get('affiliation_countries', []))
@@ -3154,13 +3319,17 @@ class JournalAnalyzer:
             reverse=True
         )[:30]
         
-        # Сортируем остальные списки
+        # Сортируем авторов по частоте
         top_authors = sorted(
-            [{'name': data['name'], 'orcid': data['orcid'], 'count': data['count']} 
-             for data in authors.values() if data['count'] > 0],
+            [{
+                'name': data['name'],
+                'orcid': data['orcid'],
+                'count': data['count']
+            } for data in authors_aggregated.values() if data['count'] > 0],
             key=lambda x: x['count'],
             reverse=True
         )[:30]
+        
         top_countries = sorted(countries.items(), key=lambda x: x[1], reverse=True)[:30]
         top_journals = sorted(journals.items(), key=lambda x: x[1], reverse=True)[:30]
         top_publishers = sorted(publishers.items(), key=lambda x: x[1], reverse=True)[:30]
