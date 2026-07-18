@@ -3414,11 +3414,10 @@ class JournalAnalyzer:
         Calculate 4-year impact factor for the journal if the analysis period
         covers exactly the last 4 years (e.g., 2023-2026 when current year is 2026).
         
-        Impact Factor = (Citations in year N from publications in years N-2 and N-1) / 
-                        (Number of publications in years N-2 and N-1)
+        Impact Factor = (Citations in year N-1 from publications in years N-3 and N-2) / 
+                        (Number of publications in years N-3 and N-2)
         
-        Where N = current year (e.g., 2026), so N-2 = 2024, N-1 = 2025
-        But we use publications from 2023-2024 and citations from 2025
+        Where N = current year
         """
         current_year = datetime.now().year
         
@@ -3434,31 +3433,36 @@ class JournalAnalyzer:
         
         start_year, end_year = period
         
-        # Check if this is exactly the last 4 years: start_year == current_year - 3 and end_year == current_year
+        # Check if this covers the last 4 years: start_year should be current_year - 3 and end_year should be current_year
         if start_year != current_year - 3 or end_year != current_year:
             return {
                 'applicable': False,
                 'reason': f'not_last_4_years: {start_year}-{end_year} vs {current_year-3}-{current_year}'
             }
         
-        # Find publications from 2023 and 2024 (N-3 and N-2)
-        pub_years_2023_2024 = [p for p in self.publications if p.get('Year') in [current_year - 3, current_year - 2]]
+        # Define publication years (N-3 and N-2) and citation year (N-1)
+        pub_year_1 = current_year - 3  # e.g., 2023
+        pub_year_2 = current_year - 2  # e.g., 2024
+        citing_year = current_year - 1  # e.g., 2025
         
-        if not pub_years_2023_2024:
+        # Find publications from pub_year_1 and pub_year_2
+        pub_years = [p for p in self.publications if p.get('Year') in [pub_year_1, pub_year_2]]
+        
+        if not pub_years:
             return {
                 'applicable': False,
-                'reason': 'no_publications_2023_2024',
-                'publications_2023_2024': 0
+                'reason': f'no_publications_{pub_year_1}_{pub_year_2}',
+                'publications_count': 0
             }
         
         # Count publications
-        num_pubs = len(pub_years_2023_2024)
+        num_pubs = len(pub_years)
         
-        # Count citations from 2025 (N-1) to these publications
-        citations_from_2025 = 0
-        citing_papers_2025 = set()
+        # Count citations from citing_year to these publications
+        citations_from_citing_year = 0
+        citing_papers_set = set()
         
-        for p in pub_years_2023_2024:
+        for p in pub_years:
             doi = p.get('DOI')
             if not doi:
                 continue
@@ -3469,22 +3473,23 @@ class JournalAnalyzer:
                 cite_meta = self.citations_metadata.get(cite_doi, {})
                 cite_year = cite_meta.get('publication_year')
                 
-                if cite_year == current_year - 1:  # 2025
-                    citations_from_2025 += 1
-                    citing_papers_2025.add(cite_doi)
+                if cite_year == citing_year:
+                    citations_from_citing_year += 1
+                    citing_papers_set.add(cite_doi)
         
         # Calculate impact factor
-        impact_factor = citations_from_2025 / num_pubs if num_pubs > 0 else 0
+        impact_factor = citations_from_citing_year / num_pubs if num_pubs > 0 else 0
         
         return {
             'applicable': True,
-            'publications_2023_2024': num_pubs,
-            'citations_from_2025': citations_from_2025,
-            'unique_citing_papers_2025': len(citing_papers_2025),
+            'publications_count': num_pubs,
+            'publication_years': [pub_year_1, pub_year_2],
+            'citations_from_citing_year': citations_from_citing_year,
+            'unique_citing_papers': len(citing_papers_set),
+            'citing_year': citing_year,
             'impact_factor': impact_factor,
-            'year_range': f"{current_year-3}-{current_year}",
-            'publication_years': [current_year - 3, current_year - 2],
-            'citing_year': current_year - 1
+            'year_range': f"{pub_year_1}-{pub_year_2}",
+            'period': f"{start_year}-{end_year}"
         }
 
 # ============================================
@@ -4516,20 +4521,23 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                 <div style="font-size: 11px; color: #7F8C8D;">{t('impact_factor')}</div>
                             </div>
                             <div style="background: white; padding: 10px 14px; border-radius: 8px; text-align: center;">
-                                <div style="font-size: 20px; font-weight: 700; color: #2C3E50;">{impact_factor.get('publications_2023_2024', 0)}</div>
-                                <div style="font-size: 11px; color: #7F8C8D;">{t('impact_factor_years')}</div>
+                                <div style="font-size: 20px; font-weight: 700; color: #2C3E50;">{impact_factor.get('publications_count', 0)}</div>
+                                <div style="font-size: 11px; color: #7F8C8D;">Publications {impact_factor.get('publication_years', [])[0]}-{impact_factor.get('publication_years', [])[1] if len(impact_factor.get('publication_years', [])) > 1 else ''}</div>
                             </div>
                             <div style="background: white; padding: 10px 14px; border-radius: 8px; text-align: center;">
-                                <div style="font-size: 20px; font-weight: 700; color: #2C3E50;">{impact_factor.get('citations_from_2025', 0)}</div>
-                                <div style="font-size: 11px; color: #7F8C8D;">{t('impact_factor_citations')}</div>
+                                <div style="font-size: 20px; font-weight: 700; color: #2C3E50;">{impact_factor.get('citations_from_citing_year', 0)}</div>
+                                <div style="font-size: 11px; color: #7F8C8D;">Citations from {impact_factor.get('citing_year', 'N/A')}</div>
                             </div>
                             <div style="background: white; padding: 10px 14px; border-radius: 8px; text-align: center;">
-                                <div style="font-size: 16px; font-weight: 700; color: #2C3E50;">{impact_factor.get('unique_citing_papers_2025', 0)}</div>
-                                <div style="font-size: 11px; color: #7F8C8D;">Unique citing papers (2025)</div>
+                                <div style="font-size: 16px; font-weight: 700; color: #2C3E50;">{impact_factor.get('unique_citing_papers', 0)}</div>
+                                <div style="font-size: 11px; color: #7F8C8D;">Unique citing papers ({impact_factor.get('citing_year', 'N/A')})</div>
                             </div>
                         </div>
                         <div style="font-size: 12px; color: #7F8C8D; margin-top: 8px; text-align: center; font-style: italic;">
-                            {t('impact_factor_calculation')}: {impact_factor.get('citations_from_2025', 0)} / {impact_factor.get('publications_2023_2024', 0)} = {impact_factor.get('impact_factor', 0):.3f}
+                            {t('impact_factor_calculation')}: {impact_factor.get('citations_from_citing_year', 0)} / {impact_factor.get('publications_count', 0)} = {impact_factor.get('impact_factor', 0):.3f}
+                        </div>
+                        <div style="font-size: 11px; color: #7F8C8D; margin-top: 4px; text-align: center;">
+                            Period: {impact_factor.get('period', 'N/A')} | Publications: {impact_factor.get('publication_years', [])[0]}-{impact_factor.get('publication_years', [])[1] if len(impact_factor.get('publication_years', [])) > 1 else ''} | Citing year: {impact_factor.get('citing_year', 'N/A')}
                         </div>
                     </div>
                     ''' if impact_factor.get('applicable', False) else ''}
