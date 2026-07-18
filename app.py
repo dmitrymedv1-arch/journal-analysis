@@ -327,11 +327,11 @@ LANG = {
         'top_citing_journals': 'Top Citing Journals',
         'top_citing_publishers': 'Top Citing Publishers',
         'topics_analysis': 'Topics Analysis',
-        'analyzed_count': 'Analyzed Count',
-        'citing_count': 'Citing Count',
-        'analyzed_norm_count': 'Analyzed Norm Count',
-        'citing_norm_count': 'Citing Norm Count',
-        'total_norm_count': 'Total Norm Count',
+        'analyzed_count': 'Count in Analyzed',
+        'citing_count': 'Count in Citing',
+        'analyzed_norm_count': 'Norm. Count in Analyzed',
+        'citing_norm_count': 'Norm. Count in Citing',
+        'total_norm_count': 'Total Norm. Count',
         'first_year': 'First Year',
         'peak_year': 'Peak Year',
         'top_cited_topics': 'Top Cited Topics',
@@ -366,6 +366,26 @@ LANG = {
         'days': 'days',
         'analysis_data_from_cache': 'Using cached data from previous analysis',
         'regenerate_report': 'Regenerate Report',
+        # ====== НОВЫЕ КЛЮЧИ ДЛЯ IMPACT FACTOR ======
+        'impact_factor': 'Impact Factor (4-year)',
+        'impact_factor_description': 'Citations in 2025 to 2023-2024 publications / number of 2023-2024 publications',
+        'impact_factor_years': '2023-2024 publications cited in 2025',
+        'impact_factor_citations': 'Citations from 2025',
+        'impact_factor_not_applicable': 'Impact Factor not applicable (period ≠ last 4 years)',
+        'impact_factor_calculation': 'Impact Factor calculation for last 4 years',
+        # ====== НОВЫЕ КЛЮЧИ ДЛЯ AUTHOR DISTRIBUTION ======
+        'author_distribution': 'Author Distribution',
+        'author_distribution_analyzed': 'Distribution of Analyzed Publications by Author Count',
+        'author_distribution_citing': 'Distribution of Citing Publications by Author Count',
+        'authors_per_paper': 'Authors per paper',
+        'num_papers': 'Number of papers',
+        'num_citing_papers': 'Number of citing papers',
+        'one_author': '1 author',
+        'two_authors': '2 authors',
+        'three_authors': '3 authors',
+        'four_plus_authors': '4+ authors',
+        # ====== НОВЫЕ КЛЮЧИ ДЛЯ ORCID IN CITING AUTHORS ======
+        'citing_author_orcid': 'ORCID',
     },
     'ru': {
         'app_title': 'Advanced Journal Analysis Tool',
@@ -656,6 +676,26 @@ LANG = {
         'days': 'дней',
         'analysis_data_from_cache': '📦 Использованы данные из предыдущего анализа',
         'regenerate_report': '🔄 Перегенерировать отчет',
+        # ====== НОВЫЕ КЛЮЧИ ДЛЯ IMPACT FACTOR (РУССКИЙ) ======
+        'impact_factor': 'Импакт-фактор (4-летний)',
+        'impact_factor_description': 'Цитирования в 2025 году публикаций 2023-2024 / количество публикаций 2023-2024',
+        'impact_factor_years': 'Публикации 2023-2024, процитированные в 2025',
+        'impact_factor_citations': 'Цитирования из 2025 года',
+        'impact_factor_not_applicable': 'Импакт-фактор не применим (период ≠ последние 4 года)',
+        'impact_factor_calculation': 'Расчет импакт-фактора для последних 4 лет',
+        # ====== НОВЫЕ КЛЮЧИ ДЛЯ AUTHOR DISTRIBUTION (РУССКИЙ) ======
+        'author_distribution': 'Распределение по числу авторов',
+        'author_distribution_analyzed': 'Распределение анализируемых публикаций по числу авторов',
+        'author_distribution_citing': 'Распределение цитирующих публикаций по числу авторов',
+        'authors_per_paper': 'Авторов на статью',
+        'num_papers': 'Количество статей',
+        'num_citing_papers': 'Количество цитирующих статей',
+        'one_author': '1 автор',
+        'two_authors': '2 автора',
+        'three_authors': '3 автора',
+        'four_plus_authors': '4+ авторов',
+        # ====== НОВЫЕ КЛЮЧИ ДЛЯ ORCID IN CITING AUTHORS (РУССКИЙ) ======
+        'citing_author_orcid': 'ORCID',
     }
 }
 
@@ -2420,6 +2460,12 @@ class JournalAnalyzer:
         # 8. Detailed citations
         results['detailed_citations'] = self._get_detailed_citations()
         
+        # 9. Author distribution (analyzed and citing)
+        results['author_distribution'] = self._analyze_author_distribution()
+        
+        # 10. Impact factor (4-year)
+        results['impact_factor'] = self._calculate_impact_factor()
+        
         self.analysis_results = results
         
         if progress_callback:
@@ -2992,7 +3038,9 @@ class JournalAnalyzer:
         }
     
     def _analyze_citing_works(self) -> Dict:
-        """Analyze citing works with ROR-based affiliation aggregation (per work, not per author)"""
+        """Analyze citing works with ROR-based affiliation aggregation (per work, not per author)
+        and author aggregation with ORCID deduplication"""
+        
         total_citing = sum(len(v) for v in self.citing_works.values())
         
         # Используем ROR ID для группировки аффилиаций
@@ -3004,7 +3052,12 @@ class JournalAnalyzer:
         })
         
         # Также собираем статистику по авторам, странам, журналам, издателям
-        authors = defaultdict(int)
+        # Используем (name, orcid) как ключ для дедупликации авторов
+        authors = defaultdict(lambda: {
+            'name': '',
+            'orcid': None,
+            'count': 0
+        })
         countries = defaultdict(int)
         journals = defaultdict(int)
         publishers = defaultdict(int)
@@ -3015,9 +3068,19 @@ class JournalAnalyzer:
                 if doi and doi in self.citations_metadata:
                     meta = self.citations_metadata[doi]
                     
-                    # --- АВТОРЫ (считаем каждого автора) ---
-                    for author in meta.get('authors', []):
-                        authors[author] += 1
+                    # --- АВТОРЫ (считаем каждого автора, группируем по имени и ORCID) ---
+                    authors_with_orcids = meta.get('authors_with_orcids', [])
+                    for auth in authors_with_orcids:
+                        name = auth.get('name', '')
+                        orcid = auth.get('orcid')
+                        
+                        if name:
+                            # Используем (name, orcid) как ключ для агрегации
+                            key = f"{name}|{orcid if orcid else ''}"
+                            if authors[key]['name'] == '':
+                                authors[key]['name'] = name
+                                authors[key]['orcid'] = orcid
+                            authors[key]['count'] += 1
                     
                     # --- СТРАНЫ (уникальные страны на работу) ---
                     work_countries = set(meta.get('affiliation_countries', []))
@@ -3092,14 +3155,19 @@ class JournalAnalyzer:
         )[:30]
         
         # Сортируем остальные списки
-        top_authors = sorted(authors.items(), key=lambda x: x[1], reverse=True)[:30]
+        top_authors = sorted(
+            [{'name': data['name'], 'orcid': data['orcid'], 'count': data['count']} 
+             for data in authors.values() if data['count'] > 0],
+            key=lambda x: x['count'],
+            reverse=True
+        )[:30]
         top_countries = sorted(countries.items(), key=lambda x: x[1], reverse=True)[:30]
         top_journals = sorted(journals.items(), key=lambda x: x[1], reverse=True)[:30]
         top_publishers = sorted(publishers.items(), key=lambda x: x[1], reverse=True)[:30]
         
         return {
             'total_citing_works': total_citing,
-            'top_authors': [{'name': name, 'count': count} for name, count in top_authors],
+            'top_authors': [{'name': item['name'], 'orcid': item['orcid'], 'count': item['count']} for item in top_authors],
             'top_affiliations': top_affiliations,
             'top_countries': [{'name': name, 'count': count} for name, count in top_countries],
             'top_journals': [{'name': name, 'count': count} for name, count in top_journals],
@@ -3278,6 +3346,146 @@ class JournalAnalyzer:
             }
         
         return detailed
+    
+    def _analyze_author_distribution(self) -> Dict:
+        """Analyze distribution of publications by number of authors
+        
+        Returns:
+            Dict with two keys:
+            - 'analyzed': distribution for analyzed publications
+            - 'citing': distribution for citing publications
+        """
+        # --- ANALYZED PUBLICATIONS ---
+        analyzed_distribution = defaultdict(int)
+        analyzed_total = 0
+        
+        for p in self.publications:
+            doi = p.get('DOI')
+            if doi and doi in self.publications_metadata:
+                meta = self.publications_metadata[doi]
+                author_count = meta.get('author_count', 0)
+                if author_count > 0:
+                    # Группируем: 1, 2, 3, 4+
+                    if author_count == 1:
+                        analyzed_distribution[1] += 1
+                    elif author_count == 2:
+                        analyzed_distribution[2] += 1
+                    elif author_count == 3:
+                        analyzed_distribution[3] += 1
+                    else:
+                        analyzed_distribution['4+'] += 1
+                    analyzed_total += 1
+        
+        # --- CITING PUBLICATIONS ---
+        citing_distribution = defaultdict(int)
+        citing_total = 0
+        
+        for citing_list in self.citing_works.values():
+            for cite in citing_list:
+                doi = cite.get('doi') if isinstance(cite, dict) else cite
+                if doi and doi in self.citations_metadata:
+                    meta = self.citations_metadata[doi]
+                    author_count = meta.get('author_count', 0)
+                    if author_count > 0:
+                        # Группируем: 1, 2, 3, 4+
+                        if author_count == 1:
+                            citing_distribution[1] += 1
+                        elif author_count == 2:
+                            citing_distribution[2] += 1
+                        elif author_count == 3:
+                            citing_distribution[3] += 1
+                        else:
+                            citing_distribution['4+'] += 1
+                        citing_total += 1
+        
+        return {
+            'analyzed': {
+                'distribution': dict(analyzed_distribution),
+                'total': analyzed_total
+            },
+            'citing': {
+                'distribution': dict(citing_distribution),
+                'total': citing_total
+            }
+        }
+    
+    def _calculate_impact_factor(self) -> Dict:
+        """
+        Calculate 4-year impact factor for the journal if the analysis period
+        covers exactly the last 4 years (e.g., 2023-2026 when current year is 2026).
+        
+        Impact Factor = (Citations in year N from publications in years N-2 and N-1) / 
+                        (Number of publications in years N-2 and N-1)
+        
+        Where N = current year (e.g., 2026), so N-2 = 2024, N-1 = 2025
+        But we use publications from 2023-2024 and citations from 2025
+        """
+        current_year = datetime.now().year
+        
+        # Parse period
+        period = self.parse_period()
+        
+        # Check if period is a range
+        if not isinstance(period, tuple):
+            return {
+                'applicable': False,
+                'reason': 'period_not_range'
+            }
+        
+        start_year, end_year = period
+        
+        # Check if this is exactly the last 4 years: start_year == current_year - 3 and end_year == current_year
+        if start_year != current_year - 3 or end_year != current_year:
+            return {
+                'applicable': False,
+                'reason': f'not_last_4_years: {start_year}-{end_year} vs {current_year-3}-{current_year}'
+            }
+        
+        # Find publications from 2023 and 2024 (N-3 and N-2)
+        pub_years_2023_2024 = [p for p in self.publications if p.get('Year') in [current_year - 3, current_year - 2]]
+        
+        if not pub_years_2023_2024:
+            return {
+                'applicable': False,
+                'reason': 'no_publications_2023_2024',
+                'publications_2023_2024': 0
+            }
+        
+        # Count publications
+        num_pubs = len(pub_years_2023_2024)
+        
+        # Count citations from 2025 (N-1) to these publications
+        citations_from_2025 = 0
+        citing_papers_2025 = set()
+        
+        for p in pub_years_2023_2024:
+            doi = p.get('DOI')
+            if not doi:
+                continue
+            
+            citing_list = self.citing_works.get(doi, [])
+            for cite in citing_list:
+                cite_doi = cite.get('doi') if isinstance(cite, dict) else cite
+                cite_meta = self.citations_metadata.get(cite_doi, {})
+                cite_year = cite_meta.get('publication_year')
+                
+                if cite_year == current_year - 1:  # 2025
+                    citations_from_2025 += 1
+                    citing_papers_2025.add(cite_doi)
+        
+        # Calculate impact factor
+        impact_factor = citations_from_2025 / num_pubs if num_pubs > 0 else 0
+        
+        return {
+            'applicable': True,
+            'publications_2023_2024': num_pubs,
+            'citations_from_2025': citations_from_2025,
+            'unique_citing_papers_2025': len(citing_papers_2025),
+            'impact_factor': impact_factor,
+            'year_range': f"{current_year-3}-{current_year}",
+            'publication_years': [current_year - 3, current_year - 2],
+            'citing_year': current_year - 1
+        }
 
 # ============================================
 # ФУНКЦИИ ДЛЯ ГЕНЕРАЦИИ ОТЧЕТОВ
@@ -3328,6 +3536,8 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
     citing = results.get('citing_analysis', {})
     topics = results.get('topics_analysis', {})
     detailed_citations = results.get('detailed_citations', {})
+    author_distribution = results.get('author_distribution', {})
+    impact_factor = results.get('impact_factor', {})
     
     # Все публикации для таблицы
     all_publications = []
@@ -3393,6 +3603,23 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
         [y for row in citation.get('heatmap', []) for y in row.keys() if y != 'publication_year']
     ))
     
+    # ===== AUTHOR DISTRIBUTION DATA =====
+    analyzed_dist = author_distribution.get('analyzed', {}).get('distribution', {})
+    analyzed_total = author_distribution.get('analyzed', {}).get('total', 0)
+    citing_dist = author_distribution.get('citing', {}).get('distribution', {})
+    citing_total = author_distribution.get('citing', {}).get('total', 0)
+    
+    # Ensure all categories exist for progress bars
+    for cat in [1, 2, 3, '4+']:
+        if cat not in analyzed_dist:
+            analyzed_dist[cat] = 0
+        if cat not in citing_dist:
+            citing_dist[cat] = 0
+    
+    # Max values for author distribution color scales
+    max_analyzed_dist = max(analyzed_dist.values()) if analyzed_dist else 1
+    max_citing_dist = max(citing_dist.values()) if citing_dist else 1
+    
     # HTML generation
     html_content = f"""
     <!DOCTYPE html>
@@ -3455,6 +3682,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                 opacity: 0.7;
                 padding: 8px 12px 4px 12px;
                 font-weight: 600;
+                display: none;
             }}
             .sidebar a {{
                 color: white;
@@ -3477,18 +3705,6 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                 font-size: 16px;
                 width: 24px;
                 text-align: center;
-            }}
-            .sidebar .sub-link {{
-                padding-left: 44px;
-                font-size: 12px;
-                opacity: 0.85;
-            }}
-            .sidebar .sub-link:hover {{
-                opacity: 1;
-            }}
-            .sidebar .sub-link .nav-icon {{
-                font-size: 13px;
-                width: 20px;
             }}
             
             /* ===== MAIN CONTENT ===== */
@@ -4118,6 +4334,37 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                 font-size: 12px;
                 color: #1a1a1a;
             }}
+            
+            .dist-grid {{
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 20px;
+                margin: 15px 0;
+            }}
+            .dist-card {{
+                background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+                padding: 16px 20px;
+                border-radius: 10px;
+                border: 1px solid #e9ecef;
+                transition: all 0.3s;
+            }}
+            .dist-card:hover {{
+                box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+            }}
+            .dist-card h4 {{
+                color: {primary};
+                margin-bottom: 12px;
+                font-size: 14px;
+                text-align: center;
+            }}
+            .dist-card .total-label {{
+                text-align: center;
+                font-size: 12px;
+                color: #7F8C8D;
+                margin-top: 10px;
+                padding-top: 8px;
+                border-top: 1px solid #e9ecef;
+            }}
         </style>
     </head>
     <body>
@@ -4125,18 +4372,13 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
             <h3>{journal_abbr}</h3>
             
             <div class="nav-section">
-                <div class="nav-section-title">Main</div>
                 <a href="#overview"><span class="nav-icon">📋</span> {t('overview')}</a>
-            </div>
-            
-            <div class="nav-section">
-                <div class="nav-section-title">Publications</div>
                 <a href="#analyzed_articles"><span class="nav-icon">📄</span> {t('analyzed_articles')}</a>
-                <a href="#citation_analysis" class="sub-link"><span class="nav-icon">📈</span> {t('citation_analysis')}</a>
-                <a href="#citing_works" class="sub-link"><span class="nav-icon">📚</span> {t('citing_works_analysis')}</a>
-                <a href="#topics_analysis" class="sub-link"><span class="nav-icon">🏷️</span> {t('topics_analysis')}</a>
-                <a href="#detailed_citations" class="sub-link"><span class="nav-icon">📋</span> {t('detailed_citations')}</a>
-                <a href="#all_publications" class="sub-link"><span class="nav-icon">📚</span> {t('all_publications')}</a>
+                <a href="#citation_analysis"><span class="nav-icon">📈</span> {t('citation_analysis')}</a>
+                <a href="#citing_works"><span class="nav-icon">📚</span> {t('citing_works_analysis')}</a>
+                <a href="#topics_analysis"><span class="nav-icon">🏷️</span> {t('topics_analysis')}</a>
+                <a href="#detailed_citations"><span class="nav-icon">📋</span> {t('detailed_citations')}</a>
+                <a href="#all_publications"><span class="nav-icon">📚</span> {t('all_publications')}</a>
             </div>
             
             <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.2); font-size: 11px; opacity: 0.8; line-height: 1.6;">
@@ -4264,6 +4506,34 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                         </div>
                     </div>
                     
+                    <!-- ===== IMPACT FACTOR (4-YEAR) ===== -->
+                    {f'''
+                    <div style="margin-top: 20px; padding: 16px 20px; background: linear-gradient(135deg, {primary}10, {secondary}10); border-radius: 10px; border-left: 4px solid {primary};">
+                        <h3 style="color: {primary}; font-size: 16px; margin: 0 0 8px 0;">{t('impact_factor')}</h3>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 10px;">
+                            <div style="background: white; padding: 10px 14px; border-radius: 8px; text-align: center;">
+                                <div style="font-size: 24px; font-weight: 700; color: {primary};">{impact_factor.get('impact_factor', 0):.3f}</div>
+                                <div style="font-size: 11px; color: #7F8C8D;">{t('impact_factor')}</div>
+                            </div>
+                            <div style="background: white; padding: 10px 14px; border-radius: 8px; text-align: center;">
+                                <div style="font-size: 20px; font-weight: 700; color: #2C3E50;">{impact_factor.get('publications_2023_2024', 0)}</div>
+                                <div style="font-size: 11px; color: #7F8C8D;">{t('impact_factor_years')}</div>
+                            </div>
+                            <div style="background: white; padding: 10px 14px; border-radius: 8px; text-align: center;">
+                                <div style="font-size: 20px; font-weight: 700; color: #2C3E50;">{impact_factor.get('citations_from_2025', 0)}</div>
+                                <div style="font-size: 11px; color: #7F8C8D;">{t('impact_factor_citations')}</div>
+                            </div>
+                            <div style="background: white; padding: 10px 14px; border-radius: 8px; text-align: center;">
+                                <div style="font-size: 16px; font-weight: 700; color: #2C3E50;">{impact_factor.get('unique_citing_papers_2025', 0)}</div>
+                                <div style="font-size: 11px; color: #7F8C8D;">Unique citing papers (2025)</div>
+                            </div>
+                        </div>
+                        <div style="font-size: 12px; color: #7F8C8D; margin-top: 8px; text-align: center; font-style: italic;">
+                            {t('impact_factor_calculation')}: {impact_factor.get('citations_from_2025', 0)} / {impact_factor.get('publications_2023_2024', 0)} = {impact_factor.get('impact_factor', 0):.3f}
+                        </div>
+                    </div>
+                    ''' if impact_factor.get('applicable', False) else ''}
+                    
                     <!-- Open Access Breakdown with Progress Bars -->
                     <h3 style="margin-top: 20px; color: {primary}; font-size: 16px;">{t('open_access_breakdown')}</h3>
                     
@@ -4273,7 +4543,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                             <div class="progress-bar-label">
                                 <span><span class="color-dot" style="display:inline-block;width:12px;height:12px;border-radius:50%;background:{oa_colors.get(status, '#BDC3C7')};vertical-align:middle;margin-right:6px;"></span> 
                                 <strong>{t(status)}</strong></span>
-                                <span class="label-value">{count} ({count/basic.get("total_publications", 1)*100:.1f}%)</span>
+                                <span class="label-value">{count} ({count/basic.get('total_publications', 1)*100:.1f}%)</span>
                             </div>
                             <div class="progress-bar-container">
                                 <div class="progress-bar-fill animate" style="width: {count/basic.get('total_publications', 1)*100:.1f}%; background: {oa_colors.get(status, '#BDC3C7')};">
@@ -4318,8 +4588,111 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                 <div class="section-divider"></div>
                 <div id="analyzed_content" class="section-content">
                     
+                    <!-- ===== AUTHOR DISTRIBUTION ===== -->
+                    <h3 style="color: {primary}; font-size: 16px;">{t('author_distribution')}</h3>
+                    
+                    <div class="dist-grid">
+                        <div class="dist-card">
+                            <h4>{t('author_distribution_analyzed')}</h4>
+                            <div style="margin: 6px 0;">
+                                <div class="progress-bar-label">
+                                    <span>{t('one_author')}</span>
+                                    <span class="label-value">{analyzed_dist.get(1, 0)}</span>
+                                </div>
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar-fill animate" style="width: {analyzed_dist.get(1, 0)/max(analyzed_total, 1)*100:.1f}%; background: {primary};">
+                                        {analyzed_dist.get(1, 0)/max(analyzed_total, 1)*100:.1f}%
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="margin: 6px 0;">
+                                <div class="progress-bar-label">
+                                    <span>{t('two_authors')}</span>
+                                    <span class="label-value">{analyzed_dist.get(2, 0)}</span>
+                                </div>
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar-fill animate" style="width: {analyzed_dist.get(2, 0)/max(analyzed_total, 1)*100:.1f}%; background: {secondary};">
+                                        {analyzed_dist.get(2, 0)/max(analyzed_total, 1)*100:.1f}%
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="margin: 6px 0;">
+                                <div class="progress-bar-label">
+                                    <span>{t('three_authors')}</span>
+                                    <span class="label-value">{analyzed_dist.get(3, 0)}</span>
+                                </div>
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar-fill animate" style="width: {analyzed_dist.get(3, 0)/max(analyzed_total, 1)*100:.1f}%; background: #3498db;">
+                                        {analyzed_dist.get(3, 0)/max(analyzed_total, 1)*100:.1f}%
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="margin: 6px 0;">
+                                <div class="progress-bar-label">
+                                    <span>{t('four_plus_authors')}</span>
+                                    <span class="label-value">{analyzed_dist.get('4+', 0)}</span>
+                                </div>
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar-fill animate" style="width: {analyzed_dist.get('4+', 0)/max(analyzed_total, 1)*100:.1f}%; background: #e74c3c;">
+                                        {analyzed_dist.get('4+', 0)/max(analyzed_total, 1)*100:.1f}%
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="total-label">Total: {analyzed_total} {t('publications')}</div>
+                        </div>
+                        
+                        <div class="dist-card">
+                            <h4>{t('author_distribution_citing')}</h4>
+                            <div style="margin: 6px 0;">
+                                <div class="progress-bar-label">
+                                    <span>{t('one_author')}</span>
+                                    <span class="label-value">{citing_dist.get(1, 0)}</span>
+                                </div>
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar-fill animate" style="width: {citing_dist.get(1, 0)/max(citing_total, 1)*100:.1f}%; background: {primary};">
+                                        {citing_dist.get(1, 0)/max(citing_total, 1)*100:.1f}%
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="margin: 6px 0;">
+                                <div class="progress-bar-label">
+                                    <span>{t('two_authors')}</span>
+                                    <span class="label-value">{citing_dist.get(2, 0)}</span>
+                                </div>
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar-fill animate" style="width: {citing_dist.get(2, 0)/max(citing_total, 1)*100:.1f}%; background: {secondary};">
+                                        {citing_dist.get(2, 0)/max(citing_total, 1)*100:.1f}%
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="margin: 6px 0;">
+                                <div class="progress-bar-label">
+                                    <span>{t('three_authors')}</span>
+                                    <span class="label-value">{citing_dist.get(3, 0)}</span>
+                                </div>
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar-fill animate" style="width: {citing_dist.get(3, 0)/max(citing_total, 1)*100:.1f}%; background: #3498db;">
+                                        {citing_dist.get(3, 0)/max(citing_total, 1)*100:.1f}%
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="margin: 6px 0;">
+                                <div class="progress-bar-label">
+                                    <span>{t('four_plus_authors')}</span>
+                                    <span class="label-value">{citing_dist.get('4+', 0)}</span>
+                                </div>
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar-fill animate" style="width: {citing_dist.get('4+', 0)/max(citing_total, 1)*100:.1f}%; background: #e74c3c;">
+                                        {citing_dist.get('4+', 0)/max(citing_total, 1)*100:.1f}%
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="total-label">Total: {citing_total} {t('citations')}</div>
+                        </div>
+                    </div>
+                    
                     <!-- Author Analysis -->
-                    <h3 style="color: {primary}; font-size: 16px;">{t('author_analysis')}</h3>
+                    <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">{t('author_analysis')}</h3>
                     <div class="scrollable-table">
                         <table id="author_table">
                             <thead>
@@ -4664,12 +5037,20 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                 <tr>
                                     <th class="sortable" onclick="sortTable('citing_auth_table', 0)">{t('rank')}</th>
                                     <th class="sortable" onclick="sortTable('citing_auth_table', 1)">{t('authors')}</th>
-                                    <th class="sortable" onclick="sortTable('citing_auth_table', 2)">{t('citations_count')}</th>
+                                    <th class="sortable" onclick="sortTable('citing_auth_table', 2)">{t('citing_author_orcid')}</th>
+                                    <th class="sortable" onclick="sortTable('citing_auth_table', 3)">{t('citations_count')}</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {''.join([
-                                    f'<tr><td>{i+1}</td><td>{html.escape(author["name"])}</td><td>{get_color_scale_html(author["count"], max_citing_auth)}</td></tr>'
+                                    f'''
+                                    <tr>
+                                        <td>{i+1}</td>
+                                        <td>{html.escape(author['name'])}</td>
+                                        <td>{f'<a href="https://orcid.org/{author["orcid"]}" target="_blank" class="doi-link orcid-full">{author["orcid"]}</a>' if author.get('orcid') else '-'}</td>
+                                        <td>{get_color_scale_html(author['count'], max_citing_auth)}</td>
+                                    </tr>
+                                    '''
                                     for i, author in enumerate(citing.get('top_authors', [])[:30])
                                 ])}
                             </tbody>
@@ -4783,16 +5164,6 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                 </div>
                 <div class="section-divider"></div>
                 <div id="topics_content" class="section-content">
-                    
-                    <!-- ===== ВЫЧИСЛЯЕМ МАКСИМАЛЬНЫЕ ЗНАЧЕНИЯ ДЛЯ ЦВЕТОВОЙ ШКАЛЫ ===== -->
-                    {{
-                        topics_list = topics.get('topics', [])
-                        max_analyzed = max([t['analyzed_count'] for t in topics_list]) if topics_list else 1
-                        max_citing = max([t['citing_count'] for t in topics_list]) if topics_list else 1
-                        max_analyzed_norm = max([t['analyzed_norm_count'] for t in topics_list]) if topics_list else 1
-                        max_citing_norm = max([t['citing_norm_count'] for t in topics_list]) if topics_list else 1
-                        max_total_norm = max([t['total_norm_count'] for t in topics_list]) if topics_list else 1
-                    }}
                     
                     <h3 style="color: {primary}; font-size: 16px;">Topics</h3>
                     <div class="scrollable-table" style="max-height: 400px;">
@@ -4969,12 +5340,15 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                         <a href="https://doi.org/{html.escape(cite['citing_doi'] or '')}" target="_blank" class="doi-link">DOI: {html.escape(cite['citing_doi'] or 'N/A')}</a>
                                     </div>
                                 </div>
-                                ''' for cite in sorted(data['citations'], key=lambda x: x.get('citation_lag') or 0, reverse=True)  # ← СОРТИРОВКА
+                                ''' for cite in sorted(data['citations'], key=lambda x: x.get('citation_lag') or 0, reverse=True)
                             ])}
                             {f'<div style="padding: 10px 18px; color: #999; font-style: italic;">{t("no_citations_found")}</div>' if not data['citations'] else ''}
                         </div>
                         ''' for doi, data in list(detailed_citations.items())
                     ])}
+                    
+                </div>
+            </div>
             
             <!-- ============================================================ -->
             <!-- SECTION 7: ALL PUBLICATIONS -->
