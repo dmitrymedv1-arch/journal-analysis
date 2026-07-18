@@ -3581,7 +3581,7 @@ class JournalAnalyzer:
     def _calculate_impact_factor(self) -> Dict:
         """
         Calculate 4-year impact factor for the journal if the analysis period
-        covers exactly the last 4 years (e.g., 2023-2026 when current year is 2026).
+        includes the last 4 years (e.g., period 2022-2026 includes 2023-2026).
         
         Impact Factor = (Citations in year N-1 from publications in years N-3 and N-2) / 
                         (Number of publications in years N-3 and N-2)
@@ -3602,11 +3602,15 @@ class JournalAnalyzer:
         
         start_year, end_year = period
         
-        # Check if this covers the last 4 years: start_year should be current_year - 3 and end_year should be current_year
-        if start_year != current_year - 3 or end_year != current_year:
+        # Define the last 4 years range
+        last_4_years_start = current_year - 3
+        last_4_years_end = current_year
+        
+        # Check if the last 4 years are fully included in the analysis period
+        if not (start_year <= last_4_years_start and end_year >= last_4_years_end):
             return {
                 'applicable': False,
-                'reason': f'not_last_4_years: {start_year}-{end_year} vs {current_year-3}-{current_year}'
+                'reason': f'last_4_years_not_in_period: period={start_year}-{end_year}, required={last_4_years_start}-{last_4_years_end}'
             }
         
         # Define publication years (N-3 and N-2) and citation year (N-1)
@@ -3657,8 +3661,8 @@ class JournalAnalyzer:
             'unique_citing_papers': len(citing_papers_set),
             'citing_year': citing_year,
             'impact_factor': impact_factor,
-            'year_range': f"{pub_year_1}-{pub_year_2}",
-            'period': f"{start_year}-{end_year}"
+            'period': f"{start_year}-{end_year}",
+            'analysis_period': f"{start_year}-{end_year}"
         }
 
 # ============================================
