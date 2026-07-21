@@ -3515,9 +3515,11 @@ class JournalAnalyzer:
             }
         
         return detailed
-    
+
     def _analyze_author_distribution(self) -> Dict:
         """Analyze distribution of publications by number of authors
+        
+        Groups: 1, 2, 3-5, 6-7, 8-10, 11-15, 15+
         
         Returns:
             Dict with two keys:
@@ -3534,15 +3536,21 @@ class JournalAnalyzer:
                 meta = self.publications_metadata[doi]
                 author_count = meta.get('author_count', 0)
                 if author_count > 0:
-                    # Группируем: 1, 2, 3, 4+
+                    # Группируем по новым категориям
                     if author_count == 1:
-                        analyzed_distribution[1] += 1
+                        analyzed_distribution['1'] += 1
                     elif author_count == 2:
-                        analyzed_distribution[2] += 1
-                    elif author_count == 3:
-                        analyzed_distribution[3] += 1
-                    else:
-                        analyzed_distribution['4+'] += 1
+                        analyzed_distribution['2'] += 1
+                    elif 3 <= author_count <= 5:
+                        analyzed_distribution['3-5'] += 1
+                    elif 6 <= author_count <= 7:
+                        analyzed_distribution['6-7'] += 1
+                    elif 8 <= author_count <= 10:
+                        analyzed_distribution['8-10'] += 1
+                    elif 11 <= author_count <= 15:
+                        analyzed_distribution['11-15'] += 1
+                    else:  # > 15
+                        analyzed_distribution['15+'] += 1
                     analyzed_total += 1
         
         # --- CITING PUBLICATIONS ---
@@ -3556,24 +3564,44 @@ class JournalAnalyzer:
                     meta = self.citations_metadata[doi]
                     author_count = meta.get('author_count', 0)
                     if author_count > 0:
-                        # Группируем: 1, 2, 3, 4+
+                        # Группируем по новым категориям
                         if author_count == 1:
-                            citing_distribution[1] += 1
+                            citing_distribution['1'] += 1
                         elif author_count == 2:
-                            citing_distribution[2] += 1
-                        elif author_count == 3:
-                            citing_distribution[3] += 1
-                        else:
-                            citing_distribution['4+'] += 1
+                            citing_distribution['2'] += 1
+                        elif 3 <= author_count <= 5:
+                            citing_distribution['3-5'] += 1
+                        elif 6 <= author_count <= 7:
+                            citing_distribution['6-7'] += 1
+                        elif 8 <= author_count <= 10:
+                            citing_distribution['8-10'] += 1
+                        elif 11 <= author_count <= 15:
+                            citing_distribution['11-15'] += 1
+                        else:  # > 15
+                            citing_distribution['15+'] += 1
                         citing_total += 1
+        
+        # --- СОРТИРОВКА: определяем правильный порядок категорий ---
+        category_order = ['1', '2', '3-5', '6-7', '8-10', '11-15', '15+']
+        
+        # Сортируем словари в правильном порядке
+        sorted_analyzed = {}
+        for cat in category_order:
+            if cat in analyzed_distribution:
+                sorted_analyzed[cat] = analyzed_distribution[cat]
+        
+        sorted_citing = {}
+        for cat in category_order:
+            if cat in citing_distribution:
+                sorted_citing[cat] = citing_distribution[cat]
         
         return {
             'analyzed': {
-                'distribution': dict(analyzed_distribution),
+                'distribution': sorted_analyzed,
                 'total': analyzed_total
             },
             'citing': {
-                'distribution': dict(citing_distribution),
+                'distribution': sorted_citing,
                 'total': citing_total
             }
         }
@@ -3787,12 +3815,24 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
     citing_dist = author_distribution.get('citing', {}).get('distribution', {})
     citing_total = author_distribution.get('citing', {}).get('total', 0)
     
-    # Ensure all categories exist for progress bars
-    for cat in [1, 2, 3, '4+']:
+    # Ensure all categories exist with default 0
+    category_order = ['1', '2', '3-5', '6-7', '8-10', '11-15', '15+']
+    for cat in category_order:
         if cat not in analyzed_dist:
             analyzed_dist[cat] = 0
         if cat not in citing_dist:
             citing_dist[cat] = 0
+    
+    # Labels for display
+    category_labels = {
+        '1': '1 author',
+        '2': '2 authors',
+        '3-5': '3-5 authors',
+        '6-7': '6-7 authors',
+        '8-10': '8-10 authors',
+        '11-15': '11-15 authors',
+        '15+': '15+ authors'
+    }
     
     # Max values for author distribution color scales
     max_analyzed_dist = max(analyzed_dist.values()) if analyzed_dist else 1
@@ -4777,45 +4817,78 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                             <h4>{t('author_distribution_analyzed')}</h4>
                             <div style="margin: 6px 0;">
                                 <div class="progress-bar-label">
-                                    <span>{t('one_author')}</span>
-                                    <span class="label-value">{analyzed_dist.get(1, 0)}</span>
+                                    <span>1 author</span>
+                                    <span class="label-value">{analyzed_dist.get('1', 0)}</span>
                                 </div>
                                 <div class="progress-bar-container">
-                                    <div class="progress-bar-fill animate" style="width: {analyzed_dist.get(1, 0)/max(analyzed_total, 1)*100:.1f}%; background: {primary};">
-                                        {analyzed_dist.get(1, 0)/max(analyzed_total, 1)*100:.1f}%
+                                    <div class="progress-bar-fill animate" style="width: {analyzed_dist.get('1', 0)/max(analyzed_total, 1)*100:.1f}%; background: #667eea;">
+                                        {analyzed_dist.get('1', 0)/max(analyzed_total, 1)*100:.1f}%
                                     </div>
                                 </div>
                             </div>
                             <div style="margin: 6px 0;">
                                 <div class="progress-bar-label">
-                                    <span>{t('two_authors')}</span>
-                                    <span class="label-value">{analyzed_dist.get(2, 0)}</span>
+                                    <span>2 authors</span>
+                                    <span class="label-value">{analyzed_dist.get('2', 0)}</span>
                                 </div>
                                 <div class="progress-bar-container">
-                                    <div class="progress-bar-fill animate" style="width: {analyzed_dist.get(2, 0)/max(analyzed_total, 1)*100:.1f}%; background: {secondary};">
-                                        {analyzed_dist.get(2, 0)/max(analyzed_total, 1)*100:.1f}%
+                                    <div class="progress-bar-fill animate" style="width: {analyzed_dist.get('2', 0)/max(analyzed_total, 1)*100:.1f}%; background: #f39c12;">
+                                        {analyzed_dist.get('2', 0)/max(analyzed_total, 1)*100:.1f}%
                                     </div>
                                 </div>
                             </div>
                             <div style="margin: 6px 0;">
                                 <div class="progress-bar-label">
-                                    <span>{t('three_authors')}</span>
-                                    <span class="label-value">{analyzed_dist.get(3, 0)}</span>
+                                    <span>3-5 authors</span>
+                                    <span class="label-value">{analyzed_dist.get('3-5', 0)}</span>
                                 </div>
                                 <div class="progress-bar-container">
-                                    <div class="progress-bar-fill animate" style="width: {analyzed_dist.get(3, 0)/max(analyzed_total, 1)*100:.1f}%; background: #3498db;">
-                                        {analyzed_dist.get(3, 0)/max(analyzed_total, 1)*100:.1f}%
+                                    <div class="progress-bar-fill animate" style="width: {analyzed_dist.get('3-5', 0)/max(analyzed_total, 1)*100:.1f}%; background: #e74c3c;">
+                                        {analyzed_dist.get('3-5', 0)/max(analyzed_total, 1)*100:.1f}%
                                     </div>
                                 </div>
                             </div>
                             <div style="margin: 6px 0;">
                                 <div class="progress-bar-label">
-                                    <span>{t('four_plus_authors')}</span>
-                                    <span class="label-value">{analyzed_dist.get('4+', 0)}</span>
+                                    <span>6-7 authors</span>
+                                    <span class="label-value">{analyzed_dist.get('6-7', 0)}</span>
                                 </div>
                                 <div class="progress-bar-container">
-                                    <div class="progress-bar-fill animate" style="width: {analyzed_dist.get('4+', 0)/max(analyzed_total, 1)*100:.1f}%; background: #e74c3c;">
-                                        {analyzed_dist.get('4+', 0)/max(analyzed_total, 1)*100:.1f}%
+                                    <div class="progress-bar-fill animate" style="width: {analyzed_dist.get('6-7', 0)/max(analyzed_total, 1)*100:.1f}%; background: #2ecc71;">
+                                        {analyzed_dist.get('6-7', 0)/max(analyzed_total, 1)*100:.1f}%
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="margin: 6px 0;">
+                                <div class="progress-bar-label">
+                                    <span>8-10 authors</span>
+                                    <span class="label-value">{analyzed_dist.get('8-10', 0)}</span>
+                                </div>
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar-fill animate" style="width: {analyzed_dist.get('8-10', 0)/max(analyzed_total, 1)*100:.1f}%; background: #3498db;">
+                                        {analyzed_dist.get('8-10', 0)/max(analyzed_total, 1)*100:.1f}%
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="margin: 6px 0;">
+                                <div class="progress-bar-label">
+                                    <span>11-15 authors</span>
+                                    <span class="label-value">{analyzed_dist.get('11-15', 0)}</span>
+                                </div>
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar-fill animate" style="width: {analyzed_dist.get('11-15', 0)/max(analyzed_total, 1)*100:.1f}%; background: #9b59b6;">
+                                        {analyzed_dist.get('11-15', 0)/max(analyzed_total, 1)*100:.1f}%
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="margin: 6px 0;">
+                                <div class="progress-bar-label">
+                                    <span>15+ authors</span>
+                                    <span class="label-value">{analyzed_dist.get('15+', 0)}</span>
+                                </div>
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar-fill animate" style="width: {analyzed_dist.get('15+', 0)/max(analyzed_total, 1)*100:.1f}%; background: #1abc9c;">
+                                        {analyzed_dist.get('15+', 0)/max(analyzed_total, 1)*100:.1f}%
                                     </div>
                                 </div>
                             </div>
@@ -4826,45 +4899,78 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                             <h4>{t('author_distribution_citing')}</h4>
                             <div style="margin: 6px 0;">
                                 <div class="progress-bar-label">
-                                    <span>{t('one_author')}</span>
-                                    <span class="label-value">{citing_dist.get(1, 0)}</span>
+                                    <span>1 author</span>
+                                    <span class="label-value">{citing_dist.get('1', 0)}</span>
                                 </div>
                                 <div class="progress-bar-container">
-                                    <div class="progress-bar-fill animate" style="width: {citing_dist.get(1, 0)/max(citing_total, 1)*100:.1f}%; background: {primary};">
-                                        {citing_dist.get(1, 0)/max(citing_total, 1)*100:.1f}%
+                                    <div class="progress-bar-fill animate" style="width: {citing_dist.get('1', 0)/max(citing_total, 1)*100:.1f}%; background: #667eea;">
+                                        {citing_dist.get('1', 0)/max(citing_total, 1)*100:.1f}%
                                     </div>
                                 </div>
                             </div>
                             <div style="margin: 6px 0;">
                                 <div class="progress-bar-label">
-                                    <span>{t('two_authors')}</span>
-                                    <span class="label-value">{citing_dist.get(2, 0)}</span>
+                                    <span>2 authors</span>
+                                    <span class="label-value">{citing_dist.get('2', 0)}</span>
                                 </div>
                                 <div class="progress-bar-container">
-                                    <div class="progress-bar-fill animate" style="width: {citing_dist.get(2, 0)/max(citing_total, 1)*100:.1f}%; background: {secondary};">
-                                        {citing_dist.get(2, 0)/max(citing_total, 1)*100:.1f}%
+                                    <div class="progress-bar-fill animate" style="width: {citing_dist.get('2', 0)/max(citing_total, 1)*100:.1f}%; background: #f39c12;">
+                                        {citing_dist.get('2', 0)/max(citing_total, 1)*100:.1f}%
                                     </div>
                                 </div>
                             </div>
                             <div style="margin: 6px 0;">
                                 <div class="progress-bar-label">
-                                    <span>{t('three_authors')}</span>
-                                    <span class="label-value">{citing_dist.get(3, 0)}</span>
+                                    <span>3-5 authors</span>
+                                    <span class="label-value">{citing_dist.get('3-5', 0)}</span>
                                 </div>
                                 <div class="progress-bar-container">
-                                    <div class="progress-bar-fill animate" style="width: {citing_dist.get(3, 0)/max(citing_total, 1)*100:.1f}%; background: #3498db;">
-                                        {citing_dist.get(3, 0)/max(citing_total, 1)*100:.1f}%
+                                    <div class="progress-bar-fill animate" style="width: {citing_dist.get('3-5', 0)/max(citing_total, 1)*100:.1f}%; background: #e74c3c;">
+                                        {citing_dist.get('3-5', 0)/max(citing_total, 1)*100:.1f}%
                                     </div>
                                 </div>
                             </div>
                             <div style="margin: 6px 0;">
                                 <div class="progress-bar-label">
-                                    <span>{t('four_plus_authors')}</span>
-                                    <span class="label-value">{citing_dist.get('4+', 0)}</span>
+                                    <span>6-7 authors</span>
+                                    <span class="label-value">{citing_dist.get('6-7', 0)}</span>
                                 </div>
                                 <div class="progress-bar-container">
-                                    <div class="progress-bar-fill animate" style="width: {citing_dist.get('4+', 0)/max(citing_total, 1)*100:.1f}%; background: #e74c3c;">
-                                        {citing_dist.get('4+', 0)/max(citing_total, 1)*100:.1f}%
+                                    <div class="progress-bar-fill animate" style="width: {citing_dist.get('6-7', 0)/max(citing_total, 1)*100:.1f}%; background: #2ecc71;">
+                                        {citing_dist.get('6-7', 0)/max(citing_total, 1)*100:.1f}%
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="margin: 6px 0;">
+                                <div class="progress-bar-label">
+                                    <span>8-10 authors</span>
+                                    <span class="label-value">{citing_dist.get('8-10', 0)}</span>
+                                </div>
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar-fill animate" style="width: {citing_dist.get('8-10', 0)/max(citing_total, 1)*100:.1f}%; background: #3498db;">
+                                        {citing_dist.get('8-10', 0)/max(citing_total, 1)*100:.1f}%
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="margin: 6px 0;">
+                                <div class="progress-bar-label">
+                                    <span>11-15 authors</span>
+                                    <span class="label-value">{citing_dist.get('11-15', 0)}</span>
+                                </div>
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar-fill animate" style="width: {citing_dist.get('11-15', 0)/max(citing_total, 1)*100:.1f}%; background: #9b59b6;">
+                                        {citing_dist.get('11-15', 0)/max(citing_total, 1)*100:.1f}%
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="margin: 6px 0;">
+                                <div class="progress-bar-label">
+                                    <span>15+ authors</span>
+                                    <span class="label-value">{citing_dist.get('15+', 0)}</span>
+                                </div>
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar-fill animate" style="width: {citing_dist.get('15+', 0)/max(citing_total, 1)*100:.1f}%; background: #1abc9c;">
+                                        {citing_dist.get('15+', 0)/max(citing_total, 1)*100:.1f}%
                                     </div>
                                 </div>
                             </div>
