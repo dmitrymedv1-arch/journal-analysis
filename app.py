@@ -1519,9 +1519,10 @@ def get_color_for_value_text(value: float, max_value: float, min_value: float = 
 def get_heatmap_cell_color(value: float, max_value: float) -> str:
     """
     Get color for heatmap cells using green-yellow-red scale
+    Returns transparent for None or 0 values
     """
-    if max_value == 0:
-        return "rgba(200, 200, 200, 0.15)"
+    if value is None or value == 0 or max_value == 0:
+        return "transparent"
     
     normalized = value / max_value
     normalized = max(0, min(1, normalized))
@@ -1537,7 +1538,6 @@ def get_heatmap_cell_color(value: float, max_value: float) -> str:
         g = 200
         b = 50
     
-    # More opaque for heatmap
     return f"rgba({r}, {g}, {b}, 0.45)"
 
 def get_color_scale_html_with_format(value: float, max_value: float, min_value: float = 0, decimals: int = 3) -> str:
@@ -2901,6 +2901,7 @@ class JournalAnalyzer:
                     work_countries = set(meta.get('affiliation_countries', []))
                     work_countries = {c for c in work_countries if c and c != 'Unknown'}
                 
+                # Сохраняем данные по этой работе
                 if work_countries:
                     countries_per_work.append({
                         'work_doi': doi,
@@ -2920,6 +2921,16 @@ class JournalAnalyzer:
                         for j in range(i+1, len(country_list)):
                             pair = tuple(sorted([country_list[i], country_list[j]]))
                             country_pairs[pair] += 1
+        
+        # ---- ВЫЧИСЛЯЕМ СТАТИСТИКУ ПО UNIQUE COUNTRIES PER PUBLICATION ----
+        country_counts = [item['count'] for item in countries_per_work]
+        
+        unique_countries_stats = {
+            'avg': np.mean(country_counts) if country_counts else 0,
+            'min': min(country_counts) if country_counts else 0,
+            'max': max(country_counts) if country_counts else 0,
+            'total_works': len(country_counts)
+        }
         
         # ---- АГРЕГИРУЕМ ДАННЫЕ ПО СТРАНАМ ----
         # Для каждой страны считаем:
@@ -2958,7 +2969,8 @@ class JournalAnalyzer:
         sorted_pairs = sorted(country_pairs.items(), key=lambda x: x[1], reverse=True)[:20]
         
         return {
-            'country_stats': country_stats_list,  # Новая структура: страны с двумя метриками
+            'country_stats': country_stats_list,  # Страны с двумя метриками
+            'unique_countries_per_publication': unique_countries_stats,  # Статистика по уникальным странам
             'collaboration_patterns': {
                 'single_country': single_country_papers,
                 'multi_country': multi_country_papers,
@@ -2969,7 +2981,27 @@ class JournalAnalyzer:
         }
     
     def _analyze_citations(self) -> Dict:
-        """Analyze citations"""
+        """Analyze citations with proper year filtering for heatmap"""
+        
+        # Get analysis period bounds
+        period = self.parse_period()
+        if isinstance(period, tuple):
+            min_year = period[0]
+            max_year = period[1]
+        elif isinstance(period, list):
+            min_year = min(period) if period else None
+            max_year = max(period) if period else None
+        else:
+            min_year = period if isinstance(period, int) else None
+            max_year = datetime.now().year
+        
+        # If min_year is None, use earliest publication year
+        if min_year is None:
+            years = [p.get('Year') for p in self.publications if p.get('Year')]
+            min_year = min(years) if years else datetime.now().year - 5
+        
+        current_year = datetime.now().year
+        
         # Citation Dynamics by Year
         dynamics = defaultdict(lambda: defaultdict(int))
         
@@ -2979,7 +3011,7 @@ class JournalAnalyzer:
         # Cumulative Citations
         cumulative = defaultdict(int)
         
-        # Citation Network Heatmap
+        # Citation Network Heatmap - will be filtered
         heatmap = defaultdict(lambda: defaultdict(int))
         
         # Get publication dates
@@ -3001,6 +3033,10 @@ class JournalAnalyzer:
             if not pub_year:
                 continue
             
+            # Skip if publication year is before analysis period
+            if pub_year < min_year:
+                continue
+            
             for cite in citing_list:
                 cite_doi = cite.get('doi') if isinstance(cite, dict) else cite
                 cite_date = cite.get('publication_date') if isinstance(cite, dict) else None
@@ -3012,10 +3048,18 @@ class JournalAnalyzer:
                 if not cite_year:
                     continue
                 
+                # Skip if citation year is before analysis period or before publication year
+                if cite_year < min_year or cite_year < pub_year:
+                    continue
+                
+                # Skip if citation year is in the future
+                if cite_year > current_year:
+                    continue
+                
                 # Citation Dynamics
                 dynamics[pub_year][cite_year] += 1
                 
-                # Heatmap
+                # Heatmap - only for valid years
                 heatmap[pub_year][cite_year] += 1
                 
                 # Cumulative Citations
@@ -3033,17 +3077,20 @@ class JournalAnalyzer:
                         pass
         
         # Build complete dynamics matrix with zeros for all year combinations
-        all_pub_years = sorted(dynamics.keys())
-        all_cite_years = sorted(set([y for sub in dynamics.values() for y in sub.keys()]))
+        all_pub_years = sorted([y for y in dynamics.keys() if y >= min_year])
+        all_cite_years = sorted([y for y in set([y for sub in dynamics.values() for y in sub.keys()]) if y >= min_year])
         
-        # If no citation years, use publication years
+        # If no citation years, use publication years within period
         if not all_cite_years:
             all_cite_years = all_pub_years
         
-        # Create complete matrix with zeros
+        # Create complete dynamics matrix with zeros
         complete_dynamics = []
         for pub_year in all_pub_years:
             for cite_year in all_cite_years:
+                if cite_year < pub_year:
+                    # Skip impossible citations (from future to past)
+                    continue
                 value = dynamics[pub_year].get(cite_year, 0)
                 complete_dynamics.append({
                     'publication_year': pub_year,
@@ -3059,11 +3106,12 @@ class JournalAnalyzer:
         cumulative_list = []
         running_total = 0
         for year, count in sorted_cumulative:
-            running_total += count
-            cumulative_list.append({
-                'year': year,
-                'citations': running_total
-            })
+            if year >= min_year and year <= current_year:
+                running_total += count
+                cumulative_list.append({
+                    'year': year,
+                    'citations': running_total
+                })
         
         # First citation stats
         first_citation_stats = {}
@@ -3076,17 +3124,50 @@ class JournalAnalyzer:
                 'count': len(first_citation_lags)
             }
         
-        # Heatmap data
-        heatmap_data = []
-        years = sorted(set(list(heatmap.keys()) + [y for sub in heatmap.values() for y in sub.keys()]))
-        if not years:
-            years = all_pub_years
+        # ===== HEATMAP DATA WITH PROPER FILTERING =====
+        # Get all years from min_year to current_year
+        all_years = list(range(min_year, current_year + 1))
         
-        for pub_year in years:
+        heatmap_data = []
+        for pub_year in all_years:
             row = {'publication_year': pub_year}
-            for cite_year in years:
-                row[cite_year] = heatmap[pub_year].get(cite_year, 0)
-            heatmap_data.append(row)
+            has_data = False
+            
+            for cite_year in all_years:
+                # Skip impossible citations (citation year < publication year)
+                if cite_year < pub_year:
+                    row[cite_year] = None  # Use None for empty cells
+                    continue
+                
+                # Check if we have data for this combination
+                value = heatmap[pub_year].get(cite_year, 0)
+                if value > 0:
+                    has_data = True
+                    row[cite_year] = value
+                else:
+                    row[cite_year] = 0
+            
+            # Only include rows that have at least one citation
+            if has_data or pub_year in dynamics:
+                heatmap_data.append(row)
+        
+        # Also include publication years that have citations but might not be in all_years
+        # (e.g., if min_year was adjusted)
+        for pub_year in dynamics.keys():
+            if pub_year < min_year or pub_year > current_year:
+                continue
+            if not any(row.get('publication_year') == pub_year for row in heatmap_data):
+                row = {'publication_year': pub_year}
+                for cite_year in all_years:
+                    if cite_year < pub_year:
+                        row[cite_year] = None
+                    else:
+                        value = heatmap[pub_year].get(cite_year, 0)
+                        row[cite_year] = value if value > 0 else 0
+                heatmap_data.append(row)
+        
+        # Sort heatmap data by publication year
+        heatmap_data.sort(key=lambda x: x['publication_year'])
         
         # Most Cited Publications
         most_cited = []
@@ -3095,6 +3176,10 @@ class JournalAnalyzer:
             meta = self.publications_metadata.get(doi, {})
             citations = p.get('Cited_by_count', 0)
             year = p.get('Year')
+            
+            # Skip if publication year is before min_year
+            if year and year < min_year:
+                continue
             
             # Calculate citations per year
             if year:
@@ -3123,6 +3208,7 @@ class JournalAnalyzer:
             'first_citation_stats': first_citation_stats,
             'cumulative': cumulative_list,
             'heatmap': heatmap_data,
+            'heatmap_years': all_years,  # Добавляем список всех лет для HTML
             'most_cited': most_cited[:10]
         }
     
@@ -5053,6 +5139,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                 <div><span class="geo-value">{geographic.get('unique_countries_per_publication', {}).get('avg', 0):.2f}</span> <span class="geo-label">Avg</span></div>
                                 <div><span class="geo-value">{geographic.get('unique_countries_per_publication', {}).get('min', 0)}</span> <span class="geo-label">Min</span></div>
                                 <div><span class="geo-value">{geographic.get('unique_countries_per_publication', {}).get('max', 0)}</span> <span class="geo-label">Max</span></div>
+                                <div style="margin-top: 8px; font-size: 12px; color: #7F8C8D;">Based on {geographic.get('unique_countries_per_publication', {}).get('total_works', 0)} publications with country data</div>
                             </div>
                         </div>
                         <div class="geo-card">
@@ -5060,6 +5147,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                             <div>
                                 <div><span class="geo-value">{geographic.get('collaboration_patterns', {}).get('single_country', 0)}</span> <span class="geo-label">{t('single_country')} ({geographic.get('collaboration_patterns', {}).get('single_country_ratio', 0)*100:.1f}%)</span></div>
                                 <div><span class="geo-value">{geographic.get('collaboration_patterns', {}).get('multi_country', 0)}</span> <span class="geo-label">{t('multi_country')} ({(1-geographic.get('collaboration_patterns', {}).get('single_country_ratio', 0))*100:.1f}%)</span></div>
+                                <div style="margin-top: 8px; font-size: 12px; color: #7F8C8D;">Total: {geographic.get('collaboration_patterns', {}).get('total', 0)} publications</div>
                             </div>
                         </div>
                     </div>
@@ -5229,7 +5317,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                     <th>{t('publication_year')} \ {t('citation_year')}</th>
                                     {''.join([
                                         f'<th>{year}</th>'
-                                        for year in heatmap_years
+                                        for year in citation.get('heatmap_years', [])
                                     ])}
                                 </tr>
                             </thead>
@@ -5241,13 +5329,14 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                         {''.join([
                                             f'''
                                             <td class="heatmap-cell" style="
-                                                background: {get_heatmap_cell_color(row.get(year, 0), heatmap_max) if heatmap_max > 0 else 'rgba(200,200,200,0.15)'};
-                                                color: {'#1a1a1a' if row.get(year, 0) / max(heatmap_max, 1) > 0.6 else '#333'};
+                                                {f'background: {get_heatmap_cell_color(row.get(year, 0), heatmap_max)};' if row.get(year) is not None and row.get(year) > 0 else 'background: transparent;'}
+                                                color: {'#1a1a1a' if row.get(year, 0) / max(heatmap_max, 1) > 0.6 else '#333' if row.get(year) is not None else 'transparent'};
+                                                {'' if row.get(year) is not None else 'cursor: default;'}
                                             ">
-                                                {row.get(year, 0) or '0'}
+                                                {row.get(year) if row.get(year) is not None and row.get(year) > 0 else ''}
                                             </td>
                                             '''
-                                            for year in heatmap_years
+                                            for year in citation.get('heatmap_years', [])
                                         ])}
                                     </tr>
                                     '''
