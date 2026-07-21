@@ -5330,7 +5330,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                             f'''
                                             <td class="heatmap-cell" style="
                                                 {f'background: {get_heatmap_cell_color(row.get(year, 0), heatmap_max)};' if row.get(year) is not None and row.get(year) > 0 else 'background: transparent;'}
-                                                color: {'#1a1a1a' if row.get(year, 0) / max(heatmap_max, 1) > 0.6 else '#333' if row.get(year) is not None else 'transparent'};
+                                                color: {'#1a1a1a' if row.get(year) is not None and row.get(year) > 0 and row.get(year) / max(heatmap_max, 1) > 0.6 else '#333' if row.get(year) is not None and row.get(year) > 0 else 'transparent'};
                                                 {'' if row.get(year) is not None else 'cursor: default;'}
                                             ">
                                                 {row.get(year) if row.get(year) is not None and row.get(year) > 0 else ''}
