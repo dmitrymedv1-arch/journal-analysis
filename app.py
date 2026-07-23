@@ -3792,7 +3792,8 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
     results = analyzer.analysis_results
     publications = analyzer.publications
     citing_works = analyzer.citing_works
-    
+    impact_factor = results.get('impact_factor', {})
+                                     
     # Get journal name and abbreviation
     journal_name = analyzer.journal_name or f"Journal {analyzer.issn}"
     journal_abbr = analyzer.journal_abbreviation or generate_journal_abbreviation(journal_name)
