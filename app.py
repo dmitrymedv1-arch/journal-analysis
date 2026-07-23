@@ -6107,6 +6107,7 @@ def run_journal_analysis(issn: str, period: str, max_workers: int = 6, journal_l
         # ====== СОХРАНЯЕМ ВСЕ ДАННЫЕ В SESSION_STATE ======
         st.session_state['analyzer'] = analyzer
         st.session_state['results'] = results
+        st.session_state['impact_factor'] = results.get('impact_factor', {})
         st.session_state['publications'] = publications
         st.session_state['citing_works'] = citing_works
         st.session_state['journal_logo_base64'] = journal_logo_base64
