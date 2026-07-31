@@ -366,13 +366,6 @@ LANG = {
         'days': 'days',
         'analysis_data_from_cache': 'Using cached data from previous analysis',
         'regenerate_report': 'Regenerate Report',
-        # ====== НОВЫЕ КЛЮЧИ ДЛЯ IMPACT FACTOR ======
-        'impact_factor': 'Impact Factor (4-year)',
-        'impact_factor_description': 'Citations in 2025 to 2023-2024 publications / number of 2023-2024 publications',
-        'impact_factor_years': '2023-2024 publications cited in 2025',
-        'impact_factor_citations': 'Citations from 2025',
-        'impact_factor_not_applicable': 'Impact Factor not applicable (period ≠ last 4 years)',
-        'impact_factor_calculation': 'Impact Factor calculation for last 4 years',
         # ====== НОВЫЕ КЛЮЧИ ДЛЯ AUTHOR DISTRIBUTION ======
         'author_distribution': 'Author Distribution',
         'author_distribution_analyzed': 'Distribution of Analyzed Publications by Author Count',
@@ -2552,9 +2545,6 @@ class JournalAnalyzer:
         # 9. Author distribution (analyzed and citing)
         results['author_distribution'] = self._analyze_author_distribution()
         
-        # 10. Impact factor (4-year)
-        results['impact_factor'] = self._calculate_impact_factor()
-        
         self.analysis_results = results
         
         if progress_callback:
@@ -3691,93 +3681,6 @@ class JournalAnalyzer:
                 'total': citing_total
             }
         }
-    
-    def _calculate_impact_factor(self) -> Dict:
-        """
-        Calculate 4-year impact factor for the journal if the analysis period
-        includes the last 4 years (e.g., period 2022-2026 includes 2023-2026).
-        
-        Impact Factor = (Citations in year N-1 from publications in years N-3 and N-2) / 
-                        (Number of publications in years N-3 and N-2)
-        
-        Where N = current year
-        """
-        current_year = datetime.now().year
-        
-        # Parse period
-        period = self.parse_period()
-        
-        # Check if period is a range
-        if not isinstance(period, tuple):
-            return {
-                'applicable': False,
-                'reason': 'period_not_range'
-            }
-        
-        start_year, end_year = period
-        
-        # Define the last 4 years range
-        last_4_years_start = current_year - 3
-        last_4_years_end = current_year
-        
-        # Check if the last 4 years are fully included in the analysis period
-        if not (start_year <= last_4_years_start and end_year >= last_4_years_end):
-            return {
-                'applicable': False,
-                'reason': f'last_4_years_not_in_period: period={start_year}-{end_year}, required={last_4_years_start}-{last_4_years_end}'
-            }
-        
-        # Define publication years (N-3 and N-2) and citation year (N-1)
-        pub_year_1 = current_year - 3  # e.g., 2023
-        pub_year_2 = current_year - 2  # e.g., 2024
-        citing_year = current_year - 1  # e.g., 2025
-        
-        # Find publications from pub_year_1 and pub_year_2
-        pub_years = [p for p in self.publications if p.get('Year') in [pub_year_1, pub_year_2]]
-        
-        if not pub_years:
-            return {
-                'applicable': False,
-                'reason': f'no_publications_{pub_year_1}_{pub_year_2}',
-                'publications_count': 0
-            }
-        
-        # Count publications
-        num_pubs = len(pub_years)
-        
-        # Count citations from citing_year to these publications
-        citations_from_citing_year = 0
-        citing_papers_set = set()
-        
-        for p in pub_years:
-            doi = p.get('DOI')
-            if not doi:
-                continue
-            
-            citing_list = self.citing_works.get(doi, [])
-            for cite in citing_list:
-                cite_doi = cite.get('doi') if isinstance(cite, dict) else cite
-                cite_meta = self.citations_metadata.get(cite_doi, {})
-                cite_year = cite_meta.get('publication_year')
-                
-                if cite_year == citing_year:
-                    citations_from_citing_year += 1
-                    citing_papers_set.add(cite_doi)
-        
-        # Calculate impact factor
-        impact_factor = citations_from_citing_year / num_pubs if num_pubs > 0 else 0
-        
-        return {
-            'applicable': True,
-            'publications_count': num_pubs,
-            'publication_years': [pub_year_1, pub_year_2],
-            'citations_from_citing_year': citations_from_citing_year,
-            'unique_citing_papers': len(citing_papers_set),
-            'citing_year': citing_year,
-            'impact_factor': impact_factor,
-            'period': f"{start_year}-{end_year}",
-            'analysis_period': f"{start_year}-{end_year}"
-        }
 
 # ============================================
 # ФУНКЦИИ ДЛЯ ГЕНЕРАЦИИ ОТЧЕТОВ
@@ -3792,7 +3695,6 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
     results = analyzer.analysis_results
     publications = analyzer.publications
     citing_works = analyzer.citing_works
-    impact_factor = results.get('impact_factor', {})
                                      
     # Get journal name and abbreviation
     journal_name = analyzer.journal_name or f"Journal {analyzer.issn}"
@@ -4810,37 +4712,6 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                             <div class="metric-label">{t('unique_citing_publishers')}</div>
                         </div>
                     </div>
-                    
-                    <!-- ===== IMPACT FACTOR (4-YEAR) ===== -->
-                    {f'''
-                    <div style="margin-top: 20px; padding: 16px 20px; background: linear-gradient(135deg, {primary}10, {secondary}10); border-radius: 10px; border-left: 4px solid {primary};">
-                        <h3 style="color: {primary}; font-size: 16px; margin: 0 0 8px 0;">{t('impact_factor')}</h3>
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 10px;">
-                            <div style="background: white; padding: 10px 14px; border-radius: 8px; text-align: center;">
-                                <div style="font-size: 24px; font-weight: 700; color: {primary};">{impact_factor.get('impact_factor', 0):.3f}</div>
-                                <div style="font-size: 11px; color: #7F8C8D;">{t('impact_factor')}</div>
-                            </div>
-                            <div style="background: white; padding: 10px 14px; border-radius: 8px; text-align: center;">
-                                <div style="font-size: 20px; font-weight: 700; color: #2C3E50;">{impact_factor.get('publications_count', 0)}</div>
-                                <div style="font-size: 11px; color: #7F8C8D;">Publications {impact_factor.get('publication_years', [])[0]}-{impact_factor.get('publication_years', [])[1] if len(impact_factor.get('publication_years', [])) > 1 else ''}</div>
-                            </div>
-                            <div style="background: white; padding: 10px 14px; border-radius: 8px; text-align: center;">
-                                <div style="font-size: 20px; font-weight: 700; color: #2C3E50;">{impact_factor.get('citations_from_citing_year', 0)}</div>
-                                <div style="font-size: 11px; color: #7F8C8D;">Citations from {impact_factor.get('citing_year', 'N/A')}</div>
-                            </div>
-                            <div style="background: white; padding: 10px 14px; border-radius: 8px; text-align: center;">
-                                <div style="font-size: 16px; font-weight: 700; color: #2C3E50;">{impact_factor.get('unique_citing_papers', 0)}</div>
-                                <div style="font-size: 11px; color: #7F8C8D;">Unique citing papers ({impact_factor.get('citing_year', 'N/A')})</div>
-                            </div>
-                        </div>
-                        <div style="font-size: 12px; color: #7F8C8D; margin-top: 8px; text-align: center; font-style: italic;">
-                            {t('impact_factor_calculation')}: {impact_factor.get('citations_from_citing_year', 0)} / {impact_factor.get('publications_count', 0)} = {impact_factor.get('impact_factor', 0):.3f}
-                        </div>
-                        <div style="font-size: 11px; color: #7F8C8D; margin-top: 4px; text-align: center;">
-                            Period: {impact_factor.get('period', 'N/A')} | Publications: {impact_factor.get('publication_years', [])[0]}-{impact_factor.get('publication_years', [])[1] if len(impact_factor.get('publication_years', [])) > 1 else ''} | Citing year: {impact_factor.get('citing_year', 'N/A')}
-                        </div>
-                    </div>
-                    ''' if impact_factor.get('applicable', False) else ''}
                     
                     <!-- Open Access Breakdown with Progress Bars -->
                     <h3 style="margin-top: 20px; color: {primary}; font-size: 16px;">{t('open_access_breakdown')}</h3>
@@ -6107,7 +5978,6 @@ def run_journal_analysis(issn: str, period: str, max_workers: int = 6, journal_l
         # ====== СОХРАНЯЕМ ВСЕ ДАННЫЕ В SESSION_STATE ======
         st.session_state['analyzer'] = analyzer
         st.session_state['results'] = results
-        st.session_state['impact_factor'] = results.get('impact_factor', {})
         st.session_state['publications'] = publications
         st.session_state['citing_works'] = citing_works
         st.session_state['journal_logo_base64'] = journal_logo_base64
