@@ -4876,69 +4876,45 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                             <div class="metric-label">{t('unique_citing_publishers')}</div>
                         </div>
                     </div>
-
-                    # ===== IMPACT FACTOR & CITESCORE CARDS =====
-                    if impact_factor or citescore:
-                        html_content += f"""
-                        <div id="impact_citescore" class="section">
-                            <div class="section-header" onclick="toggleSection('if_sc_content')">
-                                <div class="section-title">
-                                    <span class="icon">📊</span> {t('impact_factor')} & {t('citescore')}
-                                    <span class="section-badge">
-                                        {f'IF: {impact_factor["value"]:.2f}' if impact_factor else ''}
-                                        {f' | SC: {citescore["value"]:.2f}' if citescore else ''}
-                                    </span>
-                                </div>
-                                <span class="toggle-indicator" id="if_sc_indicator">▼</span>
+                    
+                    <!-- ===== IMPACT FACTOR & CITESCORE CARDS ===== -->
+                    {f'''
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
+                        {f'''
+                        <div style="background: #f8f9fa; padding: 20px; border-radius: 12px; border-left: 4px solid #e74c3c;">
+                            <h3 style="color: #e74c3c; margin-bottom: 8px; font-size: 14px; font-weight: 700;">{t('impact_factor')}</h3>
+                            <div style="font-size: 32px; font-weight: 700; color: #2C3E50;">
+                                {impact_factor['value']:.2f}
                             </div>
-                            <div class="section-divider"></div>
-                            <div id="if_sc_content" class="section-content">
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                        """
-                        
-                        # IF details
-                        if impact_factor:
-                            html_content += f"""
-                            <div style="background: #f8f9fa; padding: 20px; border-radius: 12px; border-left: 4px solid #e74c3c;">
-                                <h3 style="color: #e74c3c; margin-bottom: 12px;">{t('impact_factor')}</h3>
-                                <div style="font-size: 28px; font-weight: 700; color: #2C3E50;">
-                                    {impact_factor['value']:.2f}
-                                </div>
-                                <div style="font-size: 13px; color: #555; margin-top: 8px; line-height: 1.6;">
-                                    <div><strong>{t('period')}:</strong> {impact_factor['period_covered']}</div>
-                                    <div><strong>{t('if_citations', citing_year=impact_factor['citing_year'])}:</strong> {impact_factor['citations']}</div>
-                                    <div><strong>{t('if_publications', pub_years=f"{impact_factor['pub_years'][0]}-{impact_factor['pub_years'][1]}" )}:</strong> {impact_factor['publications']}</div>
-                                    <div style="margin-top: 8px; padding: 8px 12px; background: white; border-radius: 6px; font-family: monospace; font-size: 12px;">
-                                        IF = {impact_factor['citations']} / {impact_factor['publications']} = {impact_factor['value']:.2f}
-                                    </div>
-                                </div>
-                            </div>
-                            """
-                        
-                        # SC details
-                        if citescore:
-                            html_content += f"""
-                            <div style="background: #f8f9fa; padding: 20px; border-radius: 12px; border-left: 4px solid #2ecc71;">
-                                <h3 style="color: #2ecc71; margin-bottom: 12px;">{t('citescore')}</h3>
-                                <div style="font-size: 28px; font-weight: 700; color: #2C3E50;">
-                                    {citescore['value']:.2f}
-                                </div>
-                                <div style="font-size: 13px; color: #555; margin-top: 8px; line-height: 1.6;">
-                                    <div><strong>{t('period')}:</strong> {citescore['period_covered']}</div>
-                                    <div><strong>{t('citations')}:</strong> {citescore['citations']}</div>
-                                    <div><strong>{t('publications')}:</strong> {citescore['publications']}</div>
-                                    <div style="margin-top: 8px; padding: 8px 12px; background: white; border-radius: 6px; font-family: monospace; font-size: 12px;">
-                                        SC = {citescore['citations']} / {citescore['publications']} = {citescore['value']:.2f}
-                                    </div>
-                                </div>
-                            </div>
-                            """
-                        
-                        html_content += f"""
+                            <div style="font-size: 12px; color: #555; margin-top: 6px; line-height: 1.5;">
+                                <div><strong>{t('period')}:</strong> {impact_factor['period_covered']}</div>
+                                <div><strong>{t('if_citations', citing_year=impact_factor['citing_year'])}:</strong> {impact_factor['citations']}</div>
+                                <div><strong>{t('if_publications', pub_years=f"{impact_factor['pub_years'][0]}-{impact_factor['pub_years'][1]}")}:</strong> {impact_factor['publications']}</div>
+                                <div style="margin-top: 6px; padding: 6px 10px; background: white; border-radius: 4px; font-family: monospace; font-size: 11px;">
+                                    IF = {impact_factor['citations']} / {impact_factor['publications']} = {impact_factor['value']:.2f}
                                 </div>
                             </div>
                         </div>
-                        """
+                        ''' if impact_factor else ''}
+                        
+                        {f'''
+                        <div style="background: #f8f9fa; padding: 20px; border-radius: 12px; border-left: 4px solid #2ecc71;">
+                            <h3 style="color: #2ecc71; margin-bottom: 8px; font-size: 14px; font-weight: 700;">{t('citescore')}</h3>
+                            <div style="font-size: 32px; font-weight: 700; color: #2C3E50;">
+                                {citescore['value']:.2f}
+                            </div>
+                            <div style="font-size: 12px; color: #555; margin-top: 6px; line-height: 1.5;">
+                                <div><strong>{t('period')}:</strong> {citescore['period_covered']}</div>
+                                <div><strong>{t('citations')}:</strong> {citescore['citations']}</div>
+                                <div><strong>{t('publications')}:</strong> {citescore['publications']}</div>
+                                <div style="margin-top: 6px; padding: 6px 10px; background: white; border-radius: 4px; font-family: monospace; font-size: 11px;">
+                                    SC = {citescore['citations']} / {citescore['publications']} = {citescore['value']:.2f}
+                                </div>
+                            </div>
+                        </div>
+                        ''' if citescore else ''}
+                    </div>
+                    ''' if impact_factor or citescore else ''}
                     
                     <!-- Open Access Breakdown with Progress Bars -->
                     <h3 style="margin-top: 20px; color: {primary}; font-size: 16px;">{t('open_access_breakdown')}</h3>
