@@ -4981,14 +4981,14 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                     <h3 style="margin-top: 20px; color: {primary}; font-size: 16px;">{t('impact_factor')} & {t('citescore')}</h3>
                     <div class="if-sc-grid">
                         <div class="if-sc-card">
-                            <div class="if-sc-value">{impact_factor_data.get('value', 0):.3f}</div>
+                            <div class="if-sc-value">{impact_factor_data.get('value', 0):.1f}</div>
                             <div class="if-sc-label">{t('impact_factor_full', pub_years='-'.join(map(str, impact_factor_data.get('pub_years', []))), cite_year=impact_factor_data.get('cite_year', ''))}</div>
                             <div class="if-sc-detail">
                                 {impact_factor_data.get('citations', 0)} {t('citations')} / {impact_factor_data.get('publications', 0)} {t('publications')}
                             </div>
                         </div>
                         <div class="if-sc-card">
-                            <div class="if-sc-value">{citescore_data.get('value', 0):.3f}</div>
+                            <div class="if-sc-value">{citescore_data.get('value', 0):.1f}</div>
                             <div class="if-sc-label">{t('citescore_full', years='-'.join(map(str, citescore_data.get('window_years', []))))}</div>
                             <div class="if-sc-detail">
                                 {citescore_data.get('citations', 0)} {t('citations')} / {citescore_data.get('publications', 0)} {t('publications')}
