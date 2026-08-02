@@ -255,17 +255,6 @@ LANG = {
         'show_filtered_report': 'Show report with filtering',
         'show_original_report': 'Show original report (no filtering)',
         'temporal_gap_use_filter': 'Use year filter for report',
-        'impact_factor': 'Impact Factor (3-year)',
-        'citescore': 'CiteScore (4-year)',
-        'if_description': 'Citations in {citing_year} to papers published in {pub_years} / Papers published in {pub_years}',
-        'if_citations': 'Citations from {citing_year}',
-        'if_publications': 'Papers in {pub_years}',
-        'if_not_applicable': 'Impact Factor not applicable (period does not cover 2023-2025)',
-        'citescore_not_applicable': 'CiteScore not applicable (period does not cover 2022-2025)',
-        'if_calculation': '3-Year Impact Factor Calculation',
-        'citescore_calculation': '4-Year CiteScore Calculation',
-        'if_value_label': 'IF = {value:.2f}',
-        'citescore_value_label': 'SC = {value:.2f}',
         # ====== НОВЫЕ КЛЮЧИ ДЛЯ JOURNAL ANALYSIS ======
         'journal_analysis_title': 'Journal Analysis Report',
         'stage_fetch_publications': 'Stage 1: Fetching journal publications',
@@ -390,6 +379,18 @@ LANG = {
         'four_plus_authors': '4+ authors',
         # ====== НОВЫЕ КЛЮЧИ ДЛЯ ORCID IN CITING AUTHORS ======
         'citing_author_orcid': 'ORCID',
+        # ====== НОВЫЕ КЛЮЧИ ДЛЯ IMPACT FACTOR И CITESCORE ======
+        'impact_factor': 'Impact Factor (3-year)',
+        'impact_factor_full': 'IF ({pub_years} → {cite_year})',
+        'impact_factor_description': 'Citations in {cite_year} to articles published in {pub_years} / Number of articles published in {pub_years}',
+        'impact_factor_calculation': 'Impact Factor calculation for 3-year window',
+        'impact_factor_not_applicable': 'Impact Factor not applicable (period does not cover target years {years})',
+        'citescore': 'CiteScore (4-year)',
+        'citescore_full': 'SC ({years})',
+        'citescore_description': 'Citations within {years} to articles published in {years} / Number of articles published in {years}',
+        'citescore_calculation': 'CiteScore calculation for 4-year window',
+        'citescore_not_applicable': 'CiteScore not applicable (period does not cover target years {years})',
+        'if_sc_note': 'Calculated for the analysis period covering target years',
     },
     'ru': {
         'app_title': 'Advanced Journal Analysis Tool',
@@ -569,18 +570,6 @@ LANG = {
         'show_filtered_report': 'Показать отчет с фильтрацией',
         'show_original_report': 'Показать исходный отчет (без фильтрации)',
         'temporal_gap_use_filter': 'Использовать фильтр по годам для отчета',
-        'impact_factor': 'Импакт-фактор (3-летний)',
-        'citescore': 'CiteScore (4-летний)',
-        'if_description': 'Цитирования в {citing_year} году статей, опубликованных в {pub_years} / Статей, опубликованных в {pub_years}',
-        'if_citations': 'Цитирований из {citing_year} года',
-        'if_publications': 'Статей в {pub_years}',
-        'if_not_applicable': 'Импакт-фактор не применим (период не покрывает необходимые годы)',
-        'citescore_not_applicable': 'CiteScore не применим (период не покрывает необходимые годы)',
-        'if_calculation': 'Расчет 3-летнего импакт-фактора',
-        'citescore_calculation': 'Расчет 4-летнего CiteScore',
-        'if_value_label': 'ИФ = {value:.2f}',
-        'citescore_value_label': 'SC = {value:.2f}',
-        'if_citescore_details': 'Импакт-фактор и CiteScore',
         # ====== НОВЫЕ КЛЮЧИ ДЛЯ JOURNAL ANALYSIS (РУССКИЙ) ======
         'journal_analysis_title': 'Отчет анализа журнала',
         'stage_fetch_publications': 'Этап 1: Получение публикаций журнала',
@@ -693,12 +682,17 @@ LANG = {
         'analysis_data_from_cache': '📦 Использованы данные из предыдущего анализа',
         'regenerate_report': '🔄 Перегенерировать отчет',
         # ====== НОВЫЕ КЛЮЧИ ДЛЯ IMPACT FACTOR (РУССКИЙ) ======
-        'impact_factor': 'Импакт-фактор (4-летний)',
-        'impact_factor_description': 'Цитирования в 2025 году публикаций 2023-2024 / количество публикаций 2023-2024',
-        'impact_factor_years': 'Публикации 2023-2024, процитированные в 2025',
-        'impact_factor_citations': 'Цитирования из 2025 года',
-        'impact_factor_not_applicable': 'Импакт-фактор не применим (период ≠ последние 4 года)',
-        'impact_factor_calculation': 'Расчет импакт-фактора для последних 4 лет',
+        'impact_factor': 'Импакт-фактор (3-летний)',
+        'impact_factor_full': 'IF ({pub_years} → {cite_year})',
+        'impact_factor_description': 'Цитирования в {cite_year} статей, опубликованных в {pub_years} / Число статей, опубликованных в {pub_years}',
+        'impact_factor_calculation': 'Расчет импакт-фактора для 3-летнего окна',
+        'impact_factor_not_applicable': 'Импакт-фактор не применим (период не покрывает целевые годы {years})',
+        'citescore': 'CiteScore (4-летний)',
+        'citescore_full': 'SC ({years})',
+        'citescore_description': 'Цитирования в {years} статей, опубликованных в {years} / Число статей, опубликованных в {years}',
+        'citescore_calculation': 'Расчет CiteScore для 4-летнего окна',
+        'citescore_not_applicable': 'CiteScore не применим (период не покрывает целевые годы {years})',
+        'if_sc_note': 'Рассчитано для периода анализа, покрывающего целевые годы',
         # ====== НОВЫЕ КЛЮЧИ ДЛЯ AUTHOR DISTRIBUTION (РУССКИЙ) ======
         'author_distribution': 'Распределение по числу авторов',
         'author_distribution_analyzed': 'Распределение анализируемых публикаций по числу авторов',
@@ -2568,10 +2562,10 @@ class JournalAnalyzer:
         # 9. Author distribution (analyzed and citing)
         results['author_distribution'] = self._analyze_author_distribution()
         
-        # 10. Impact Factor
+        # 10. Impact Factor (3-year)
         results['impact_factor'] = self._calculate_impact_factor()
         
-        # 11. CiteScore
+        # 11. CiteScore (4-year)
         results['citescore'] = self._calculate_citescore()
         
         self.analysis_results = results
@@ -2580,6 +2574,195 @@ class JournalAnalyzer:
             progress_callback(100, 100)
         
         return results
+    
+    def _calculate_impact_factor(self) -> Optional[Dict]:
+        """
+        Calculate 3-year Impact Factor (IF)
+        
+        IF = (Citations in YEAR-1 to articles published in YEAR-3 and YEAR-2) / 
+             (Number of articles published in YEAR-3 and YEAR-2)
+        
+        For analysis year 2026:
+        - Publications window: 2023-2024
+        - Citation window: 2025
+        
+        Returns dict with IF value and metadata, or None if period doesn't cover required years
+        """
+        current_year = datetime.now().year
+        
+        # Target years for IF
+        pub_years = [current_year - 3, current_year - 2]  # e.g., [2023, 2024]
+        cite_year = current_year - 1  # e.g., 2025
+        
+        # Get period years
+        period_years = self._get_period_years_set()
+        
+        # Check if all required years are covered by the analysis period
+        required_years = set(pub_years + [cite_year])
+        if not required_years.issubset(period_years):
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ IF не применим: период не покрывает целевые годы {sorted(required_years)}")
+            return None
+        
+        # Get publications in pub_years
+        pub_dois = []
+        for p in self.publications:
+            year = p.get('Year')
+            if year in pub_years:
+                doi = p.get('DOI')
+                if doi:
+                    pub_dois.append(doi)
+        
+        if not pub_dois:
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ IF = 0: нет публикаций за {pub_years}")
+            return {
+                'value': 0.0,
+                'citations': 0,
+                'publications': 0,
+                'pub_years': pub_years,
+                'cite_year': cite_year,
+                'years_covered': sorted(required_years),
+                'period_covers': True
+            }
+        
+        # Count citations in cite_year to publications in pub_years
+        citation_count = 0
+        for doi in pub_dois:
+            citing_list = self.citing_works.get(doi, [])
+            for cite in citing_list:
+                cite_doi = cite.get('doi') if isinstance(cite, dict) else cite
+                cite_meta = self.citations_metadata.get(cite_doi, {})
+                cite_pub_year = cite_meta.get('publication_year')
+                if cite_pub_year == cite_year:
+                    citation_count += 1
+        
+        if SHOW_DEBUG_LOGS:
+            print(f"📊 IF: цитирований {citation_count} за {cite_year} на {len(pub_dois)} статей за {pub_years}")
+        
+        if len(pub_dois) == 0:
+            return {
+                'value': 0.0,
+                'citations': citation_count,
+                'publications': 0,
+                'pub_years': pub_years,
+                'cite_year': cite_year,
+                'years_covered': sorted(required_years),
+                'period_covers': True
+            }
+        
+        if_value = citation_count / len(pub_dois)
+        
+        return {
+            'value': if_value,
+            'citations': citation_count,
+            'publications': len(pub_dois),
+            'pub_years': pub_years,
+            'cite_year': cite_year,
+            'years_covered': sorted(required_years),
+            'period_covers': True
+        }
+    
+    def _calculate_citescore(self) -> Optional[Dict]:
+        """
+        Calculate 4-year CiteScore (SC)
+        
+        SC = (Citations within YEAR-4 to YEAR-1 to articles published in YEAR-4 to YEAR-1) /
+             (Number of articles published in YEAR-4 to YEAR-1)
+        
+        For analysis year 2026:
+        - Window: 2022-2025
+        
+        Returns dict with SC value and metadata, or None if period doesn't cover required years
+        """
+        current_year = datetime.now().year
+        
+        # Target years for SC (4-year window)
+        window_years = list(range(current_year - 4, current_year))  # e.g., [2022, 2023, 2024, 2025]
+        
+        # Get period years
+        period_years = self._get_period_years_set()
+        
+        # Check if all required years are covered by the analysis period
+        required_years = set(window_years)
+        if not required_years.issubset(period_years):
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ SC не применим: период не покрывает целевые годы {sorted(required_years)}")
+            return None
+        
+        # Get publications in window_years
+        pub_dois = []
+        for p in self.publications:
+            year = p.get('Year')
+            if year in window_years:
+                doi = p.get('DOI')
+                if doi:
+                    pub_dois.append(doi)
+        
+        if not pub_dois:
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ SC = 0: нет публикаций за {window_years}")
+            return {
+                'value': 0.0,
+                'citations': 0,
+                'publications': 0,
+                'window_years': window_years,
+                'years_covered': sorted(required_years),
+                'period_covers': True
+            }
+        
+        # Count citations within window_years to publications in window_years
+        citation_count = 0
+        for doi in pub_dois:
+            citing_list = self.citing_works.get(doi, [])
+            for cite in citing_list:
+                cite_doi = cite.get('doi') if isinstance(cite, dict) else cite
+                cite_meta = self.citations_metadata.get(cite_doi, {})
+                cite_pub_year = cite_meta.get('publication_year')
+                if cite_pub_year in window_years:
+                    citation_count += 1
+        
+        if SHOW_DEBUG_LOGS:
+            print(f"📊 SC: цитирований {citation_count} за {window_years} на {len(pub_dois)} статей за {window_years}")
+        
+        if len(pub_dois) == 0:
+            return {
+                'value': 0.0,
+                'citations': citation_count,
+                'publications': 0,
+                'window_years': window_years,
+                'years_covered': sorted(required_years),
+                'period_covers': True
+            }
+        
+        sc_value = citation_count / len(pub_dois)
+        
+        return {
+            'value': sc_value,
+            'citations': citation_count,
+            'publications': len(pub_dois),
+            'window_years': window_years,
+            'years_covered': sorted(required_years),
+            'period_covers': True
+        }
+    
+    def _get_period_years_set(self) -> Set[int]:
+        """Get set of years covered by the analysis period"""
+        period = self.parse_period()
+        
+        if isinstance(period, int):
+            return {period}
+        elif isinstance(period, list):
+            return set(period)
+        elif isinstance(period, tuple) and len(period) == 2:
+            start, end = period
+            return set(range(start, end + 1))
+        else:
+            # Fallback: extract years from publications
+            years = [p.get('Year') for p in self.publications if p.get('Year')]
+            if years:
+                return set(years)
+            return set()
     
     def _analyze_basic_metrics(self) -> Dict:
         """Analyze basic metrics"""
@@ -3711,140 +3894,6 @@ class JournalAnalyzer:
             }
         }
 
-    def _period_covers_years(self, period, years: List[int]) -> bool:
-        """
-        Check if the analysis period covers all required years.
-        Handles ranges, lists, and single years.
-        """
-        if isinstance(period, tuple):
-            # Range: min-max
-            start, end = period
-            return all(start <= y <= end for y in years)
-        elif isinstance(period, list):
-            # Specific years
-            return all(y in period for y in years)
-        else:
-            # Single year
-            return all(y == period for y in years)
-    
-    def _calculate_impact_factor(self) -> Optional[Dict]:
-        """
-        Calculate 3-year Impact Factor for the journal.
-        Returns dict with IF value and metadata, or None if conditions not met.
-        """
-        current_year = datetime.now().year
-        
-        # Целевые годы для IF
-        citing_year = current_year - 1  # 2025
-        pub_years = [current_year - 3, current_year - 2]  # [2023, 2024]
-        
-        # Проверяем, входит ли анализируемый период в эти годы
-        period = self.parse_period()
-        if not self._period_covers_years(period, pub_years + [citing_year]):
-            return None
-        
-        # 1. Находим статьи, опубликованные в pub_years
-        target_publications = []
-        for p in self.publications:
-            year = p.get('Year')
-            if year in pub_years:
-                target_publications.append(p)
-        
-        if not target_publications:
-            return None
-        
-        # 2. Считаем цитирования в citing_year на эти статьи
-        citations_count = 0
-        for p in target_publications:
-            doi = p.get('DOI')
-            if not doi:
-                continue
-            
-            citing_list = self.citing_works.get(doi, [])
-            for cite in citing_list:
-                cite_doi = cite.get('doi') if isinstance(cite, dict) else cite
-                cite_meta = self.citations_metadata.get(cite_doi, {})
-                cite_year = cite_meta.get('publication_year')
-                
-                if cite_year == citing_year:
-                    citations_count += 1
-        
-        # 3. Рассчитываем IF
-        total_publications = len(target_publications)
-        if total_publications == 0:
-            return None
-        
-        impact_factor = citations_count / total_publications
-        
-        return {
-            'value': impact_factor,
-            'citations': citations_count,
-            'publications': total_publications,
-            'pub_years': pub_years,
-            'citing_year': citing_year,
-            'period_covered': f"{min(pub_years)}-{max(pub_years)} → {citing_year}"
-        }
-
-    def _calculate_citescore(self) -> Optional[Dict]:
-        """
-        Calculate 4-year CiteScore for the journal.
-        Returns dict with SC value and metadata, or None if conditions not met.
-        """
-        current_year = datetime.now().year
-        
-        # Целевые годы для SC (4 года)
-        target_years = list(range(current_year - 4, current_year))  # [2022, 2023, 2024, 2025]
-        
-        # Проверяем, входит ли анализируемый период в эти годы
-        period = self.parse_period()
-        if not self._period_covers_years(period, target_years):
-            return None
-        
-        # 1. Находим статьи, опубликованные в target_years
-        target_publications = []
-        target_dois = set()
-        for p in self.publications:
-            year = p.get('Year')
-            if year in target_years:
-                target_publications.append(p)
-                doi = p.get('DOI')
-                if doi:
-                    target_dois.add(doi)
-        
-        if not target_publications:
-            return None
-        
-        # 2. Считаем цитирования внутри target_years на эти статьи
-        citations_count = 0
-        for p in target_publications:
-            doi = p.get('DOI')
-            if not doi:
-                continue
-            
-            citing_list = self.citing_works.get(doi, [])
-            for cite in citing_list:
-                cite_doi = cite.get('doi') if isinstance(cite, dict) else cite
-                cite_meta = self.citations_metadata.get(cite_doi, {})
-                cite_year = cite_meta.get('publication_year')
-                
-                if cite_year in target_years:
-                    citations_count += 1
-        
-        # 3. Рассчитываем SC
-        total_publications = len(target_publications)
-        if total_publications == 0:
-            return None
-        
-        citescore = citations_count / total_publications
-        
-        return {
-            'value': citescore,
-            'citations': citations_count,
-            'publications': total_publications,
-            'years': target_years,
-            'period_covered': f"{min(target_years)}-{max(target_years)}"
-        }
-
 # ============================================
 # ФУНКЦИИ ДЛЯ ГЕНЕРАЦИИ ОТЧЕТОВ
 # ============================================
@@ -3895,8 +3944,10 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
     topics = results.get('topics_analysis', {})
     detailed_citations = results.get('detailed_citations', {})
     author_distribution = results.get('author_distribution', {})
-    impact_factor = results.get('impact_factor')
-    citescore = results.get('citescore')
+    
+    # Impact Factor and CiteScore
+    impact_factor_data = results.get('impact_factor', {})
+    citescore_data = results.get('citescore', {})
     
     # Все публикации для таблицы
     all_publications = []
@@ -4736,6 +4787,54 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                 padding-top: 8px;
                 border-top: 1px solid #e9ecef;
             }}
+            
+            /* ===== IF/SC CARDS ===== */
+            .if-sc-grid {{
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 12px;
+                margin: 12px 0;
+            }}
+            .if-sc-card {{
+                background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+                padding: 14px 18px;
+                border-radius: 12px;
+                border-left: 4px solid {primary};
+                text-align: center;
+                transition: all 0.3s;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+                position: relative;
+                overflow: hidden;
+            }}
+            .if-sc-card:hover {{
+                transform: translateY(-4px);
+                box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+                border-left-color: {secondary};
+            }}
+            .if-sc-card .if-sc-value {{
+                font-size: 28px;
+                font-weight: 700;
+                color: #2C3E50;
+                font-family: 'Times New Roman', serif;
+                background: linear-gradient(135deg, {primary}, {secondary});
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                background-clip: text;
+            }}
+            .if-sc-card .if-sc-label {{
+                font-size: 11px;
+                color: #7F8C8D;
+                margin-top: 4px;
+                font-family: 'Times New Roman', serif;
+                font-weight: 500;
+                letter-spacing: 0.3px;
+            }}
+            .if-sc-card .if-sc-detail {{
+                font-size: 10px;
+                color: #95A5A6;
+                margin-top: 2px;
+                font-family: 'Times New Roman', serif;
+            }}
         </style>
     </head>
     <body>
@@ -4877,44 +4976,26 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                         </div>
                     </div>
                     
-                    <!-- ===== IMPACT FACTOR & CITESCORE CARDS ===== -->
+                    <!-- Impact Factor and CiteScore Cards -->
                     {f'''
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
-                        {f'''
-                        <div style="background: #f8f9fa; padding: 20px; border-radius: 12px; border-left: 4px solid #e74c3c;">
-                            <h3 style="color: #e74c3c; margin-bottom: 8px; font-size: 14px; font-weight: 700;">{t('impact_factor')}</h3>
-                            <div style="font-size: 32px; font-weight: 700; color: #2C3E50;">
-                                {impact_factor['value']:.2f}
-                            </div>
-                            <div style="font-size: 12px; color: #555; margin-top: 6px; line-height: 1.5;">
-                                <div><strong>{t('period')}:</strong> {impact_factor['period_covered']}</div>
-                                <div><strong>{t('if_citations', citing_year=impact_factor['citing_year'])}:</strong> {impact_factor['citations']}</div>
-                                <div><strong>{t('if_publications', pub_years=f"{impact_factor['pub_years'][0]}-{impact_factor['pub_years'][1]}")}:</strong> {impact_factor['publications']}</div>
-                                <div style="margin-top: 6px; padding: 6px 10px; background: white; border-radius: 4px; font-family: monospace; font-size: 11px;">
-                                    IF = {impact_factor['citations']} / {impact_factor['publications']} = {impact_factor['value']:.2f}
-                                </div>
+                    <h3 style="margin-top: 20px; color: {primary}; font-size: 16px;">{t('impact_factor')} & {t('citescore')}</h3>
+                    <div class="if-sc-grid">
+                        <div class="if-sc-card">
+                            <div class="if-sc-value">{impact_factor_data.get('value', 0):.3f}</div>
+                            <div class="if-sc-label">{t('impact_factor_full', pub_years='-'.join(map(str, impact_factor_data.get('pub_years', []))), cite_year=impact_factor_data.get('cite_year', ''))}</div>
+                            <div class="if-sc-detail">
+                                {impact_factor_data.get('citations', 0)} {t('citations')} / {impact_factor_data.get('publications', 0)} {t('publications')}
                             </div>
                         </div>
-                        ''' if impact_factor else ''}
-                        
-                        {f'''
-                        <div style="background: #f8f9fa; padding: 20px; border-radius: 12px; border-left: 4px solid #2ecc71;">
-                            <h3 style="color: #2ecc71; margin-bottom: 8px; font-size: 14px; font-weight: 700;">{t('citescore')}</h3>
-                            <div style="font-size: 32px; font-weight: 700; color: #2C3E50;">
-                                {citescore['value']:.2f}
-                            </div>
-                            <div style="font-size: 12px; color: #555; margin-top: 6px; line-height: 1.5;">
-                                <div><strong>{t('period')}:</strong> {citescore['period_covered']}</div>
-                                <div><strong>{t('citations')}:</strong> {citescore['citations']}</div>
-                                <div><strong>{t('publications')}:</strong> {citescore['publications']}</div>
-                                <div style="margin-top: 6px; padding: 6px 10px; background: white; border-radius: 4px; font-family: monospace; font-size: 11px;">
-                                    SC = {citescore['citations']} / {citescore['publications']} = {citescore['value']:.2f}
-                                </div>
+                        <div class="if-sc-card">
+                            <div class="if-sc-value">{citescore_data.get('value', 0):.3f}</div>
+                            <div class="if-sc-label">{t('citescore_full', years='-'.join(map(str, citescore_data.get('window_years', []))))}</div>
+                            <div class="if-sc-detail">
+                                {citescore_data.get('citations', 0)} {t('citations')} / {citescore_data.get('publications', 0)} {t('publications')}
                             </div>
                         </div>
-                        ''' if citescore else ''}
                     </div>
-                    ''' if impact_factor or citescore else ''}
+                    ''' if impact_factor_data and citescore_data else ''}
                     
                     <!-- Open Access Breakdown with Progress Bars -->
                     <h3 style="margin-top: 20px; color: {primary}; font-size: 16px;">{t('open_access_breakdown')}</h3>
@@ -6191,8 +6272,6 @@ def run_journal_analysis(issn: str, period: str, max_workers: int = 6, journal_l
         st.session_state['max_workers'] = max_workers
         st.session_state['journal_name'] = journal_name
         st.session_state['journal_abbreviation'] = journal_abbr
-        st.session_state['impact_factor'] = results.get('impact_factor')
-        st.session_state['citescore'] = results.get('citescore')
         
         analysis_progress.progress(1.0, text=f"✅ {t('analysis_complete_text')}!")
         
@@ -6237,7 +6316,7 @@ def run_journal_analysis(issn: str, period: str, max_workers: int = 6, journal_l
         
         # Кнопка сброса
         if st.button("🔄 " + t('reset_analysis'), type="secondary"):
-            for key in ['analyzer', 'results', 'publications', 'citing_works', 'analysis_complete', 'issn', 'period', 'max_workers', 'journal_name', 'journal_abbreviation', 'impact_factor', 'citescore']:
+            for key in ['analyzer', 'results', 'publications', 'citing_works', 'analysis_complete', 'issn', 'period', 'max_workers', 'journal_name', 'journal_abbreviation']:
                 if key in st.session_state:
                     del st.session_state[key]
             st.rerun()
@@ -6293,10 +6372,6 @@ def main():
         st.session_state.journal_name = ''
     if 'journal_abbreviation' not in st.session_state:
         st.session_state.journal_abbreviation = ''
-    if 'impact_factor' not in st.session_state:
-        st.session_state.impact_factor = None
-    if 'citescore' not in st.session_state:
-        st.session_state.citescore = None
     
     # Apply theme
     primary = st.session_state.primary_color
@@ -6420,24 +6495,11 @@ def main():
         if st.session_state.journal_name:
             st.markdown(f"**Journal:** {st.session_state.journal_name} ({st.session_state.journal_abbreviation})")
         
-        if st.session_state.impact_factor:
-            st.metric(
-                label=t('impact_factor'),
-                value=f"{st.session_state.impact_factor['value']:.2f}",
-                help=f"{t('period')}: {st.session_state.impact_factor['period_covered']}"
-            )
-        if st.session_state.citescore:
-            st.metric(
-                label=t('citescore'),
-                value=f"{st.session_state.citescore['value']:.2f}",
-                help=f"{t('period')}: {st.session_state.citescore['period_covered']}"
-            )
-        
         # Кнопка для сброса
         col1, col2 = st.columns([4, 1])
         with col2:
             if st.button("🗑️ " + t('reset_analysis'), type="secondary"):
-                for key in ['analyzer', 'results', 'publications', 'citing_works', 'analysis_complete', 'issn', 'period', 'max_workers', 'journal_name', 'journal_abbreviation', 'impact_factor', 'citescore']:
+                for key in ['analyzer', 'results', 'publications', 'citing_works', 'analysis_complete', 'issn', 'period', 'max_workers', 'journal_name', 'journal_abbreviation']:
                     if key in st.session_state:
                         del st.session_state[key]
                 st.rerun()
