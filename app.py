@@ -6682,7 +6682,7 @@ def run_journal_analysis(issn: str, period: str, max_workers: int = 6, journal_l
             )
         
         # Кнопка скачивания
-        filename = f"journal_analysis_{st.session_state.journal_abbreviation or st.session_state.issn}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+        filename = f"journal_analysis_{st.session_state.journal_abbreviation or st.session_state.issn}_{datetime.now().strftime('%Y%m%d')}.html"
         st.download_button(
             label="📥 " + t('download_report'),
             data=html_report.encode('utf-8'),
@@ -6907,7 +6907,7 @@ def main():
                 current_lang
             )
         
-        filename = f"journal_analysis_{st.session_state.journal_abbreviation or st.session_state.issn}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+        filename = f"journal_analysis_{st.session_state.journal_abbreviation or st.session_state.issn}_{datetime.now().strftime('%Y%m%d')}.html"
         st.download_button(
             label="📥 " + t('download_report'),
             data=html_report.encode('utf-8'),
