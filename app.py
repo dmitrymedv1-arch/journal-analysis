@@ -6257,7 +6257,10 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                             ])}
                             {f'<div style="padding: 10px 18px; color: #999; font-style: italic;">{t("no_citations_found")}</div>' if not data['citations'] else ''}
                         </div>
-                        ''' for doi, data in list(detailed_citations.items())
+                        ''' for doi, data in sorted(
+                            detailed_citations.items(),
+                            key=lambda kv: (-kv[1].get('total_citations', 0), kv[1].get('year') or 0)
+                        )
                     ])}
                     
                 </div>
