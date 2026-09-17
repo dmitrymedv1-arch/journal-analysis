@@ -40,7 +40,7 @@ import streamlit as st
 from streamlit import session_state as ss
 import re
 import time
-from datetime import datetime
+from datetime import datetime, date, timedelta
 import json
 from typing import List, Set, Dict, Tuple, Optional, Any
 from collections import Counter, defaultdict
@@ -71,6 +71,7 @@ import difflib
 from threading import Lock
 from tqdm import tqdm
 import random
+from dateutil.relativedelta import relativedelta
 
 # ============================================
 # СЛОВАРЬ ПЕРЕВОДОВ
@@ -391,6 +392,20 @@ LANG = {
         'citescore_calculation': 'CiteScore calculation for 4-year window',
         'citescore_not_applicable': 'CiteScore not applicable (period does not cover target years {years})',
         'if_sc_note': 'Calculated for the analysis period covering target years',
+        # ====== НОВЫЕ КЛЮЧИ ДЛЯ ДИНАМИЧЕСКИХ IF И CITESCORE ======
+        'dynamic_metrics_title': 'Dynamic Metrics',
+        'if_dynamic': 'Dynamic Impact Factor (3-year)',
+        'citescore_dynamic': 'Dynamic CiteScore (4-year)',
+        'if_dynamic_full': 'Dynamic IF ({cite_start} → {cite_end})',
+        'citescore_dynamic_full': 'Dynamic SC ({start} → {end})',
+        'dynamic_window_label': 'Window: {start} → {end}',
+        'dynamic_publications_window': 'Publications window: {start} → {end}',
+        'dynamic_citations_window': 'Citations window: {start} → {end}',
+        'dynamic_not_applicable': 'Not applicable (period does not cover window)',
+        'if_dynamic_description': 'Dynamic IF: citations in (now-1y, now] to articles published in (now-3y, now-1y] / number of articles published in (now-3y, now-1y]',
+        'citescore_dynamic_description': 'Dynamic SC: citations in (now-4y, now] to articles published in (now-4y, now] / number of articles published in (now-4y, now]',
+        'dynamic_as_of': 'as of {date}',
+        'dynamic_citations_publications': '{citations} Citations / {publications} Publications',
     },
     'ru': {
         'app_title': 'Advanced Journal Analysis Tool',
@@ -706,6 +721,20 @@ LANG = {
         'four_plus_authors': '4+ авторов',
         # ====== НОВЫЕ КЛЮЧИ ДЛЯ ORCID IN CITING AUTHORS (РУССКИЙ) ======
         'citing_author_orcid': 'ORCID',
+        # ====== НОВЫЕ КЛЮЧИ ДЛЯ ДИНАМИЧЕСКИХ IF И CITESCORE (РУССКИЙ) ======
+        'dynamic_metrics_title': 'Динамические метрики',
+        'if_dynamic': 'Динамический импакт-фактор (3-летний)',
+        'citescore_dynamic': 'Динамический CiteScore (4-летний)',
+        'if_dynamic_full': 'Динамический IF ({cite_start} → {cite_end})',
+        'citescore_dynamic_full': 'Динамический SC ({start} → {end})',
+        'dynamic_window_label': 'Окно: {start} → {end}',
+        'dynamic_publications_window': 'Окно публикаций: {start} → {end}',
+        'dynamic_citations_window': 'Окно цитирований: {start} → {end}',
+        'dynamic_not_applicable': 'Не применимо (период не покрывает окно)',
+        'if_dynamic_description': 'Динамический IF: цитирования в (now-1y, now] статей, опубликованных в (now-3y, now-1y] / число статей, опубликованных в (now-3y, now-1y]',
+        'citescore_dynamic_description': 'Динамический SC: цитирования в (now-4y, now] статей, опубликованных в (now-4y, now] / число статей, опубликованных в (now-4y, now]',
+        'dynamic_as_of': 'на {date}',
+        'dynamic_citations_publications': '{citations} цитирований / {publications} публикаций',
     }
 }
 
@@ -2568,6 +2597,12 @@ class JournalAnalyzer:
         # 11. CiteScore (4-year)
         results['citescore'] = self._calculate_citescore()
         
+        # 12. Dynamic Impact Factor (3-year) — привязан к текущей дате
+        results['impact_factor_dynamic'] = self._calculate_impact_factor_dynamic()
+        
+        # 13. Dynamic CiteScore (4-year) — привязан к текущей дате
+        results['citescore_dynamic'] = self._calculate_citescore_dynamic()
+        
         self.analysis_results = results
         
         if progress_callback:
@@ -2744,6 +2779,278 @@ class JournalAnalyzer:
             'window_years': window_years,
             'years_covered': sorted(required_years),
             'period_covers': True
+        }
+    
+    def _calculate_impact_factor_dynamic(self) -> Optional[Dict]:
+        """
+        Calculate dynamic 3-year Impact Factor (IF) anchored to the current date.
+        
+        Definition:
+            Publications window: (now - 3y, now - 1y]
+            Citations window:    (now - 1y, now]
+            IF_dyn = citations in citations window to articles from publications window
+                     / number of articles in publications window
+        
+        Left bound is exclusive, right bound is inclusive.
+        
+        Returns dict with value and metadata, or None if period doesn't cover the window.
+        """
+        now = datetime.now()
+        
+        pub_window_start = now - relativedelta(years=3)
+        pub_window_end = now - relativedelta(years=1)
+        cite_window_start = pub_window_end
+        cite_window_end = now
+        
+        period_years = self._get_period_years_set()
+        
+        # Check that all years touched by the windows are covered by the analysis period
+        def years_touched(start_dt: datetime, end_dt: datetime) -> Set[int]:
+            """Return set of calendar years touched by the interval (start, end]."""
+            years = set()
+            y = start_dt.year
+            while y <= end_dt.year:
+                years.add(y)
+                y += 1
+            return years
+        
+        required_years = years_touched(pub_window_start, pub_window_end) | \
+                         years_touched(cite_window_start, cite_window_end)
+        
+        if not required_years.issubset(period_years):
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ Dynamic IF не применим: период не покрывает окно {sorted(required_years)}")
+            return {
+                'value': None,
+                'citations': 0,
+                'publications': 0,
+                'pub_window_start': pub_window_start.strftime('%Y-%m-%d'),
+                'pub_window_end': pub_window_end.strftime('%Y-%m-%d'),
+                'cite_window_start': cite_window_start.strftime('%Y-%m-%d'),
+                'cite_window_end': cite_window_end.strftime('%Y-%m-%d'),
+                'period_covers': False,
+                'not_applicable_reason': 'period_does_not_cover_window'
+            }
+        
+        # Collect publications within publications window using publication_date
+        pub_dois = []
+        for p in self.publications:
+            doi = p.get('DOI')
+            if not doi:
+                continue
+            # publication_date is preferred; fallback to year-based midpoint
+            pub_date_str = p.get('Publication_Date')
+            pub_date = None
+            if pub_date_str:
+                try:
+                    pub_date = datetime.fromisoformat(pub_date_str[:10])
+                except Exception:
+                    pub_date = None
+            if pub_date is None:
+                # Fallback: try to use metadata
+                meta = self.publications_metadata.get(doi, {})
+                meta_date_str = meta.get('publication_date')
+                if meta_date_str:
+                    try:
+                        pub_date = datetime.fromisoformat(meta_date_str[:10])
+                    except Exception:
+                        pub_date = None
+            if pub_date is None:
+                # If we cannot determine the date, skip this publication
+                continue
+            # Interval is (start, end]
+            if pub_window_start < pub_date <= pub_window_end:
+                pub_dois.append(doi)
+        
+        # Count citations in citations window to publications from publications window
+        citation_count = 0
+        for pub_doi in pub_dois:
+            citing_list = self.citing_works.get(pub_doi, [])
+            for cite in citing_list:
+                cite_doi = cite.get('doi') if isinstance(cite, dict) else cite
+                cite_date_str = cite.get('publication_date') if isinstance(cite, dict) else None
+                cite_date = None
+                if cite_date_str:
+                    try:
+                        cite_date = datetime.fromisoformat(cite_date_str[:10])
+                    except Exception:
+                        cite_date = None
+                if cite_date is None:
+                    # Fallback: use metadata
+                    cite_meta = self.citations_metadata.get(cite_doi, {})
+                    meta_date_str = cite_meta.get('publication_date')
+                    if meta_date_str:
+                        try:
+                            cite_date = datetime.fromisoformat(meta_date_str[:10])
+                        except Exception:
+                            cite_date = None
+                if cite_date is None:
+                    continue
+                # Interval is (start, end]
+                if cite_window_start < cite_date <= cite_window_end:
+                    citation_count += 1
+        
+        publications_count = len(pub_dois)
+        
+        if publications_count == 0:
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ Dynamic IF = 0: нет публикаций в окне ({pub_window_start.date()}, {pub_window_end.date()}]")
+            return {
+                'value': 0.0,
+                'citations': citation_count,
+                'publications': 0,
+                'pub_window_start': pub_window_start.strftime('%Y-%m-%d'),
+                'pub_window_end': pub_window_end.strftime('%Y-%m-%d'),
+                'cite_window_start': cite_window_start.strftime('%Y-%m-%d'),
+                'cite_window_end': cite_window_end.strftime('%Y-%m-%d'),
+                'period_covers': True,
+                'not_applicable_reason': None
+            }
+        
+        if_value = citation_count / publications_count
+        
+        if SHOW_DEBUG_LOGS:
+            print(f"📊 Dynamic IF: {citation_count} / {publications_count} = {if_value:.3f} "
+                  f"(pub window: {pub_window_start.date()} → {pub_window_end.date()}, "
+                  f"cite window: {cite_window_start.date()} → {cite_window_end.date()})")
+        
+        return {
+            'value': if_value,
+            'citations': citation_count,
+            'publications': publications_count,
+            'pub_window_start': pub_window_start.strftime('%Y-%m-%d'),
+            'pub_window_end': pub_window_end.strftime('%Y-%m-%d'),
+            'cite_window_start': cite_window_start.strftime('%Y-%m-%d'),
+            'cite_window_end': cite_window_end.strftime('%Y-%m-%d'),
+            'period_covers': True,
+            'not_applicable_reason': None
+        }
+    
+    def _calculate_citescore_dynamic(self) -> Optional[Dict]:
+        """
+        Calculate dynamic 4-year CiteScore (SC) anchored to the current date.
+        
+        Definition (variant A — всё окно скользит к now()):
+            Window: (now - 4y, now]
+            SC_dyn = citations in (now - 4y, now] to articles published in (now - 4y, now]
+                     / number of articles published in (now - 4y, now]
+        
+        Left bound is exclusive, right bound is inclusive.
+        
+        Returns dict with value and metadata, or None if period doesn't cover the window.
+        """
+        now = datetime.now()
+        
+        window_start = now - relativedelta(years=4)
+        window_end = now
+        
+        period_years = self._get_period_years_set()
+        
+        def years_touched(start_dt: datetime, end_dt: datetime) -> Set[int]:
+            """Return set of calendar years touched by the interval (start, end]."""
+            years = set()
+            y = start_dt.year
+            while y <= end_dt.year:
+                years.add(y)
+                y += 1
+            return years
+        
+        required_years = years_touched(window_start, window_end)
+        
+        if not required_years.issubset(period_years):
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ Dynamic SC не применим: период не покрывает окно {sorted(required_years)}")
+            return {
+                'value': None,
+                'citations': 0,
+                'publications': 0,
+                'window_start': window_start.strftime('%Y-%m-%d'),
+                'window_end': window_end.strftime('%Y-%m-%d'),
+                'period_covers': False,
+                'not_applicable_reason': 'period_does_not_cover_window'
+            }
+        
+        # Collect publications within window
+        pub_dois = []
+        for p in self.publications:
+            doi = p.get('DOI')
+            if not doi:
+                continue
+            pub_date_str = p.get('Publication_Date')
+            pub_date = None
+            if pub_date_str:
+                try:
+                    pub_date = datetime.fromisoformat(pub_date_str[:10])
+                except Exception:
+                    pub_date = None
+            if pub_date is None:
+                meta = self.publications_metadata.get(doi, {})
+                meta_date_str = meta.get('publication_date')
+                if meta_date_str:
+                    try:
+                        pub_date = datetime.fromisoformat(meta_date_str[:10])
+                    except Exception:
+                        pub_date = None
+            if pub_date is None:
+                continue
+            if window_start < pub_date <= window_end:
+                pub_dois.append(doi)
+        
+        # Count citations within the same window to publications from the window
+        citation_count = 0
+        for pub_doi in pub_dois:
+            citing_list = self.citing_works.get(pub_doi, [])
+            for cite in citing_list:
+                cite_doi = cite.get('doi') if isinstance(cite, dict) else cite
+                cite_date_str = cite.get('publication_date') if isinstance(cite, dict) else None
+                cite_date = None
+                if cite_date_str:
+                    try:
+                        cite_date = datetime.fromisoformat(cite_date_str[:10])
+                    except Exception:
+                        cite_date = None
+                if cite_date is None:
+                    cite_meta = self.citations_metadata.get(cite_doi, {})
+                    meta_date_str = cite_meta.get('publication_date')
+                    if meta_date_str:
+                        try:
+                            cite_date = datetime.fromisoformat(meta_date_str[:10])
+                        except Exception:
+                            cite_date = None
+                if cite_date is None:
+                    continue
+                if window_start < cite_date <= window_end:
+                    citation_count += 1
+        
+        publications_count = len(pub_dois)
+        
+        if publications_count == 0:
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ Dynamic SC = 0: нет публикаций в окне ({window_start.date()}, {window_end.date()}]")
+            return {
+                'value': 0.0,
+                'citations': citation_count,
+                'publications': 0,
+                'window_start': window_start.strftime('%Y-%m-%d'),
+                'window_end': window_end.strftime('%Y-%m-%d'),
+                'period_covers': True,
+                'not_applicable_reason': None
+            }
+        
+        sc_value = citation_count / publications_count
+        
+        if SHOW_DEBUG_LOGS:
+            print(f"📊 Dynamic SC: {citation_count} / {publications_count} = {sc_value:.3f} "
+                  f"(window: {window_start.date()} → {window_end.date()})")
+        
+        return {
+            'value': sc_value,
+            'citations': citation_count,
+            'publications': publications_count,
+            'window_start': window_start.strftime('%Y-%m-%d'),
+            'window_end': window_end.strftime('%Y-%m-%d'),
+            'period_covers': True,
+            'not_applicable_reason': None
         }
     
     def _get_period_years_set(self) -> Set[int]:
@@ -3945,9 +4252,13 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
     detailed_citations = results.get('detailed_citations', {})
     author_distribution = results.get('author_distribution', {})
     
-    # Impact Factor and CiteScore
+    # Impact Factor and CiteScore (static)
     impact_factor_data = results.get('impact_factor', {})
     citescore_data = results.get('citescore', {})
+    
+    # Dynamic Impact Factor and CiteScore (anchored to now())
+    impact_factor_dynamic_data = results.get('impact_factor_dynamic', {}) or {}
+    citescore_dynamic_data = results.get('citescore_dynamic', {}) or {}
     
     # Все публикации для таблицы
     all_publications = []
@@ -4041,6 +4352,91 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
     # Max values for author distribution color scales
     max_analyzed_dist = max(analyzed_dist.values()) if analyzed_dist else 1
     max_citing_dist = max(citing_dist.values()) if citing_dist else 1
+    
+    # ===== ПОДГОТОВКА ДАННЫХ ДЛЯ ДИНАМИЧЕСКИХ IF/SC =====
+    dynamic_now = datetime.now()
+    dynamic_now_str = dynamic_now.strftime('%Y-%m-%d')
+    
+    if impact_factor_dynamic_data.get('period_covers', False) and impact_factor_dynamic_data.get('value') is not None:
+        if_dyn_value = f"{impact_factor_dynamic_data.get('value', 0):.1f}"
+        if_dyn_cite_window = f"{impact_factor_dynamic_data.get('cite_window_start', '')} → {impact_factor_dynamic_data.get('cite_window_end', '')}"
+        if_dyn_pub_window = f"{impact_factor_dynamic_data.get('pub_window_start', '')} → {impact_factor_dynamic_data.get('pub_window_end', '')}"
+        if_dyn_citations = impact_factor_dynamic_data.get('citations', 0)
+        if_dyn_publications = impact_factor_dynamic_data.get('publications', 0)
+        if_dyn_calc_line = t('dynamic_citations_publications', citations=if_dyn_citations, publications=if_dyn_publications)
+        if_dyn_label = t('if_dynamic_full', cite_start=impact_factor_dynamic_data.get('cite_window_start', ''), cite_end=impact_factor_dynamic_data.get('cite_window_end', ''))
+        if_dyn_not_applicable = ''
+    else:
+        if_dyn_value = 'N/A'
+        if_dyn_cite_window = ''
+        if_dyn_pub_window = ''
+        if_dyn_calc_line = ''
+        if_dyn_label = t('if_dynamic')
+        if_dyn_not_applicable = t('dynamic_not_applicable')
+    
+    if citescore_dynamic_data.get('period_covers', False) and citescore_dynamic_data.get('value') is not None:
+        sc_dyn_value = f"{citescore_dynamic_data.get('value', 0):.1f}"
+        sc_dyn_window = f"{citescore_dynamic_data.get('window_start', '')} → {citescore_dynamic_data.get('window_end', '')}"
+        sc_dyn_citations = citescore_dynamic_data.get('citations', 0)
+        sc_dyn_publications = citescore_dynamic_data.get('publications', 0)
+        sc_dyn_calc_line = t('dynamic_citations_publications', citations=sc_dyn_citations, publications=sc_dyn_publications)
+        sc_dyn_label = t('citescore_dynamic_full', start=citescore_dynamic_data.get('window_start', ''), end=citescore_dynamic_data.get('window_end', ''))
+        sc_dyn_not_applicable = ''
+    else:
+        sc_dyn_value = 'N/A'
+        sc_dyn_window = ''
+        sc_dyn_calc_line = ''
+        sc_dyn_label = t('citescore_dynamic')
+        sc_dyn_not_applicable = t('dynamic_not_applicable')
+    
+    # ===== ГОТОВИМ HTML ДЛЯ СТАТИЧЕСКИХ IF/SC =====
+    static_if_sc_block = ''
+    if impact_factor_data and citescore_data:
+        static_if_sc_block = f'''
+                    <h3 style="margin-top: 20px; color: {primary}; font-size: 16px;">{t('impact_factor')} & {t('citescore')}</h3>
+                    <div class="if-sc-grid">
+                        <div class="if-sc-card">
+                            <div class="if-sc-value">{impact_factor_data.get('value', 0):.1f}</div>
+                            <div class="if-sc-label">{t('impact_factor_full', pub_years='-'.join(map(str, impact_factor_data.get('pub_years', []))), cite_year=impact_factor_data.get('cite_year', ''))}</div>
+                            <div class="if-sc-detail">
+                                {impact_factor_data.get('citations', 0)} {t('citations')} / {impact_factor_data.get('publications', 0)} {t('publications')}
+                            </div>
+                        </div>
+                        <div class="if-sc-card">
+                            <div class="if-sc-value">{citescore_data.get('value', 0):.1f}</div>
+                            <div class="if-sc-label">{t('citescore_full', years='-'.join(map(str, citescore_data.get('window_years', []))))}</div>
+                            <div class="if-sc-detail">
+                                {citescore_data.get('citations', 0)} {t('citations')} / {citescore_data.get('publications', 0)} {t('publications')}
+                            </div>
+                        </div>
+                    </div>
+                    '''
+    
+    # ===== ГОТОВИМ HTML ДЛЯ ДИНАМИЧЕСКИХ IF/SC =====
+    dynamic_if_sc_block = f'''
+                    <h3 style="margin-top: 20px; color: {primary}; font-size: 16px;">{t('dynamic_metrics_title')} <span style="font-weight: 400; font-size: 12px; color: #7F8C8D;">{t('dynamic_as_of', date=dynamic_now_str)}</span></h3>
+                    <div class="if-sc-grid">
+                        <div class="if-sc-card">
+                            <div class="if-sc-value">{if_dyn_value}</div>
+                            <div class="if-sc-label">{if_dyn_label}</div>
+                            <div class="if-sc-detail">
+                                {if_dyn_calc_line}
+                            </div>
+                            {f'<div class="if-sc-detail" style="color: #95A5A6;">{t("dynamic_publications_window", start=impact_factor_dynamic_data.get("pub_window_start", ""), end=impact_factor_dynamic_data.get("pub_window_end", ""))}</div>' if if_dyn_pub_window else ''}
+                            {f'<div class="if-sc-detail" style="color: #95A5A6;">{t("dynamic_citations_window", start=impact_factor_dynamic_data.get("cite_window_start", ""), end=impact_factor_dynamic_data.get("cite_window_end", ""))}</div>' if if_dyn_cite_window else ''}
+                            {f'<div class="if-sc-detail" style="color: #E74C3C;">{if_dyn_not_applicable}</div>' if if_dyn_not_applicable else ''}
+                        </div>
+                        <div class="if-sc-card">
+                            <div class="if-sc-value">{sc_dyn_value}</div>
+                            <div class="if-sc-label">{sc_dyn_label}</div>
+                            <div class="if-sc-detail">
+                                {sc_dyn_calc_line}
+                            </div>
+                            {f'<div class="if-sc-detail" style="color: #95A5A6;">{t("dynamic_window_label", start=citescore_dynamic_data.get("window_start", ""), end=citescore_dynamic_data.get("window_end", ""))}</div>' if sc_dyn_window else ''}
+                            {f'<div class="if-sc-detail" style="color: #E74C3C;">{sc_dyn_not_applicable}</div>' if sc_dyn_not_applicable else ''}
+                        </div>
+                    </div>
+                    '''
     
     # HTML generation
     html_content = f"""
@@ -4976,26 +5372,11 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                         </div>
                     </div>
                     
-                    <!-- Impact Factor and CiteScore Cards -->
-                    {f'''
-                    <h3 style="margin-top: 20px; color: {primary}; font-size: 16px;">{t('impact_factor')} & {t('citescore')}</h3>
-                    <div class="if-sc-grid">
-                        <div class="if-sc-card">
-                            <div class="if-sc-value">{impact_factor_data.get('value', 0):.1f}</div>
-                            <div class="if-sc-label">{t('impact_factor_full', pub_years='-'.join(map(str, impact_factor_data.get('pub_years', []))), cite_year=impact_factor_data.get('cite_year', ''))}</div>
-                            <div class="if-sc-detail">
-                                {impact_factor_data.get('citations', 0)} {t('citations')} / {impact_factor_data.get('publications', 0)} {t('publications')}
-                            </div>
-                        </div>
-                        <div class="if-sc-card">
-                            <div class="if-sc-value">{citescore_data.get('value', 0):.1f}</div>
-                            <div class="if-sc-label">{t('citescore_full', years='-'.join(map(str, citescore_data.get('window_years', []))))}</div>
-                            <div class="if-sc-detail">
-                                {citescore_data.get('citations', 0)} {t('citations')} / {citescore_data.get('publications', 0)} {t('publications')}
-                            </div>
-                        </div>
-                    </div>
-                    ''' if impact_factor_data and citescore_data else ''}
+                    <!-- Impact Factor and CiteScore Cards (static) -->
+                    {static_if_sc_block}
+                    
+                    <!-- Dynamic Impact Factor and CiteScore Cards (anchored to now()) -->
+                    {dynamic_if_sc_block}
                     
                     <!-- Open Access Breakdown with Progress Bars -->
                     <h3 style="margin-top: 20px; color: {primary}; font-size: 16px;">{t('open_access_breakdown')}</h3>
