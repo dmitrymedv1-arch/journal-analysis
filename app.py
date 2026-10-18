@@ -2093,7 +2093,7 @@ def get_work_metadata_batch(work_ids: List[str]) -> List[Dict]:
         id_query = '|'.join(batch)
         params = {
             'filter': f'openalex:{id_query}',
-            'per_page': len(batch)
+            'per_page': min(len(batch), 100) 
         }
         
         data = smart_request(params)
@@ -2338,7 +2338,7 @@ class JournalAnalyzer:
             return f"publication_year:{period}"
     
     def fetch_journal_publications(self, progress_callback=None):
-        """Stage 1: Fetch all publications from the journal"""
+        """Stage 1: Fetch all publications from the journal (page-based pagination)"""
         year_filter = self.get_year_filter()
         normalized = self.issn
         
@@ -2346,15 +2346,16 @@ class JournalAnalyzer:
             print(f"🚀 Запуск сбора публикаций для {normalized}")
         
         publications = []
-        cursor = "*"
+        page = 1
+        per_page = 100  # OpenAlex: максимум 100 для page-based
         total_fetched = 0
         
         while True:
             data = smart_request({
                 "filter": f"primary_location.source.issn:{normalized},{year_filter}",
-                "per_page": 100,
-                "select": "id,doi,publication_year,cited_by_count,publication_date",
-                "page": page
+                "per_page": per_page,
+                "page": page,
+                "select": "id,doi,publication_year,cited_by_count,publication_date"
             })
             
             if not data or not data.get("results"):
@@ -2374,10 +2375,24 @@ class JournalAnalyzer:
             
             total_fetched += len(data["results"])
             if progress_callback:
-                progress_callback(total_fetched, data.get("meta", {}).get("count", total_fetched))
+                total_count = data.get("meta", {}).get("count", total_fetched)
+                progress_callback(total_fetched, total_count)
             
-            cursor = data.get("meta", {}).get("next_cursor")
-            if not cursor:
+            # Проверяем, есть ли следующая страница
+            results_count = len(data["results"])
+            meta = data.get("meta", {})
+            total_count = meta.get("count", 0)
+            
+            # Прекращаем, если получили меньше per_page или достигли общего количества
+            if results_count < per_page or total_fetched >= total_count:
+                break
+            
+            page += 1
+            
+            # Защита: page * per_page не должен превышать 10 000
+            if page * per_page > 10000:
+                if SHOW_DEBUG_LOGS:
+                    print(f"⚠️ Достигнут лимит page-based пагинации (10 000). Собрано {len(publications)} публикаций.")
                 break
         
         self.publications = publications
@@ -2434,16 +2449,17 @@ class JournalAnalyzer:
         return citing_map
     
     def _get_citing_dois_batch(self, oa_id: str) -> List[str]:
-        """Get citing DOIs for a single work"""
+        """Get citing DOIs for a single work (page-based pagination)"""
         citing = []
-        cursor = "*"
+        page = 1
+        per_page = 100  # OpenAlex: максимум 100 для page-based
         
-        for _ in range(6):  # ограничение
+        for _ in range(6):  # ограничение на количество страниц
             data = smart_request({
                 "filter": f"cites:{oa_id}",
-                "per_page": 200,
-                "select": "doi,publication_date",
-                "cursor": cursor
+                "per_page": per_page,
+                "page": page,
+                "select": "doi,publication_date"
             })
             
             if not data or not data.get("results"):
@@ -2457,11 +2473,21 @@ class JournalAnalyzer:
                         'publication_date': item.get('publication_date')
                     })
             
-            cursor = data.get("meta", {}).get("next_cursor")
-            if not cursor:
+            # Проверяем, есть ли следующая страница
+            results_count = len(data["results"])
+            meta = data.get("meta", {})
+            total_count = meta.get("count", 0)
+            
+            if results_count < per_page:
                 break
-                
-            time.sleep(25) # замедление на 2 этапе
+            
+            page += 1
+            
+            # Защита: лимит page-based пагинации
+            if page * per_page > 10000:
+                break
+            
+            time.sleep(25)  # замедление на 2 этапе
         
         return citing
     
@@ -2503,7 +2529,7 @@ class JournalAnalyzer:
         return metadata_dict
     
     def fetch_citations_metadata(self, progress_callback=None):
-        """Stage 4: Fetch extended metadata for all citing works"""
+        """Stage 4: Fetch extended metadata for all citing works (page-based pagination)"""
         if not self.citing_works:
             return {}
         
@@ -2528,15 +2554,27 @@ class JournalAnalyzer:
         total = len(citing_dois_list)
         
         for batch in chunks(citing_dois_list, 50):
-            # Для цитирующих работ используем фильтр по DOI
             doi_query = '|'.join(batch)
-            params = {
-                'filter': f'doi:{doi_query}',
-                'per_page': len(batch)
-            }
-            data = smart_request(params)
-            if data and data.get('results'):
-                all_metadata.extend(data['results'])
+            page = 1
+            per_page = min(len(batch), 100)
+            
+            while True:
+                params = {
+                    'filter': f'doi:{doi_query}',
+                    'per_page': per_page,
+                    'page': page
+                }
+                data = smart_request(params)
+                if data and data.get('results'):
+                    all_metadata.extend(data['results'])
+                    results_count = len(data['results'])
+                    if results_count < per_page:
+                        break
+                    page += 1
+                    if page * per_page > 10000:
+                        break
+                else:
+                    break
             
             if progress_callback:
                 progress_callback(len(all_metadata), total)
