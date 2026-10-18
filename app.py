@@ -2352,7 +2352,7 @@ class JournalAnalyzer:
         while True:
             data = smart_request({
                 "filter": f"primary_location.source.issn:{normalized},{year_filter}",
-                "per_page": 200,
+                "per_page": 100,
                 "select": "id,doi,publication_year,cited_by_count,publication_date",
                 "cursor": cursor
             })
