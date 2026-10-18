@@ -2354,7 +2354,7 @@ class JournalAnalyzer:
                 "filter": f"primary_location.source.issn:{normalized},{year_filter}",
                 "per_page": 100,
                 "select": "id,doi,publication_year,cited_by_count,publication_date",
-                "cursor": cursor
+                "page": page
             })
             
             if not data or not data.get("results"):
