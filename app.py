@@ -439,7 +439,7 @@ LANG = {
         'unique_awards_citing': 'Unique Awards (Citing)',
         'no_grants_data': 'No grants data available',
         'works_count': 'Works',
-        'cited_publications': 'Cited Publications',
+        'citing_publications': 'Citing Publications',
         'filter_by_journal': 'Filter by Journal',
         'filter_by_publisher': 'Filter by Publisher',
         'grants_funding': 'Grants & Funding',
@@ -797,7 +797,7 @@ LANG = {
         'unique_awards_citing': 'Уникальных грантов (цитирующие)',
         'no_grants_data': 'Нет данных о грантах',
         'works_count': 'Работ',
-        'cited_publications': 'Цитирующие публикации',
+        'citing_publications': 'Цитирующие публикации',
         'filter_by_journal': 'Фильтр по журналу',
         'filter_by_publisher': 'Фильтр по издателю',
         'grants_funding': 'Гранты и финансирование',
@@ -5754,7 +5754,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                 <a href="#overview"><span class="nav-icon">📋</span> {t('overview')}</a>
                 <a href="#analyzed_articles"><span class="nav-icon">📄</span> {t('analyzed_articles')}</a>
                 <a href="#citation_analysis"><span class="nav-icon">📈</span> {t('citation_analysis')}</a>
-                <a href="#cited_publications"><span class="nav-icon">📄</span> {t('cited_publications')}</a>
+                <a href="#citing_publications"><span class="nav-icon">📄</span> {t('citing_publications')}</a>
                 <a href="#citing_works"><span class="nav-icon">📚</span> {t('citing_works_analysis')}</a>
                 <a href="#topics_analysis"><span class="nav-icon">🏷️</span> {t('topics_analysis')}</a>
                 <a href="#grants_analysis"><span class="nav-icon">💰</span> {t('grants_and_funding')}</a>
@@ -6419,12 +6419,12 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
             </div>
             
             <!-- ============================================================ -->
-            <!-- SECTION 4: CITED PUBLICATIONS (was Most Cited Publications) -->
+            <!-- SECTION 4: CITING PUBLICATIONS (was Most Cited Publications) -->
             <!-- ============================================================ -->
-            <div id="cited_publications" class="section">
+            <div id="citing_publications" class="section">
                 <div class="section-header" onclick="toggleSection('cited_content')">
                     <div class="section-title">
-                        <span class="icon">📄</span> {t('cited_publications')}
+                        <span class="icon">📄</span> {t('citing_publications')}
                         <span class="section-badge">{len(all_citing_works)} {t('citations')}</span>
                     </div>
                     <span class="toggle-indicator" id="cited_indicator">▼</span>
