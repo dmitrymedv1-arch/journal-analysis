@@ -74,6 +74,19 @@ import random
 from dateutil.relativedelta import relativedelta
 
 # ============================================
+# OPENALEX API KEY (from Streamlit secrets)
+# ============================================
+
+def get_openalex_api_key() -> Optional[str]:
+    """Read OpenAlex API key from st.secrets. Returns None if not configured."""
+    try:
+        return st.secrets["OPENALEX_API_KEY"]
+    except (KeyError, FileNotFoundError):
+        return None
+
+OPENALEX_API_KEY = get_openalex_api_key()
+
+# ============================================
 # СЛОВАРЬ ПЕРЕВОДОВ
 # ============================================
 
@@ -1429,9 +1442,10 @@ def get_journal_by_issn(issn: str) -> Dict:
         issn = f"{issn[:4]}-{issn[4:]}"
     
     url = f"https://api.openalex.org/sources/issn:{issn}"
+    params = {"api_key": OPENALEX_API_KEY} if OPENALEX_API_KEY else {}
     
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, params=params, timeout=10)
         response.raise_for_status()
         data = response.json()
         
@@ -1972,6 +1986,8 @@ def parse_orcids(text: str) -> List[str]:
 
 async def fetch_with_retry(session, url, params=None, headers=None, method='GET'):
     """Выполняет запрос с повторными попытками при ошибке"""
+    if OPENALEX_API_KEY and "api.openalex.org" in url:
+        headers = {**(headers or {}), "Authorization": f"Bearer {OPENALEX_API_KEY}"}
     for attempt in range(MAX_RETRIES):
         try:
             async with session.request(method, url, params=params, headers=headers, timeout=TIMEOUT) as response:
@@ -2061,6 +2077,10 @@ def smart_request(params, retries=5):
     """Smart request to OpenAlex API with rate limiting and retries"""
     base_url = "https://api.openalex.org/works"
     lock = Lock()
+    
+    # Добавляем API-ключ, если он есть (не мутируем исходный dict)
+    if OPENALEX_API_KEY:
+        params = {**params, "api_key": OPENALEX_API_KEY}
     
     for attempt in range(retries):
         try:
@@ -6822,6 +6842,12 @@ def main():
             st.rerun()
         
         st.markdown("---")
+
+        # ==== OpenAlex API key status ====
+        if OPENALEX_API_KEY:
+            st.success("🔑 OpenAlex API key loaded")
+        else:
+            st.warning("🔑 OpenAlex API key not configured (using free tier)")
         
         # Color theme
         st.markdown(f"## {t('color_theme')}")
