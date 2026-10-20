@@ -2899,7 +2899,7 @@ class JournalAnalyzer:
                     if not entry['funder_name'] and funder_name:
                         entry['funder_name'] = funder_name
             
-            # Top-30 funders
+            # All funders (no limit)
             sorted_funders = sorted(
                 [
                     {
@@ -2913,9 +2913,9 @@ class JournalAnalyzer:
                 ],
                 key=lambda x: x['count'],
                 reverse=True
-            )[:30]
+            )
             
-            # Top-30 awards
+            # All awards (no limit)
             sorted_awards = sorted(
                 [
                     {
@@ -2930,7 +2930,7 @@ class JournalAnalyzer:
                 ],
                 key=lambda x: x['count'],
                 reverse=True
-            )[:30]
+            )
             
             # Unique counters (across all data, not only top-30)
             unique_funders_count = sum(1 for d in funders_by_id.values() if d['count'] > 0)
@@ -6821,9 +6821,9 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                         </div>
                     </div>
                     
-                    <h4 style="color: {primary}; margin-top: 15px; font-size: 14px;">{t('top_funders_analyzed')}</h4>
+                    <h4 style="color: {primary}; margin-top: 15px; font-size: 14px;">{t('top_funders_analyzed')} <span style="font-weight: 400; font-size: 12px; color: #7F8C8D;">({len(grants_analyzed_funders)} total)</span></h4>
                     {f'''
-                    <div class="scrollable-table" style="max-height: 400px;">
+                    <div class="scrollable-table" style="max-height: 800px;">
                         <table id="grants_analyzed_funders_table">
                             <thead>
                                 <tr>
@@ -6840,9 +6840,9 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                     </div>
                     ''' if grants_analyzed_funders else f'<p style="color: #7F8C8D; font-style: italic;">{t("no_grants_data")}</p>'}
                     
-                    <h4 style="color: {primary}; margin-top: 15px; font-size: 14px;">{t('top_awards_analyzed')}</h4>
+                    <h4 style="color: {primary}; margin-top: 15px; font-size: 14px;">{t('top_awards_analyzed')} <span style="font-weight: 400; font-size: 12px; color: #7F8C8D;">({len(grants_analyzed_awards)} total)</span></h4>
                     {f'''
-                    <div class="scrollable-table" style="max-height: 400px;">
+                    <div class="scrollable-table" style="max-height: 800px;">
                         <table id="grants_analyzed_awards_table">
                             <thead>
                                 <tr>
@@ -6878,9 +6878,9 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                         </div>
                     </div>
                     
-                    <h4 style="color: {primary}; margin-top: 15px; font-size: 14px;">{t('top_funders_citing')}</h4>
+                    <h4 style="color: {primary}; margin-top: 15px; font-size: 14px;">{t('top_funders_citing')} <span style="font-weight: 400; font-size: 12px; color: #7F8C8D;">({len(grants_citing_funders)} total)</span></h4>
                     {f'''
-                    <div class="scrollable-table" style="max-height: 400px;">
+                    <div class="scrollable-table" style="max-height: 800px;">
                         <table id="grants_citing_funders_table">
                             <thead>
                                 <tr>
@@ -6897,9 +6897,9 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                     </div>
                     ''' if grants_citing_funders else f'<p style="color: #7F8C8D; font-style: italic;">{t("no_grants_data")}</p>'}
                     
-                    <h4 style="color: {primary}; margin-top: 15px; font-size: 14px;">{t('top_awards_citing')}</h4>
+                    <h4 style="color: {primary}; margin-top: 15px; font-size: 14px;">{t('top_awards_citing')} <span style="font-weight: 400; font-size: 12px; color: #7F8C8D;">({len(grants_citing_awards)} total)</span></h4>
                     {f'''
-                    <div class="scrollable-table" style="max-height: 400px;">
+                    <div class="scrollable-table" style="max-height: 800px;">
                         <table id="grants_citing_awards_table">
                             <thead>
                                 <tr>
