@@ -6843,19 +6843,24 @@ def main():
             index=0
         )
         
-        use_preset = st.checkbox(t('use_preset'), value=True)
+        use_preset = st.checkbox(t('use_preset'), value=False)
         
         if use_preset:
             selected_theme = preset_themes[theme_option]
             st.session_state.primary_color = selected_theme["primary"]
             st.session_state.secondary_color = selected_theme["secondary"]
         else:
-            selected_color = st.color_picker(
-                t('select_color'),
-                value=st.session_state.primary_color
-            )
-            st.session_state.primary_color = selected_color
-            st.session_state.secondary_color = get_complementary_color(selected_color)
+            col_p1, col_p2 = st.columns(2)
+            with col_p1:
+                st.session_state.primary_color = st.color_picker(
+                    "Primary",
+                    value=st.session_state.primary_color
+                )
+            with col_p2:
+                st.session_state.secondary_color = st.color_picker(
+                    "Secondary",
+                    value=st.session_state.secondary_color
+                )
         
         col1, col2 = st.columns(2)
         with col1:
