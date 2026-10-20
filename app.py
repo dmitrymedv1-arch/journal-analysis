@@ -102,6 +102,7 @@ LANG = {
         'preset_themes': '🎨 Theme Presets',
         'use_preset': 'Use preset',
         'select_color': '🎨 Select primary color',
+        'select_secondary_color': '🎨 Select secondary color',
         'primary': 'Primary',
         'secondary': 'Secondary',
         'analysis_params': '📊 Analysis Parameters',
@@ -419,6 +420,34 @@ LANG = {
         'citescore_dynamic_description': 'Dynamic SC: citations in (now-4y, now] to articles published in (now-4y, now] / number of articles published in (now-4y, now]',
         'dynamic_as_of': 'as of {date}',
         'dynamic_citations_publications': '{citations} Citations / {publications} Publications',
+        # ====== NEW: GRANTS & FUNDING ======
+        'grants_analysis': 'Grants & Funding',
+        'grants_and_funding': 'Grants & Funding',
+        'top_funders': 'Top Funders',
+        'top_awards': 'Top Awards',
+        'top_funders_analyzed': 'Top Funders (Analyzed)',
+        'top_funders_citing': 'Top Funders (Citing)',
+        'top_awards_analyzed': 'Top Awards (Analyzed)',
+        'top_awards_citing': 'Top Awards (Citing)',
+        'funder': 'Funder',
+        'award_id': 'Award ID',
+        'unique_funders': 'Unique Funders',
+        'unique_awards': 'Unique Awards',
+        'unique_funders_analyzed': 'Unique Funders (Analyzed)',
+        'unique_funders_citing': 'Unique Funders (Citing)',
+        'unique_awards_analyzed': 'Unique Awards (Analyzed)',
+        'unique_awards_citing': 'Unique Awards (Citing)',
+        'no_grants_data': 'No grants data available',
+        'works_count': 'Works',
+        'cited_publications': 'Cited Publications',
+        'filter_by_journal': 'Filter by Journal',
+        'filter_by_publisher': 'Filter by Publisher',
+        'grants_funding': 'Grants & Funding',
+        'grant': 'Grant',
+        'ror': 'ROR',
+        'analyzed_publications_grants': 'Analyzed Publications — Grants & Funding',
+        'citing_publications_grants': 'Citing Publications — Grants & Funding',
+        'no_cited_publications': 'No cited publications',
     },
     'ru': {
         'app_title': 'Advanced Journal Analysis Tool',
@@ -431,6 +460,7 @@ LANG = {
         'preset_themes': '🎨 Пресеты тем',
         'use_preset': 'Использовать пресет',
         'select_color': '🎨 Выберите основной цвет',
+        'select_secondary_color': '🎨 Выберите дополнительный цвет',
         'primary': 'Основной',
         'secondary': 'Дополнительный',
         'analysis_params': '📊 Параметры анализа',
@@ -748,6 +778,34 @@ LANG = {
         'citescore_dynamic_description': 'Динамический SC: цитирования в (now-4y, now] статей, опубликованных в (now-4y, now] / число статей, опубликованных в (now-4y, now]',
         'dynamic_as_of': 'на {date}',
         'dynamic_citations_publications': '{citations} цитирований / {publications} публикаций',
+        # ====== NEW: GRANTS & FUNDING (РУССКИЙ) ======
+        'grants_analysis': 'Гранты и финансирование',
+        'grants_and_funding': 'Гранты и финансирование',
+        'top_funders': 'Топ фондов',
+        'top_awards': 'Топ грантов',
+        'top_funders_analyzed': 'Топ фондов (анализируемые)',
+        'top_funders_citing': 'Топ фондов (цитирующие)',
+        'top_awards_analyzed': 'Топ грантов (анализируемые)',
+        'top_awards_citing': 'Топ грантов (цитирующие)',
+        'funder': 'Фонд',
+        'award_id': 'ID гранта',
+        'unique_funders': 'Уникальных фондов',
+        'unique_awards': 'Уникальных грантов',
+        'unique_funders_analyzed': 'Уникальных фондов (анализируемые)',
+        'unique_funders_citing': 'Уникальных фондов (цитирующие)',
+        'unique_awards_analyzed': 'Уникальных грантов (анализируемые)',
+        'unique_awards_citing': 'Уникальных грантов (цитирующие)',
+        'no_grants_data': 'Нет данных о грантах',
+        'works_count': 'Работ',
+        'cited_publications': 'Цитирующие публикации',
+        'filter_by_journal': 'Фильтр по журналу',
+        'filter_by_publisher': 'Фильтр по издателю',
+        'grants_funding': 'Гранты и финансирование',
+        'grant': 'Грант',
+        'ror': 'ROR',
+        'analyzed_publications_grants': 'Анализируемые публикации — гранты и финансирование',
+        'citing_publications_grants': 'Цитирующие публикации — гранты и финансирование',
+        'no_cited_publications': 'Нет цитирующих публикаций',
     }
 }
 
@@ -1986,6 +2044,7 @@ def parse_orcids(text: str) -> List[str]:
 
 async def fetch_with_retry(session, url, params=None, headers=None, method='GET'):
     """Выполняет запрос с повторными попытками при ошибке"""
+    # ===== NEW: добавляем OpenAlex API key в заголовок для OpenAlex-запросов
     if OPENALEX_API_KEY and "api.openalex.org" in url:
         headers = {**(headers or {}), "Authorization": f"Bearer {OPENALEX_API_KEY}"}
     for attempt in range(MAX_RETRIES):
@@ -2078,7 +2137,7 @@ def smart_request(params, retries=5):
     base_url = "https://api.openalex.org/works"
     lock = Lock()
     
-    # Добавляем API-ключ, если он есть (не мутируем исходный dict)
+    # ===== NEW: добавляем API-ключ, если он есть (не мутируем исходный dict)
     if OPENALEX_API_KEY:
         params = {**params, "api_key": OPENALEX_API_KEY}
     
@@ -2283,6 +2342,87 @@ def parse_work_metadata(work: Dict) -> Dict:
         parsed['subtopics'] = subtopics[:20]
         parsed['subfields'] = subfields[:15]
         parsed['topics_old'] = subfields[:15]
+        
+        # ===== NEW: AWARDS & FUNDERS =====
+        awards_raw = work.get('awards', []) or []
+        funders_raw = work.get('funders', []) or []
+        
+        parsed_awards = []
+        for aw in awards_raw:
+            funder_id = aw.get('funder_id', '') or ''
+            funder_id_short = funder_id.replace('https://openalex.org/', '') if funder_id else ''
+            funder_award_id = aw.get('funder_award_id', '') or ''
+            award_display_name = aw.get('display_name', '') or ''
+            funder_display_name = aw.get('funder_display_name', '') or ''
+            
+            parsed_awards.append({
+                'id': aw.get('id', ''),
+                'display_name': award_display_name,
+                'funder_award_id': funder_award_id,
+                'funder_id': funder_id,
+                'funder_id_short': funder_id_short,
+                'funder_display_name': funder_display_name
+            })
+        
+        parsed_funders = []
+        for fd in funders_raw:
+            ror = fd.get('ror', '') or ''
+            ror_short = ror.replace('https://ror.org/', '') if ror else ''
+            fd_id = fd.get('id', '') or ''
+            parsed_funders.append({
+                'id': fd_id,
+                'id_short': fd_id.replace('https://openalex.org/', '') if fd_id else '',
+                'display_name': fd.get('display_name', '') or '',
+                'ror': ror,
+                'ror_short': ror_short
+            })
+        
+        # Build map funder_id -> ror_short for cross-referencing
+        funder_id_to_ror_short = {}
+        for fd in parsed_funders:
+            if fd['id']:
+                funder_id_to_ror_short[fd['id']] = fd['ror_short']
+        
+        # Build map funder_id -> display_name (для fallback если нет display_name в award)
+        funder_id_to_display = {}
+        for fd in parsed_funders:
+            if fd['id']:
+                funder_id_to_display[fd['id']] = fd['display_name']
+        
+        # Enrich awards with ror_short (if available)
+        for aw in parsed_awards:
+            if not aw.get('funder_display_name'):
+                aw['funder_display_name'] = funder_id_to_display.get(aw.get('funder_id', ''), '')
+            aw['funder_ror_short'] = funder_id_to_ror_short.get(aw.get('funder_id', ''), '')
+        
+        # Build display strings list (for tables)
+        grants_display = []
+        for aw in parsed_awards:
+            funder_name = aw.get('funder_display_name') or ''
+            award_id = aw.get('funder_award_id') or ''
+            award_name = aw.get('display_name') or ''
+            
+            # Приоритет: display_name + award_id, если display_name есть
+            # Иначе: funder_name — award_id
+            if award_name and award_id:
+                item_str = f"{award_name} [{award_id}]"
+                if funder_name:
+                    item_str = f"{funder_name} — {item_str}"
+            elif award_id and funder_name:
+                item_str = f"{funder_name} — {award_id}"
+            elif award_id:
+                item_str = award_id
+            elif award_name:
+                item_str = award_name
+            elif funder_name:
+                item_str = funder_name
+            else:
+                continue
+            grants_display.append(item_str)
+        
+        parsed['awards'] = parsed_awards
+        parsed['funders'] = parsed_funders
+        parsed['grants_display'] = grants_display
         
         return parsed
         
@@ -2661,12 +2801,159 @@ class JournalAnalyzer:
         # 13. Dynamic CiteScore (4-year) — привязан к текущей дате
         results['citescore_dynamic'] = self._calculate_citescore_dynamic()
         
+        # ===== NEW: 14. Grants & Funding analysis
+        results['grants_analysis'] = self._analyze_grants()
+        
         self.analysis_results = results
         
         if progress_callback:
             progress_callback(100, 100)
         
         return results
+    
+    # ===== NEW: метод анализа грантов и фондов
+    def _analyze_grants(self) -> Dict:
+        """
+        Analyze grants (awards) and funders separately for analyzed and citing publications.
+        Aggregation is per-work (unique works), not per-author.
+        
+        Returns:
+            Dict with 'analyzed' and 'citing' sections, each containing:
+                - top_funders: [{funder_id, name, ror_short, count}]  (top-30 by unique works)
+                - top_awards: [{funder_id, funder_name, award_id, display_name, count}] (top-30 by unique works)
+                - unique_funders_count: int
+                - unique_awards_count: int
+        """
+        def _aggregate(metadata_dict: Dict[str, Dict]) -> Dict:
+            funders_by_id = defaultdict(lambda: {
+                'name': '',
+                'ror_short': '',
+                'count': 0
+            })
+            awards_by_key = defaultdict(lambda: {
+                'funder_id': '',
+                'funder_name': '',
+                'award_id': '',
+                'display_name': '',
+                'count': 0
+            })
+            
+            for doi, meta in metadata_dict.items():
+                if not meta:
+                    continue
+                
+                # ---- Funders: агрегируем по funder_id, считаем уникальные работы ----
+                seen_funder_ids = set()
+                for fd in meta.get('funders', []) or []:
+                    fid = fd.get('id', '')
+                    if not fid:
+                        continue
+                    if fid in seen_funder_ids:
+                        continue
+                    seen_funder_ids.add(fid)
+                    
+                    funders_by_id[fid]['count'] += 1
+                    if not funders_by_id[fid]['name']:
+                        funders_by_id[fid]['name'] = fd.get('display_name', '') or ''
+                    if not funders_by_id[fid]['ror_short']:
+                        funders_by_id[fid]['ror_short'] = fd.get('ror_short', '') or ''
+                
+                # Также включим фонды, у которых есть только awards (без funders[])
+                for aw in meta.get('awards', []) or []:
+                    fid = aw.get('funder_id', '')
+                    if not fid:
+                        continue
+                    if fid in seen_funder_ids:
+                        continue
+                    seen_funder_ids.add(fid)
+                    
+                    funders_by_id[fid]['count'] += 1
+                    if not funders_by_id[fid]['name']:
+                        funders_by_id[fid]['name'] = aw.get('funder_display_name', '') or ''
+                    if not funders_by_id[fid]['ror_short']:
+                        funders_by_id[fid]['ror_short'] = aw.get('funder_ror_short', '') or ''
+                
+                # ---- Awards: агрегируем по паре (funder_id, funder_award_id) ----
+                seen_award_keys = set()
+                for aw in meta.get('awards', []) or []:
+                    fid = aw.get('funder_id', '') or ''
+                    award_id = aw.get('funder_award_id', '') or ''
+                    display_name = aw.get('display_name', '') or ''
+                    funder_name = aw.get('funder_display_name', '') or ''
+                    
+                    # Если нет ни funder_id, ни award_id — пропускаем
+                    if not fid and not award_id:
+                        continue
+                    
+                    key = (fid, award_id)
+                    if key in seen_award_keys:
+                        continue
+                    seen_award_keys.add(key)
+                    
+                    entry = awards_by_key[key]
+                    entry['count'] += 1
+                    entry['funder_id'] = fid
+                    entry['award_id'] = award_id
+                    if not entry['display_name'] and display_name:
+                        entry['display_name'] = display_name
+                    if not entry['funder_name'] and funder_name:
+                        entry['funder_name'] = funder_name
+            
+            # Top-30 funders
+            sorted_funders = sorted(
+                [
+                    {
+                        'funder_id': fid,
+                        'name': data['name'],
+                        'ror_short': data['ror_short'],
+                        'count': data['count']
+                    }
+                    for fid, data in funders_by_id.items()
+                    if data['count'] > 0
+                ],
+                key=lambda x: x['count'],
+                reverse=True
+            )[:30]
+            
+            # Top-30 awards
+            sorted_awards = sorted(
+                [
+                    {
+                        'funder_id': data['funder_id'],
+                        'funder_name': data['funder_name'],
+                        'award_id': data['award_id'],
+                        'display_name': data['display_name'],
+                        'count': data['count']
+                    }
+                    for data in awards_by_key.values()
+                    if data['count'] > 0
+                ],
+                key=lambda x: x['count'],
+                reverse=True
+            )[:30]
+            
+            # Unique counters (across all data, not only top-30)
+            unique_funders_count = sum(1 for d in funders_by_id.values() if d['count'] > 0)
+            unique_awards_count = sum(1 for d in awards_by_key.values() if d['count'] > 0)
+            
+            return {
+                'top_funders': sorted_funders,
+                'top_awards': sorted_awards,
+                'unique_funders_count': unique_funders_count,
+                'unique_awards_count': unique_awards_count
+            }
+        
+        analyzed = _aggregate(self.publications_metadata)
+        citing = _aggregate(self.citations_metadata)
+        
+        if SHOW_DEBUG_LOGS:
+            print(f"📊 Grants (analyzed): {analyzed['unique_funders_count']} funders, {analyzed['unique_awards_count']} awards")
+            print(f"📊 Grants (citing): {citing['unique_funders_count']} funders, {citing['unique_awards_count']} awards")
+        
+        return {
+            'analyzed': analyzed,
+            'citing': citing
+        }
     
     def _calculate_impact_factor(self) -> Optional[Dict]:
         """
@@ -4318,6 +4605,26 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
     impact_factor_dynamic_data = results.get('impact_factor_dynamic', {}) or {}
     citescore_dynamic_data = results.get('citescore_dynamic', {}) or {}
     
+    # ===== NEW: Grants & Funding data
+    grants_analysis = results.get('grants_analysis', {}) or {}
+    grants_analyzed = grants_analysis.get('analyzed', {}) or {}
+    grants_citing = grants_analysis.get('citing', {}) or {}
+    grants_analyzed_funders = grants_analyzed.get('top_funders', []) or []
+    grants_analyzed_awards = grants_analyzed.get('top_awards', []) or []
+    grants_citing_funders = grants_citing.get('top_funders', []) or []
+    grants_citing_awards = grants_citing.get('top_awards', []) or []
+    
+    grants_analyzed_unique_funders = grants_analyzed.get('unique_funders_count', 0)
+    grants_analyzed_unique_awards = grants_analyzed.get('unique_awards_count', 0)
+    grants_citing_unique_funders = grants_citing.get('unique_funders_count', 0)
+    grants_citing_unique_awards = grants_citing.get('unique_awards_count', 0)
+    
+    # ===== NEW: max values for grants tables
+    max_grants_analyzed_funder_count = max([x.get('count', 0) for x in grants_analyzed_funders]) if grants_analyzed_funders else 1
+    max_grants_analyzed_award_count = max([x.get('count', 0) for x in grants_analyzed_awards]) if grants_analyzed_awards else 1
+    max_grants_citing_funder_count = max([x.get('count', 0) for x in grants_citing_funders]) if grants_citing_funders else 1
+    max_grants_citing_award_count = max([x.get('count', 0) for x in grants_citing_awards]) if grants_citing_awards else 1
+    
     # Все публикации для таблицы
     all_publications = []
     for p in publications:
@@ -4332,10 +4639,43 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
             'citations': p.get('Cited_by_count', 0),
             'citations_per_year': p.get('Cited_by_count', 0) / (datetime.now().year - p.get('Year') + 1) if p.get('Year') else 0,
             'journal': meta.get('journal_name', 'Unknown'),
-            'id': meta.get('id', '')
+            'id': meta.get('id', ''),
+            'grants_display': meta.get('grants_display', [])  # ===== NEW
         })
     
     all_publications.sort(key=lambda x: x.get('year', 0), reverse=True)
+    
+    # ===== NEW: Build flat list of unique citing works for "Cited Publications" section
+    # Дедуплицируем по DOI цитирующей работы (вариант A — одна строка на уникальную цитирующую работу)
+    citing_by_doi = {}
+    for our_doi, citing_list in (analyzer.citing_works or {}).items():
+        for cite in citing_list:
+            cite_doi = cite.get('doi') if isinstance(cite, dict) else cite
+            if not cite_doi:
+                continue
+            if cite_doi not in citing_by_doi:
+                meta = analyzer.citations_metadata.get(cite_doi, {})
+                citing_by_doi[cite_doi] = {
+                    'doi': cite_doi,
+                    'title': meta.get('title', 'No title'),
+                    'year': meta.get('publication_year'),
+                    'date': meta.get('publication_date'),
+                    'authors': meta.get('authors', []),
+                    'affiliations': list(set(meta.get('affiliations', []))),
+                    'journal': meta.get('journal_name', 'Unknown'),
+                    'publisher': meta.get('publisher', 'Unknown'),
+                    'cited_by_count': meta.get('cited_by_count', 0),
+                    'countries': meta.get('affiliation_countries', []),
+                    'grants_display': meta.get('grants_display', []),
+                    'cites_our_count': 0
+                }
+            citing_by_doi[cite_doi]['cites_our_count'] += 1
+    
+    all_citing_works = list(citing_by_doi.values())
+    all_citing_works.sort(key=lambda x: x.get('year') or 0, reverse=True)
+    
+    # Max values for citing works
+    max_citing_cites_our = max([w.get('cites_our_count', 0) for w in all_citing_works]) if all_citing_works else 1
     
     # Helper function for color scale values in HTML
     def get_color_scale_html(value, max_val, min_val=0, unit=''):
@@ -4495,6 +4835,121 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                         </div>
                     </div>
                     '''
+    
+    # ===== NEW: HTML for Grants section (safe building of rows) =====
+    def _funder_ror_link(ror_short: str) -> str:
+        if not ror_short:
+            return '-'
+        display_id = ror_short[:8] + '...' if len(ror_short) > 8 else ror_short
+        return f'<a href="https://colab.ws/organizations/{ror_short}" target="_blank" class="doi-link" style="font-family: monospace; font-size: 11px;">{display_id}</a>'
+    
+    grants_analyzed_funders_rows = ''.join([
+        f'''
+        <tr>
+            <td>{i+1}</td>
+            <td>{html.escape(fd.get('name', '') or 'Unknown')}</td>
+            <td>{_funder_ror_link(fd.get('ror_short', ''))}</td>
+            <td>{get_color_scale_html(fd.get('count', 0), max_grants_analyzed_funder_count)}</td>
+        </tr>
+        '''
+        for i, fd in enumerate(grants_analyzed_funders)
+    ])
+    
+    grants_analyzed_awards_rows = ''.join([
+        f'''
+        <tr>
+            <td>{i+1}</td>
+            <td>{html.escape(aw.get('funder_name', '') or 'Unknown')}</td>
+            <td>{html.escape(aw.get('award_id', '') or '-')}</td>
+            <td>{html.escape(aw.get('display_name', '') or '')}</td>
+            <td>{get_color_scale_html(aw.get('count', 0), max_grants_analyzed_award_count)}</td>
+        </tr>
+        '''
+        for i, aw in enumerate(grants_analyzed_awards)
+    ])
+    
+    grants_citing_funders_rows = ''.join([
+        f'''
+        <tr>
+            <td>{i+1}</td>
+            <td>{html.escape(fd.get('name', '') or 'Unknown')}</td>
+            <td>{_funder_ror_link(fd.get('ror_short', ''))}</td>
+            <td>{get_color_scale_html(fd.get('count', 0), max_grants_citing_funder_count)}</td>
+        </tr>
+        '''
+        for i, fd in enumerate(grants_citing_funders)
+    ])
+    
+    grants_citing_awards_rows = ''.join([
+        f'''
+        <tr>
+            <td>{i+1}</td>
+            <td>{html.escape(aw.get('funder_name', '') or 'Unknown')}</td>
+            <td>{html.escape(aw.get('award_id', '') or '-')}</td>
+            <td>{html.escape(aw.get('display_name', '') or '')}</td>
+            <td>{get_color_scale_html(aw.get('count', 0), max_grants_citing_award_count)}</td>
+        </tr>
+        '''
+        for i, aw in enumerate(grants_citing_awards)
+    ])
+    
+    # ===== NEW: HTML for All Publications rows (with Grants & Funding column) =====
+    max_all_pubs_citations = max([pub.get('citations', 0) for pub in all_publications]) if all_publications else 1
+    max_all_pubs_cpy = max([pub.get('citations_per_year', 0) for pub in all_publications]) if all_publications else 1
+    
+    all_publications_rows = ''.join([
+        f'''
+        <tr 
+            data-year="{p.get('year', '')}" 
+            data-authors="{','.join([html.escape(a) for a in p.get('authors', [])])}" 
+            data-affiliations="{','.join([html.escape(a) for a in p.get('affiliations', [])])}"
+            data-citations="{p.get('citations', 0)}" 
+            data-title="{html.escape((p.get('title') or '').lower())}"
+            data-doi="{html.escape((p.get('doi') or '').lower())}"
+        >
+            <td>{i+1}</td>
+            <td class="word-wrap">{html.escape((p.get('title') or 'No title')[:120])}{'...' if len(p.get('title') or '') > 120 else ''}</td>
+            <td>{p.get('year', 'N/A')}</td>
+            <td>{', '.join([html.escape(a) for a in p.get('authors', [])[:3]])}{' +' + str(len(p.get('authors', []))-3) if len(p.get('authors', [])) > 3 else ''}</td>
+            <td>{', '.join([html.escape(a) for a in list(dict.fromkeys(p.get('affiliations', [])))[:3]])}{' +' + str(len(list(dict.fromkeys(p.get('affiliations', []))))-3) if len(list(dict.fromkeys(p.get('affiliations', [])))) > 3 else ''}</td>
+            <td>{get_color_scale_html(p.get('citations', 0), max_all_pubs_citations)}</td>
+            <td>{get_color_scale_html(round(p.get('citations_per_year', 0), 1), max_all_pubs_cpy)}</td>
+            <td class="word-wrap" style="max-width: 220px;">{'<br>'.join([html.escape(g) for g in p.get('grants_display', [])]) if p.get('grants_display') else '-'}</td>
+            <td><a href="https://doi.org/{html.escape(p.get('doi') or '')}" target="_blank" class="doi-link">{html.escape((p.get('doi') or '')[:20])}...</a></td>
+        </tr>
+        '''
+        for i, p in enumerate(all_publications)
+    ])
+    
+    # ===== NEW: HTML for Cited Publications rows (with filters, journal, publisher, grants) =====
+    all_citing_works_rows = ''.join([
+        f'''
+        <tr
+            data-year="{w.get('year', '')}"
+            data-authors="{','.join([html.escape(a) for a in w.get('authors', [])])}"
+            data-affiliations="{','.join([html.escape(a) for a in w.get('affiliations', [])])}"
+            data-journal="{html.escape((w.get('journal') or '').lower())}"
+            data-publisher="{html.escape((w.get('publisher') or '').lower())}"
+            data-citations="{w.get('cited_by_count', 0)}"
+            data-cites-our="{w.get('cites_our_count', 0)}"
+            data-title="{html.escape((w.get('title') or '').lower())}"
+            data-doi="{html.escape((w.get('doi') or '').lower())}"
+        >
+            <td>{i+1}</td>
+            <td class="word-wrap">{html.escape((w.get('title') or 'No title')[:120])}{'...' if len(w.get('title') or '') > 120 else ''}</td>
+            <td>{w.get('year', 'N/A')}</td>
+            <td>{', '.join([html.escape(a) for a in w.get('authors', [])[:3]])}{' +' + str(len(w.get('authors', []))-3) if len(w.get('authors', [])) > 3 else ''}</td>
+            <td>{', '.join([html.escape(a) for a in list(dict.fromkeys(w.get('affiliations', [])))[:3]])}{' +' + str(len(list(dict.fromkeys(w.get('affiliations', []))))-3) if len(list(dict.fromkeys(w.get('affiliations', [])))) > 3 else ''}</td>
+            <td>{html.escape(w.get('journal', 'Unknown') or 'Unknown')}</td>
+            <td>{html.escape(w.get('publisher', 'Unknown') or 'Unknown')}</td>
+            <td>{get_color_scale_html(w.get('cited_by_count', 0), max([x.get('cited_by_count', 0) for x in all_citing_works]) if all_citing_works else 1)}</td>
+            <td>{get_color_scale_html(w.get('cites_our_count', 0), max_citing_cites_our)}</td>
+            <td class="word-wrap" style="max-width: 220px;">{'<br>'.join([html.escape(g) for g in w.get('grants_display', [])]) if w.get('grants_display') else '-'}</td>
+            <td><a href="https://doi.org/{html.escape(w.get('doi') or '')}" target="_blank" class="doi-link">{html.escape((w.get('doi') or '')[:20])}...</a></td>
+        </tr>
+        '''
+        for i, w in enumerate(all_citing_works)
+    ])
     
     # HTML generation
     html_content = f"""
@@ -5299,8 +5754,10 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                 <a href="#overview"><span class="nav-icon">📋</span> {t('overview')}</a>
                 <a href="#analyzed_articles"><span class="nav-icon">📄</span> {t('analyzed_articles')}</a>
                 <a href="#citation_analysis"><span class="nav-icon">📈</span> {t('citation_analysis')}</a>
+                <a href="#cited_publications"><span class="nav-icon">📄</span> {t('cited_publications')}</a>
                 <a href="#citing_works"><span class="nav-icon">📚</span> {t('citing_works_analysis')}</a>
                 <a href="#topics_analysis"><span class="nav-icon">🏷️</span> {t('topics_analysis')}</a>
+                <a href="#grants_analysis"><span class="nav-icon">💰</span> {t('grants_and_funding')}</a>
                 <a href="#detailed_citations"><span class="nav-icon">📋</span> {t('detailed_citations')}</a>
                 <a href="#all_publications"><span class="nav-icon">📚</span> {t('all_publications')}</a>
             </div>
@@ -5427,6 +5884,23 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                         <div class="metric-card">
                             <div class="metric-value">{basic.get('unique_citing_publishers', 0):,}</div>
                             <div class="metric-label">{t('unique_citing_publishers')}</div>
+                        </div>
+                        <!-- ===== NEW: Grants metrics ===== -->
+                        <div class="metric-card">
+                            <div class="metric-value">{grants_analyzed_unique_funders}</div>
+                            <div class="metric-label">{t('unique_funders_analyzed')}</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-value">{grants_analyzed_unique_awards}</div>
+                            <div class="metric-label">{t('unique_awards_analyzed')}</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-value">{grants_citing_unique_funders}</div>
+                            <div class="metric-label">{t('unique_funders_citing')}</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-value">{grants_citing_unique_awards}</div>
+                            <div class="metric-label">{t('unique_awards_citing')}</div>
                         </div>
                     </div>
                     
@@ -5941,36 +6415,84 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                         </table>
                     </div>
                     
-                    <!-- Most Cited Publications -->
-                    <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">{t('most_cited_publications')}</h3>
-                    <div class="scrollable-table" style="max-height: 400px;">
-                        <table id="mostcited_table">
+                </div>
+            </div>
+            
+            <!-- ============================================================ -->
+            <!-- SECTION 4: CITED PUBLICATIONS (was Most Cited Publications) -->
+            <!-- ============================================================ -->
+            <div id="cited_publications" class="section">
+                <div class="section-header" onclick="toggleSection('cited_content')">
+                    <div class="section-title">
+                        <span class="icon">📄</span> {t('cited_publications')}
+                        <span class="section-badge">{len(all_citing_works)} {t('citations')}</span>
+                    </div>
+                    <span class="toggle-indicator" id="cited_indicator">▼</span>
+                </div>
+                <div class="section-divider"></div>
+                <div id="cited_content" class="section-content">
+                    
+                    <div class="filter-section">
+                        <div class="filter-row">
+                            <div class="filter-group">
+                                <label>🔍</label>
+                                <input type="text" id="citedTitleFilter" placeholder="{t('filter_by_title')}..." onkeyup="filterCited()">
+                            </div>
+                            <div class="filter-group">
+                                <label>📅</label>
+                                <select id="citedYearFilter" onchange="filterCited()">
+                                    <option value="">{t('all_years')}</option>
+                                    {''.join([
+                                        f'<option value="{year}">{year}</option>'
+                                        for year in sorted(set([w.get('year') for w in all_citing_works if w.get('year')]), reverse=True)
+                                    ])}
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label>👤</label>
+                                <input type="text" id="citedAuthorFilter" placeholder="{t('filter_by_author')}..." onkeyup="filterCited()">
+                            </div>
+                            <div class="filter-group">
+                                <label>🏛️</label>
+                                <input type="text" id="citedAffiliationFilter" placeholder="{t('filter_by_affiliation')}..." onkeyup="filterCited()">
+                            </div>
+                            <div class="filter-group">
+                                <label>📚</label>
+                                <input type="text" id="citedJournalFilter" placeholder="{t('filter_by_journal')}..." onkeyup="filterCited()">
+                            </div>
+                            <div class="filter-group">
+                                <label>🏢</label>
+                                <input type="text" id="citedPublisherFilter" placeholder="{t('filter_by_publisher')}..." onkeyup="filterCited()">
+                            </div>
+                            <div class="filter-group">
+                                <label>📊</label>
+                                <input type="number" id="citedCitationFilter" placeholder="{t('filter_by_citations')}..." min="0" onchange="filterCited()">
+                            </div>
+                        </div>
+                        <div class="filter-stats">
+                            <span id="citedVisibleCount">{t('visible_count', shown=len(all_citing_works), total=len(all_citing_works))}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="scrollable-table" style="max-height: 600px;">
+                        <table id="citedTable">
                             <thead>
                                 <tr>
-                                    <th class="sortable" onclick="sortTable('mostcited_table', 0)">{t('rank')}</th>
-                                    <th class="sortable" onclick="sortTable('mostcited_table', 1)">{t('title')}</th>
-                                    <th class="sortable" onclick="sortTable('mostcited_table', 2)">{t('year')}</th>
-                                    <th class="sortable" onclick="sortTable('mostcited_table', 3)">{t('citations')}</th>
-                                    <th class="sortable" onclick="sortTable('mostcited_table', 4)">{t('citations_per_year_label')}</th>
-                                    <th>{t('authors')}</th>
+                                    <th class="sortable" onclick="sortTable('citedTable', 0)">#</th>
+                                    <th class="sortable" onclick="sortTable('citedTable', 1)">{t('title')}</th>
+                                    <th class="sortable" onclick="sortTable('citedTable', 2)">{t('year')}</th>
+                                    <th class="sortable" onclick="sortTable('citedTable', 3)">{t('authors')}</th>
+                                    <th class="sortable" onclick="sortTable('citedTable', 4)">{t('affiliations')}</th>
+                                    <th class="sortable" onclick="sortTable('citedTable', 5)">{t('journal')}</th>
+                                    <th class="sortable" onclick="sortTable('citedTable', 6)">{t('publishers')}</th>
+                                    <th class="sortable" onclick="sortTable('citedTable', 7)">{t('citations')}</th>
+                                    <th class="sortable" onclick="sortTable('citedTable', 8)">{t('citations')} (ours)</th>
+                                    <th>{t('grants_funding')}</th>
                                     <th>DOI</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {''.join([
-                                    f'''
-                                    <tr>
-                                        <td><span class="badge badge-primary">{i+1}</span></td>
-                                        <td class="word-wrap">{html.escape(pub['title'][:80])}{'...' if len(pub['title']) > 80 else ''}</td>
-                                        <td>{pub.get('year', 'N/A')}</td>
-                                        <td>{get_color_scale_html(pub['citations'], max_most_cited)}</td>
-                                        <td>{get_color_scale_html(round(pub.get('citations_per_year', 0), 1), max_most_cited_py, unit='')}</td>
-                                        <td>{html.escape(pub.get('authors', 'N/A'))}</td>
-                                        <td><a href="https://doi.org/{html.escape(pub.get('doi', ''))}" target="_blank" class="doi-link">{html.escape(pub.get('doi', ''))[:20]}...</a></td>
-                                    </tr>
-                                    '''
-                                    for i, pub in enumerate(citation.get('most_cited', [])[:10])
-                                ])}
+                                {all_citing_works_rows if all_citing_works_rows else f'<tr><td colspan="11" style="text-align: center; color: #999; font-style: italic;">{t("no_cited_publications")}</td></tr>'}
                             </tbody>
                         </table>
                     </div>
@@ -5979,7 +6501,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
             </div>
             
             <!-- ============================================================ -->
-            <!-- SECTION 4: CITING WORKS ANALYSIS -->
+            <!-- SECTION 5: CITING WORKS ANALYSIS -->
             <!-- ============================================================ -->
             <div id="citing_works" class="section">
                 <div class="section-header" onclick="toggleSection('citing_content')">
@@ -6123,7 +6645,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
             </div>
             
             <!-- ============================================================ -->
-            <!-- SECTION 5: TOPICS ANALYSIS -->
+            <!-- SECTION 6: TOPICS ANALYSIS -->
             <!-- ============================================================ -->
             <div id="topics_analysis" class="section">
                 <div class="section-header" onclick="toggleSection('topics_content')">
@@ -6270,7 +6792,136 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
             </div>
             
             <!-- ============================================================ -->
-            <!-- SECTION 6: DETAILED CITATIONS -->
+            <!-- SECTION 7: GRANTS & FUNDING (NEW) -->
+            <!-- ============================================================ -->
+            <div id="grants_analysis" class="section">
+                <div class="section-header" onclick="toggleSection('grants_content')">
+                    <div class="section-title">
+                        <span class="icon">💰</span> {t('grants_and_funding')}
+                        <span class="section-badge">{grants_analyzed_unique_funders + grants_citing_unique_funders} {t('funder')}</span>
+                    </div>
+                    <span class="toggle-indicator" id="grants_indicator">▼</span>
+                </div>
+                <div class="section-divider"></div>
+                <div id="grants_content" class="section-content">
+                    
+                    <!-- ============ ANALYZED PUBLICATIONS ============ -->
+                    <h3 style="color: {primary}; font-size: 16px;">{t('analyzed_publications_grants')}</h3>
+                    
+                    <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                        <div class="metric-card">
+                            <span class="metric-icon">💰</span>
+                            <div class="metric-value">{grants_analyzed_unique_funders}</div>
+                            <div class="metric-label">{t('unique_funders_analyzed')}</div>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-icon">🎫</span>
+                            <div class="metric-value">{grants_analyzed_unique_awards}</div>
+                            <div class="metric-label">{t('unique_awards_analyzed')}</div>
+                        </div>
+                    </div>
+                    
+                    <h4 style="color: {primary}; margin-top: 15px; font-size: 14px;">{t('top_funders_analyzed')}</h4>
+                    {f'''
+                    <div class="scrollable-table" style="max-height: 400px;">
+                        <table id="grants_analyzed_funders_table">
+                            <thead>
+                                <tr>
+                                    <th class="sortable" onclick="sortTable('grants_analyzed_funders_table', 0)">{t('rank')}</th>
+                                    <th class="sortable" onclick="sortTable('grants_analyzed_funders_table', 1)">{t('funder')}</th>
+                                    <th>{t('ror')}</th>
+                                    <th class="sortable" onclick="sortTable('grants_analyzed_funders_table', 3)">{t('works_count')}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {grants_analyzed_funders_rows}
+                            </tbody>
+                        </table>
+                    </div>
+                    ''' if grants_analyzed_funders else f'<p style="color: #7F8C8D; font-style: italic;">{t("no_grants_data")}</p>'}
+                    
+                    <h4 style="color: {primary}; margin-top: 15px; font-size: 14px;">{t('top_awards_analyzed')}</h4>
+                    {f'''
+                    <div class="scrollable-table" style="max-height: 400px;">
+                        <table id="grants_analyzed_awards_table">
+                            <thead>
+                                <tr>
+                                    <th class="sortable" onclick="sortTable('grants_analyzed_awards_table', 0)">{t('rank')}</th>
+                                    <th class="sortable" onclick="sortTable('grants_analyzed_awards_table', 1)">{t('funder')}</th>
+                                    <th class="sortable" onclick="sortTable('grants_analyzed_awards_table', 2)">{t('award_id')}</th>
+                                    <th>{t('grant')}</th>
+                                    <th class="sortable" onclick="sortTable('grants_analyzed_awards_table', 4)">{t('works_count')}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {grants_analyzed_awards_rows}
+                            </tbody>
+                        </table>
+                    </div>
+                    ''' if grants_analyzed_awards else f'<p style="color: #7F8C8D; font-style: italic;">{t("no_grants_data")}</p>'}
+                    
+                    <hr style="border: none; border-top: 2px solid #e9ecef; margin: 25px 0;">
+                    
+                    <!-- ============ CITING PUBLICATIONS ============ -->
+                    <h3 style="color: {primary}; font-size: 16px;">{t('citing_publications_grants')}</h3>
+                    
+                    <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                        <div class="metric-card">
+                            <span class="metric-icon">💰</span>
+                            <div class="metric-value">{grants_citing_unique_funders}</div>
+                            <div class="metric-label">{t('unique_funders_citing')}</div>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-icon">🎫</span>
+                            <div class="metric-value">{grants_citing_unique_awards}</div>
+                            <div class="metric-label">{t('unique_awards_citing')}</div>
+                        </div>
+                    </div>
+                    
+                    <h4 style="color: {primary}; margin-top: 15px; font-size: 14px;">{t('top_funders_citing')}</h4>
+                    {f'''
+                    <div class="scrollable-table" style="max-height: 400px;">
+                        <table id="grants_citing_funders_table">
+                            <thead>
+                                <tr>
+                                    <th class="sortable" onclick="sortTable('grants_citing_funders_table', 0)">{t('rank')}</th>
+                                    <th class="sortable" onclick="sortTable('grants_citing_funders_table', 1)">{t('funder')}</th>
+                                    <th>{t('ror')}</th>
+                                    <th class="sortable" onclick="sortTable('grants_citing_funders_table', 3)">{t('works_count')}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {grants_citing_funders_rows}
+                            </tbody>
+                        </table>
+                    </div>
+                    ''' if grants_citing_funders else f'<p style="color: #7F8C8D; font-style: italic;">{t("no_grants_data")}</p>'}
+                    
+                    <h4 style="color: {primary}; margin-top: 15px; font-size: 14px;">{t('top_awards_citing')}</h4>
+                    {f'''
+                    <div class="scrollable-table" style="max-height: 400px;">
+                        <table id="grants_citing_awards_table">
+                            <thead>
+                                <tr>
+                                    <th class="sortable" onclick="sortTable('grants_citing_awards_table', 0)">{t('rank')}</th>
+                                    <th class="sortable" onclick="sortTable('grants_citing_awards_table', 1)">{t('funder')}</th>
+                                    <th class="sortable" onclick="sortTable('grants_citing_awards_table', 2)">{t('award_id')}</th>
+                                    <th>{t('grant')}</th>
+                                    <th class="sortable" onclick="sortTable('grants_citing_awards_table', 4)">{t('works_count')}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {grants_citing_awards_rows}
+                            </tbody>
+                        </table>
+                    </div>
+                    ''' if grants_citing_awards else f'<p style="color: #7F8C8D; font-style: italic;">{t("no_grants_data")}</p>'}
+                    
+                </div>
+            </div>
+            
+            <!-- ============================================================ -->
+            <!-- SECTION 8: DETAILED CITATIONS -->
             <!-- ============================================================ -->
             <div id="detailed_citations" class="section">
                 <div class="section-header" onclick="toggleSection('detailed_content')">
@@ -6325,7 +6976,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
             </div>
             
             <!-- ============================================================ -->
-            <!-- SECTION 7: ALL PUBLICATIONS -->
+            <!-- SECTION 9: ALL PUBLICATIONS -->
             <!-- ============================================================ -->
             <div id="all_publications" class="section">
                 <div class="section-header" onclick="toggleSection('all_content')">
@@ -6383,32 +7034,12 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                     <th class="sortable" onclick="sortTable('publicationsTable', 4)">{t('affiliations')}</th>
                                     <th class="sortable" onclick="sortTable('publicationsTable', 5)">{t('citations')}</th>
                                     <th class="sortable" onclick="sortTable('publicationsTable', 6)">{t('citations_per_year_label')}</th>
+                                    <th>{t('grants_funding')}</th>
                                     <th>DOI</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {''.join([
-                                    f'''
-                                    <tr 
-                                        data-year="{p.get('year', '')}" 
-                                        data-authors="{','.join([html.escape(a) for a in p.get('authors', [])])}" 
-                                        data-affiliations="{','.join([html.escape(a) for a in p.get('affiliations', [])])}"
-                                        data-citations="{p.get('citations', 0)}" 
-                                        data-title="{html.escape((p.get('title') or '').lower())}"
-                                        data-doi="{html.escape((p.get('doi') or '').lower())}"
-                                    >
-                                        <td>{i+1}</td>
-                                        <td class="word-wrap">{html.escape((p.get('title') or 'No title')[:120])}{'...' if len(p.get('title') or '') > 120 else ''}</td>
-                                        <td>{p.get('year', 'N/A')}</td>
-                                        <td>{', '.join([html.escape(a) for a in p.get('authors', [])[:3]])}{' +' + str(len(p.get('authors', []))-3) if len(p.get('authors', [])) > 3 else ''}</td>
-                                        <td>{', '.join([html.escape(a) for a in list(dict.fromkeys(p.get('affiliations', [])))[:3]])}{' +' + str(len(list(dict.fromkeys(p.get('affiliations', []))))-3) if len(list(dict.fromkeys(p.get('affiliations', [])))) > 3 else ''}</td>
-                                        <td>{get_color_scale_html(p.get('citations', 0), max([pub.get('citations', 0) for pub in all_publications]) if all_publications else 1)}</td>
-                                        <td>{get_color_scale_html(round(p.get('citations_per_year', 0), 1), max([pub.get('citations_per_year', 0) for pub in all_publications]) if all_publications else 1)}</td>
-                                        <td><a href="https://doi.org/{html.escape(p.get('doi') or '')}" target="_blank" class="doi-link">{html.escape((p.get('doi') or '')[:20])}...</a></td>
-                                    </tr>
-                                    '''
-                                    for i, p in enumerate(all_publications)
-                                ])}
+                                {all_publications_rows}
                             </tbody>
                         </table>
                     </div>
@@ -6492,6 +7123,46 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                 'Showing ' + visible + ' of ' + rows.length + ' publications';
         }}
         
+        // ===== FILTER CITED PUBLICATIONS =====
+        function filterCited() {{
+            var titleFilter = (document.getElementById('citedTitleFilter').value || '').toLowerCase();
+            var yearFilter = document.getElementById('citedYearFilter').value;
+            var authorFilter = (document.getElementById('citedAuthorFilter').value || '').toLowerCase();
+            var affiliationFilter = (document.getElementById('citedAffiliationFilter').value || '').toLowerCase();
+            var journalFilter = (document.getElementById('citedJournalFilter').value || '').toLowerCase();
+            var publisherFilter = (document.getElementById('citedPublisherFilter').value || '').toLowerCase();
+            var citationFilter = parseInt(document.getElementById('citedCitationFilter').value) || 0;
+            
+            var rows = document.querySelectorAll('#citedTable tbody tr');
+            var visible = 0;
+            
+            rows.forEach(function(row) {{
+                var title = row.getAttribute('data-title') || '';
+                var year = row.getAttribute('data-year') || '';
+                var authors = row.getAttribute('data-authors') || '';
+                var affiliations = row.getAttribute('data-affiliations') || '';
+                var journal = row.getAttribute('data-journal') || '';
+                var publisher = row.getAttribute('data-publisher') || '';
+                var citations = parseInt(row.getAttribute('data-citations')) || 0;
+                
+                var show = true;
+                
+                if (titleFilter && !title.includes(titleFilter)) show = false;
+                if (yearFilter && year !== yearFilter) show = false;
+                if (authorFilter && !authors.toLowerCase().includes(authorFilter)) show = false;
+                if (affiliationFilter && !affiliations.toLowerCase().includes(affiliationFilter)) show = false;
+                if (journalFilter && !journal.includes(journalFilter)) show = false;
+                if (publisherFilter && !publisher.includes(publisherFilter)) show = false;
+                if (citationFilter > 0 && citations < citationFilter) show = false;
+                
+                row.style.display = show ? '' : 'none';
+                if (show) visible++;
+            }});
+            
+            document.getElementById('citedVisibleCount').textContent = 
+                'Showing ' + visible + ' of ' + rows.length + ' publications';
+        }}
+        
         // ===== UNIVERSAL SORT FUNCTION =====
         function sortTable(tableId, colIndex) {{
             var table = document.getElementById(tableId);
@@ -6547,14 +7218,14 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
         // ===== AUTO-OPEN FIRST SECTION =====
         document.addEventListener('DOMContentLoaded', function() {{
             // Overview section is open by default, others closed
-            var sections = ['analyzed_content', 'citation_content', 'citing_content', 'topics_content', 'detailed_content', 'all_content'];
+            var sections = ['analyzed_content', 'citation_content', 'cited_content', 'citing_content', 'topics_content', 'grants_content', 'detailed_content', 'all_content'];
             sections.forEach(function(id) {{
                 var el = document.getElementById(id);
                 if (el) {{
                     el.style.display = 'none';
                 }}
             }});
-            var indicators = ['analyzed_indicator', 'citation_indicator', 'citing_indicator', 'topics_indicator', 'detailed_indicator', 'all_indicator'];
+            var indicators = ['analyzed_indicator', 'citation_indicator', 'cited_indicator', 'citing_indicator', 'topics_indicator', 'grants_indicator', 'detailed_indicator', 'all_indicator'];
             indicators.forEach(function(id) {{
                 var el = document.getElementById(id);
                 if (el) {{
@@ -6841,13 +7512,14 @@ def main():
             st.session_state.language = lang_option
             st.rerun()
         
-        st.markdown("---")
-
         # ==== OpenAlex API key status ====
         if OPENALEX_API_KEY:
             st.success("🔑 OpenAlex API key loaded")
         else:
             st.warning("🔑 OpenAlex API key not configured (using free tier)")
+        # =================================
+        
+        st.markdown("---")
         
         # Color theme
         st.markdown(f"## {t('color_theme')}")
@@ -6879,12 +7551,12 @@ def main():
             col_p1, col_p2 = st.columns(2)
             with col_p1:
                 st.session_state.primary_color = st.color_picker(
-                    "Primary",
+                    t('select_color'),
                     value=st.session_state.primary_color
                 )
             with col_p2:
                 st.session_state.secondary_color = st.color_picker(
-                    "Secondary",
+                    t('select_secondary_color'),
                     value=st.session_state.secondary_color
                 )
         
