@@ -4915,7 +4915,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
             <td>{get_color_scale_html(p.get('citations', 0), max_all_pubs_citations)}</td>
             <td>{get_color_scale_html(round(p.get('citations_per_year', 0), 1), max_all_pubs_cpy)}</td>
             <td class="word-wrap" style="max-width: 220px;">{'<br>'.join([html.escape(g) for g in p.get('grants_display', [])]) if p.get('grants_display') else '-'}</td>
-            <td><a href="https://doi.org/{html.escape(p.get('doi') or '')}" target="_blank" class="doi-link">{html.escape((p.get('doi') or '')[:20])}...</a></td>
+            <td>{f'<a href="https://doi.org/{html.escape(p.get("doi") or "")}" target="_blank" class="doi-link">{html.escape((p.get("doi") or "")[:20])}...</a>' if p.get('doi') else '-'}</td>
         </tr>
         '''
         for i, p in enumerate(all_publications)
@@ -4945,7 +4945,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
             <td>{get_color_scale_html(w.get('cited_by_count', 0), max([x.get('cited_by_count', 0) for x in all_citing_works]) if all_citing_works else 1)}</td>
             <td>{get_color_scale_html(w.get('cites_our_count', 0), max_citing_cites_our)}</td>
             <td class="word-wrap" style="max-width: 220px;">{'<br>'.join([html.escape(g) for g in w.get('grants_display', [])]) if w.get('grants_display') else '-'}</td>
-            <td><a href="https://doi.org/{html.escape(w.get('doi') or '')}" target="_blank" class="doi-link">{html.escape((w.get('doi') or '')[:20])}...</a></td>
+            <td>{f'<a href="https://doi.org/{html.escape(w.get("doi") or "")}" target="_blank" class="doi-link">{html.escape((w.get("doi") or "")</a>' if w.get('doi') else '-'}</td>
         </tr>
         '''
         for i, w in enumerate(all_citing_works)
