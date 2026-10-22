@@ -2771,12 +2771,14 @@ class JournalAnalyzer:
         author_analysis = self._analyze_authors()
         results['author_analysis'] = author_analysis
         
-        # Set of ORCIDs among authors of analyzed publications (for reviewer-detection)
-        analyzed_orcids = set()
-        for _meta in self.publications_metadata.values():
-            for _a in _meta.get('authors_with_orcids', []):
-                if _a.get('orcid'):
-                    analyzed_orcids.add(_a['orcid'])
+        # Set of ORCIDs among authors of analyzed publications.
+        # Берём ИМЕННО из author_analysis — это гарантирует соответствие
+        # с тем, что показано в таблице Author Analysis.
+        analyzed_orcids = {
+            (a.get('orcid') or '').strip().upper()
+            for a in author_analysis.get('top_authors', [])
+            if a.get('orcid')
+        }
         
         # 3. Affiliation analysis
         results['affiliation_analysis'] = self._analyze_affiliations()
@@ -4184,11 +4186,13 @@ class JournalAnalyzer:
         and author aggregation with ORCID deduplication and name normalization.
         
         Args:
-            analyzed_orcids: set of ORCIDs of authors from analyzed publications.
-                Used to flag citing authors that also published in the journal.
+            analyzed_orcids: set of ORCIDs (uppercase) of authors from analyzed publications.
         """
         if analyzed_orcids is None:
             analyzed_orcids = set()
+        else:
+            # нормализуем на всякий случай
+            analyzed_orcids = {(o or '').strip().upper() for o in analyzed_orcids if o}
         
         total_citing = sum(len(v) for v in self.citing_works.values())
         
@@ -4385,15 +4389,17 @@ class JournalAnalyzer:
                 'name': data['name'],
                 'orcid': data['orcid'],
                 'count': data['count'],
-                'published_in_journal': bool(data['orcid'] and data['orcid'] in analyzed_orcids)
+                'published_in_journal': bool(
+                    data['orcid'] and (data['orcid'] or '').strip().upper() in analyzed_orcids
+                )
             } for data in authors_aggregated.values() if data['count'] > 0],
             key=lambda x: x['count'],
             reverse=True
-        )[:30]
+        )
         
-        top_countries = sorted(countries.items(), key=lambda x: x[1], reverse=True)[:30]
-        top_journals = sorted(journals.items(), key=lambda x: x[1], reverse=True)[:30]
-        top_publishers = sorted(publishers.items(), key=lambda x: x[1], reverse=True)[:30]
+        top_countries = sorted(countries.items(), key=lambda x: x[1], reverse=True)
+        top_journals = sorted(journals.items(), key=lambda x: x[1], reverse=True)
+        top_publishers = sorted(publishers.items(), key=lambda x: x[1], reverse=True)
         
         return {
             'total_citing_works': total_citing,
