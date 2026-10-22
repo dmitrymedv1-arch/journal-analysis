@@ -2771,14 +2771,23 @@ class JournalAnalyzer:
         author_analysis = self._analyze_authors()
         results['author_analysis'] = author_analysis
         
-        # Set of ORCIDs among authors of analyzed publications.
-        # Берём ИМЕННО из author_analysis — это гарантирует соответствие
-        # с тем, что показано в таблице Author Analysis.
-        analyzed_orcids = {
-            (a.get('orcid') or '').strip().upper()
-            for a in author_analysis.get('top_authors', [])
-            if a.get('orcid')
-        }
+        # Set of ORCIDs (normalized) among authors of analyzed publications.
+        # Собираем из ДВУХ источников для надёжности:
+        #   1) author_analysis['top_authors'] — то, что видно в таблице
+        #   2) сырые publications_metadata['authors_with_orcids'] — полный набор
+        analyzed_orcids = set()
+        for a in author_analysis.get('top_authors', []):
+            o = (a.get('orcid') or '').strip()
+            if o:
+                analyzed_orcids.add(o.upper())
+        for _meta in self.publications_metadata.values():
+            for _a in _meta.get('authors_with_orcids', []):
+                o = (_a.get('orcid') or '').strip()
+                if o:
+                    analyzed_orcids.add(o.upper())
+        
+        if SHOW_DEBUG_LOGS:
+            print(f"🔍 analyzed_orcids (for citing-author flag): {sorted(analyzed_orcids)}")
         
         # 3. Affiliation analysis
         results['affiliation_analysis'] = self._analyze_affiliations()
@@ -4384,13 +4393,24 @@ class JournalAnalyzer:
         )[:30]
         
         # Сортируем авторов по частоте
+        # ===== DEBUG: проверяем ORCID цитирующих авторов и наличие в analyzed_orcids =====
+        if SHOW_DEBUG_LOGS:
+            print(f"🔍 [citing] analyzed_orcids size = {len(analyzed_orcids)}")
+            print(f"🔍 [citing] analyzed_orcids = {sorted(analyzed_orcids)}")
+            for _key, _data in list(authors_aggregated.items())[:10]:
+                _o = (_data.get('orcid') or '').strip()
+                _match = bool(_o and _o.upper() in analyzed_orcids)
+                print(f"   citing author: name={_data.get('name')!r}, orcid={_o!r}, match={_match}")
+        
+        # Сортируем авторов по частоте
         top_authors = sorted(
             [{
                 'name': data['name'],
                 'orcid': data['orcid'],
                 'count': data['count'],
                 'published_in_journal': bool(
-                    data['orcid'] and (data['orcid'] or '').strip().upper() in analyzed_orcids
+                    data.get('orcid')
+                    and (data.get('orcid') or '').strip().upper() in analyzed_orcids
                 )
             } for data in authors_aggregated.values() if data['count'] > 0],
             key=lambda x: x['count'],
