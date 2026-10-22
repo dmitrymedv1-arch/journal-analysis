@@ -3724,7 +3724,7 @@ class JournalAnalyzer:
         
         author_list.sort(key=lambda x: (x['publications'], x['citations']), reverse=True)
         
-        return {'top_authors': author_list[:30]}
+        return {'top_authors': author_list}
     
     def _analyze_affiliations(self) -> Dict:
         """Analyze affiliations with ROR-based aggregation (per work, not per author)"""
@@ -3797,7 +3797,7 @@ class JournalAnalyzer:
             } for data in affiliations_by_ror.values() if data['count'] > 0],
             key=lambda x: x['count'],
             reverse=True
-        )[:30]
+        )
         
         return {
             'top_affiliations': sorted_affs
@@ -4371,11 +4371,11 @@ class JournalAnalyzer:
             } for data in authors_aggregated.values() if data['count'] > 0],
             key=lambda x: x['count'],
             reverse=True
-        )[:30]
+        )
         
-        top_countries = sorted(countries.items(), key=lambda x: x[1], reverse=True)[:30]
-        top_journals = sorted(journals.items(), key=lambda x: x[1], reverse=True)[:30]
-        top_publishers = sorted(publishers.items(), key=lambda x: x[1], reverse=True)[:30]
+        top_countries = sorted(countries.items(), key=lambda x: x[1], reverse=True)
+        top_journals = sorted(journals.items(), key=lambda x: x[1], reverse=True)
+        top_publishers = sorted(publishers.items(), key=lambda x: x[1], reverse=True)
         
         return {
             'total_citing_works': total_citing,
@@ -6270,7 +6270,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                         <td>{get_color_scale_html(author.get('citations', 0), max_citations_auth)}</td>
                                     </tr>
                                     '''
-                                    for i, author in enumerate(author_analysis.get('top_authors', [])[:30])
+                                    for i, author in enumerate(author_analysis.get('top_authors', []))
                                 ])}
                             </tbody>
                         </table>
@@ -6301,7 +6301,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                         </td>
                                     </tr>
                                     '''
-                                    for i, aff in enumerate(affiliation_analysis.get('top_affiliations', [])[:30])
+                                    for i, aff in enumerate(affiliation_analysis.get('top_affiliations', []))
                                 ])}
                             </tbody>
                         </table>
@@ -6380,7 +6380,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                         <td>{get_color_scale_html(country['authors_count'], max_authors_count)}</td>
                                     </tr>
                                     '''
-                                    for i, country in enumerate(geographic.get('country_stats', [])[:30])
+                                    for i, country in enumerate(geographic.get('country_stats', []))
                                 ])}
                             </tbody>
                         </table>
@@ -6399,7 +6399,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                             <tbody>
                                 {''.join([
                                     f'<tr><td>{html.escape(couple["country1"])} — {html.escape(couple["country2"])}</td><td>{get_color_scale_html(couple["frequency"], geographic.get("collaboration_couples", [{}])[0].get("frequency", 1) if geographic.get("collaboration_couples") else 1)}</td></tr>'
-                                    for couple in geographic.get('collaboration_couples', [])[:30]
+                                    for couple in geographic.get('collaboration_couples', [])
                                 ])}
                             </tbody>
                         </table>
