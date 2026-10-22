@@ -3567,61 +3567,164 @@ class JournalAnalyzer:
         }
     
     def _analyze_authors(self) -> Dict:
-        """Analyze authors"""
-        author_stats = defaultdict(lambda: {
-            'publications': 0,
-            'citations': 0,
-            'orcid': None,
-            'affiliations': set(),
-            'countries': set()
-        })
+        """Analyze authors with ORCID-based deduplication and name merging
+        
+        Логика объединения авторов:
+        1. Если у автора есть ORCID — группируем строго по ORCID.
+           Разные варианты имени (например, "Aleksander N. Volkov" и 
+           "Alexander N. Volkov") объединяются в одну запись.
+        2. Если ORCID нет — группируем по нормализованному имени.
+        3. Для отображения имени используем "умное" слияние:
+           - различающиеся части имени объединяются через скобки:
+             "Aleksander (Alexander) N. Volkov"
+             "Yuri (Yuriy) P. Zaikov"
+           - если варианты имени идентичны — используется как есть.
+        """
+        
+        def merge_names(names: Set[str]) -> str:
+            """Объединяет варианты имени в одну строку формата 'A (B) C Surname'."""
+            names = [n.strip() for n in names if n and n.strip()]
+            if not names:
+                return ''
+            if len(names) == 1:
+                return names[0]
+            
+            # Разбиваем каждое имя на токены
+            tokenized = [n.split() for n in names]
+            
+            # Проверяем, одинаковая ли длина у всех вариантов
+            lengths = {len(t) for t in tokenized}
+            if len(lengths) != 1:
+                # Разная структура (разное число слов) — просто берём самое длинное
+                return max(names, key=len)
+            
+            n_tokens = tokenized[0].__len__()
+            merged_tokens = []
+            
+            for i in range(n_tokens):
+                variants_at_pos = {t[i] for t in tokenized}
+                if len(variants_at_pos) == 1:
+                    # Все варианты совпадают на этой позиции
+                    merged_tokens.append(variants_at_pos.pop())
+                else:
+                    # Различаются — объединяем через скобки
+                    # Сортируем для стабильного порядка (первым — более длинный/частый)
+                    sorted_variants = sorted(variants_at_pos, key=lambda x: (-len(x), x))
+                    primary = sorted_variants[0]
+                    others = sorted_variants[1:]
+                    merged_tokens.append(f"{primary} ({', '.join(others)})")
+            
+            return ' '.join(merged_tokens)
+        
+        # Структура: key -> {'names': set, 'publications', 'citations',
+        #                     'orcid', 'affiliations': set, 'countries': set}
+        author_stats: Dict[str, Dict] = {}
+        orcid_to_key: Dict[str, str] = {}
+        normalized_to_keys: Dict[str, List[str]] = defaultdict(list)
         
         for p in self.publications:
             doi = p.get('DOI')
-            if doi and doi in self.publications_metadata:
-                meta = self.publications_metadata[doi]
-                authors_with_orcids = meta.get('authors_with_orcids', [])
-                citations = p.get('Cited_by_count', 0)
+            if not doi or doi not in self.publications_metadata:
+                continue
+            
+            meta = self.publications_metadata[doi]
+            authors_with_orcids = meta.get('authors_with_orcids', [])
+            citations = p.get('Cited_by_count', 0)
+            
+            # Дедупликация внутри одной публикации: 
+            # один и тот же автор может встретиться в разных authorships
+            seen_keys_in_work = set()
+            
+            for auth in authors_with_orcids:
+                name = (auth.get('name') or '').strip()
+                orcid = auth.get('orcid')
                 
-                for auth in authors_with_orcids:
-                    name = auth.get('name', '')
-                    orcid = auth.get('orcid')
+                if not name:
+                    continue
+                
+                normalized = normalize_author_name_for_grouping(name)
+                
+                # --- Определяем ключ группировки ---
+                key = None
+                
+                if orcid:
+                    # Приоритет — ORCID
+                    if orcid in orcid_to_key:
+                        key = orcid_to_key[orcid]
+                    else:
+                        # ORCID новый; проверяем, нет ли уже записи
+                        # с таким же нормализованным именем и без ORCID
+                        for existing_key in normalized_to_keys.get(normalized, []):
+                            if existing_key in author_stats and not author_stats[existing_key]['orcid']:
+                                key = existing_key
+                                author_stats[key]['orcid'] = orcid
+                                orcid_to_key[orcid] = key
+                                break
+                        
+                        if key is None:
+                            key = f"orcid:{orcid}"
+                            author_stats[key] = {
+                                'names': set(),
+                                'publications': 0,
+                                'citations': 0,
+                                'orcid': orcid,
+                                'affiliations': set(),
+                                'countries': set()
+                            }
+                            orcid_to_key[orcid] = key
+                            normalized_to_keys[normalized].append(key)
+                else:
+                    # Нет ORCID — группируем по нормализованному имени
+                    for existing_key in normalized_to_keys.get(normalized, []):
+                        if existing_key in author_stats and not author_stats[existing_key]['orcid']:
+                            key = existing_key
+                            break
                     
-                    if name:
-                        author_stats[name]['publications'] += 1
-                        author_stats[name]['citations'] += citations
-                        if orcid:
-                            author_stats[name]['orcid'] = orcid
-                        
-                        # Добавляем аффилиации и страны (используем set для уникальности)
-                        for aff in meta.get('affiliations', []):
-                            if aff:
-                                author_stats[name]['affiliations'].add(aff)
-                        
-                        for country in meta.get('affiliation_countries', []):
-                            if country:
-                                author_stats[name]['countries'].add(country)
+                    if key is None:
+                        key = f"name:{normalized}:{len(author_stats)}"
+                        author_stats[key] = {
+                            'names': set(),
+                            'publications': 0,
+                            'citations': 0,
+                            'orcid': None,
+                            'affiliations': set(),
+                            'countries': set()
+                        }
+                        normalized_to_keys[normalized].append(key)
+                
+                # --- Обновляем запись автора ---
+                entry = author_stats[key]
+                entry['names'].add(name)
+                
+                # Публикации и цитирования учитываем один раз на работу
+                if key not in seen_keys_in_work:
+                    seen_keys_in_work.add(key)
+                    entry['publications'] += 1
+                    entry['citations'] += citations
+                    
+                    for aff in meta.get('affiliations', []):
+                        if aff:
+                            entry['affiliations'].add(aff)
+                    for country in meta.get('affiliation_countries', []):
+                        if country:
+                            entry['countries'].add(country)
         
-        # Сортируем по количеству публикаций
-        sorted_authors = sorted(
-            author_stats.items(),
-            key=lambda x: x[1]['publications'],
-            reverse=True
-        )[:30]
+        # --- Формируем итоговый список ---
+        author_list = []
+        for key, data in author_stats.items():
+            merged_name = merge_names(data['names'])
+            author_list.append({
+                'name': merged_name,
+                'publications': data['publications'],
+                'citations': data['citations'],
+                'orcid': data['orcid'],
+                'affiliations': sorted(data['affiliations'])[:5],
+                'countries': sorted(data['countries'])[:5]
+            })
         
-        return {
-            'top_authors': [
-                {
-                    'name': name,
-                    'publications': data['publications'],
-                    'citations': data['citations'],
-                    'orcid': data['orcid'],
-                    'affiliations': list(data['affiliations'])[:5],
-                    'countries': list(data['countries'])[:5]
-                }
-                for name, data in sorted_authors
-            ]
-        }
+        author_list.sort(key=lambda x: (x['publications'], x['citations']), reverse=True)
+        
+        return {'top_authors': author_list[:30]}
     
     def _analyze_affiliations(self) -> Dict:
         """Analyze affiliations with ROR-based aggregation (per work, not per author)"""
