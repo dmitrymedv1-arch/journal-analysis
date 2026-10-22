@@ -394,7 +394,6 @@ LANG = {
         'four_plus_authors': '4+ authors',
         # ====== НОВЫЕ КЛЮЧИ ДЛЯ ORCID IN CITING AUTHORS ======
         'citing_author_orcid': 'ORCID',
-        'published_in_journal': 'Published in Journal',
         # ====== НОВЫЕ КЛЮЧИ ДЛЯ IMPACT FACTOR И CITESCORE ======
         'impact_factor': 'Impact Factor (3-year)',
         'impact_factor_full': 'IF ({pub_years} → {cite_year})',
@@ -765,7 +764,6 @@ LANG = {
         'four_plus_authors': '4+ авторов',
         # ====== НОВЫЕ КЛЮЧИ ДЛЯ ORCID IN CITING AUTHORS (РУССКИЙ) ======
         'citing_author_orcid': 'ORCID',
-        'published_in_journal': 'Публиковался в журнале',
         # ====== НОВЫЕ КЛЮЧИ ДЛЯ ДИНАМИЧЕСКИХ IF И CITESCORE (РУССКИЙ) ======
         'dynamic_metrics_title': 'Динамические метрики',
         'if_dynamic': 'Динамический импакт-фактор (3-летний)',
@@ -3726,16 +3724,7 @@ class JournalAnalyzer:
         
         author_list.sort(key=lambda x: (x['publications'], x['citations']), reverse=True)
         
-        # Собираем ORCID-ы всех авторов, встречающихся в Author Analysis
-        # (нужно для последующей проверки в Top Citing Authors)
-        analyzed_orcids = {
-            a['orcid'] for a in author_list if a.get('orcid')
-        }
-        
-        return {
-            'top_authors': author_list,
-            'all_analyzed_orcids': analyzed_orcids
-        }
+        return {'top_authors': author_list[:30]}
     
     def _analyze_affiliations(self) -> Dict:
         """Analyze affiliations with ROR-based aggregation (per work, not per author)"""
@@ -3808,7 +3797,7 @@ class JournalAnalyzer:
             } for data in affiliations_by_ror.values() if data['count'] > 0],
             key=lambda x: x['count'],
             reverse=True
-        )
+        )[:30]
         
         return {
             'top_affiliations': sorted_affs
@@ -4186,11 +4175,6 @@ class JournalAnalyzer:
         
         total_citing = sum(len(v) for v in self.citing_works.values())
         
-        # Множество ORCID-ов из Author Analysis (для пометки "публиковался ли автор в журнале")
-        analyzed_orcids = set(
-            self.analysis_results.get('author_analysis', {}).get('all_analyzed_orcids', set())
-        )
-        
         # Используем ROR ID для группировки аффилиаций
         affiliations_by_ror = defaultdict(lambda: {
             'name': '',
@@ -4376,32 +4360,26 @@ class JournalAnalyzer:
             } for data in affiliations_by_ror.values() if data['count'] > 0],
             key=lambda x: x['count'],
             reverse=True
-        )
+        )[:30]
         
         # Сортируем авторов по частоте
         top_authors = sorted(
             [{
                 'name': data['name'],
                 'orcid': data['orcid'],
-                'count': data['count'],
-                'has_published': bool(data['orcid'] and data['orcid'] in analyzed_orcids)
+                'count': data['count']
             } for data in authors_aggregated.values() if data['count'] > 0],
             key=lambda x: x['count'],
             reverse=True
-        )
+        )[:30]
         
-        top_countries = sorted(countries.items(), key=lambda x: x[1], reverse=True)
-        top_journals = sorted(journals.items(), key=lambda x: x[1], reverse=True)
-        top_publishers = sorted(publishers.items(), key=lambda x: x[1], reverse=True)
+        top_countries = sorted(countries.items(), key=lambda x: x[1], reverse=True)[:30]
+        top_journals = sorted(journals.items(), key=lambda x: x[1], reverse=True)[:30]
+        top_publishers = sorted(publishers.items(), key=lambda x: x[1], reverse=True)[:30]
         
         return {
             'total_citing_works': total_citing,
-            'top_authors': [{
-                'name': item['name'],
-                'orcid': item['orcid'],
-                'count': item['count'],
-                'has_published': item['has_published']
-            } for item in top_authors],
+            'top_authors': [{'name': item['name'], 'orcid': item['orcid'], 'count': item['count']} for item in top_authors],
             'top_affiliations': top_affiliations,
             'top_countries': [{'name': name, 'count': count} for name, count in top_countries],
             'top_journals': [{'name': name, 'count': count} for name, count in top_journals],
@@ -6657,7 +6635,6 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                     <th class="sortable" onclick="sortTable('citing_auth_table', 1)">{t('authors')}</th>
                                     <th class="sortable" onclick="sortTable('citing_auth_table', 2)">{t('citing_author_orcid')}</th>
                                     <th class="sortable" onclick="sortTable('citing_auth_table', 3)">{t('citations_count')}</th>
-                                    <th class="sortable" onclick="sortTable('citing_auth_table', 4)">{t('published_in_journal')}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -6668,7 +6645,6 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                         <td>{html.escape(author['name'])}</td>
                                         <td>{f'<a href="https://orcid.org/{author["orcid"]}" target="_blank" class="doi-link orcid-full">{author["orcid"]}</a>' if author.get('orcid') else '-'}</td>
                                         <td>{get_color_scale_html(author['count'], max_citing_auth)}</td>
-                                        <td style="text-align:center; font-size:16px;">{format_boolean(author.get('has_published', False))}</td>
                                     </tr>
                                     '''
                                     for i, author in enumerate(citing.get('top_authors', [])[:30])
