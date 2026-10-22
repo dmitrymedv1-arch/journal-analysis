@@ -394,6 +394,7 @@ LANG = {
         'four_plus_authors': '4+ authors',
         # ====== НОВЫЕ КЛЮЧИ ДЛЯ ORCID IN CITING AUTHORS ======
         'citing_author_orcid': 'ORCID',
+        'published_in_journal': 'Published in journal',
         # ====== НОВЫЕ КЛЮЧИ ДЛЯ IMPACT FACTOR И CITESCORE ======
         'impact_factor': 'Impact Factor (3-year)',
         'impact_factor_full': 'IF ({pub_years} → {cite_year})',
@@ -764,6 +765,7 @@ LANG = {
         'four_plus_authors': '4+ авторов',
         # ====== НОВЫЕ КЛЮЧИ ДЛЯ ORCID IN CITING AUTHORS (РУССКИЙ) ======
         'citing_author_orcid': 'ORCID',
+        'published_in_journal': 'Публиковался в журнале',
         # ====== НОВЫЕ КЛЮЧИ ДЛЯ ДИНАМИЧЕСКИХ IF И CITESCORE (РУССКИЙ) ======
         'dynamic_metrics_title': 'Динамические метрики',
         'if_dynamic': 'Динамический импакт-фактор (3-летний)',
@@ -2766,7 +2768,15 @@ class JournalAnalyzer:
         results['basic_metrics'] = self._analyze_basic_metrics()
         
         # 2. Author analysis
-        results['author_analysis'] = self._analyze_authors()
+        author_analysis = self._analyze_authors()
+        results['author_analysis'] = author_analysis
+        
+        # Set of ORCIDs among authors of analyzed publications (for reviewer-detection)
+        analyzed_orcids = set()
+        for _meta in self.publications_metadata.values():
+            for _a in _meta.get('authors_with_orcids', []):
+                if _a.get('orcid'):
+                    analyzed_orcids.add(_a['orcid'])
         
         # 3. Affiliation analysis
         results['affiliation_analysis'] = self._analyze_affiliations()
@@ -2777,8 +2787,8 @@ class JournalAnalyzer:
         # 5. Citation analysis
         results['citation_analysis'] = self._analyze_citations()
         
-        # 6. Citing works analysis
-        results['citing_analysis'] = self._analyze_citing_works()
+        # 6. Citing works analysis (pass analyzed ORCID set)
+        results['citing_analysis'] = self._analyze_citing_works(analyzed_orcids)
         
         # 7. Topics analysis
         results['topics_analysis'] = self._analyze_topics()
@@ -4169,9 +4179,16 @@ class JournalAnalyzer:
             'most_cited': most_cited[:10]
         }
     
-    def _analyze_citing_works(self) -> Dict:
+    def _analyze_citing_works(self, analyzed_orcids: Optional[Set[str]] = None) -> Dict:
         """Analyze citing works with ROR-based affiliation aggregation (per work, not per author)
-        and author aggregation with ORCID deduplication and name normalization"""
+        and author aggregation with ORCID deduplication and name normalization.
+        
+        Args:
+            analyzed_orcids: set of ORCIDs of authors from analyzed publications.
+                Used to flag citing authors that also published in the journal.
+        """
+        if analyzed_orcids is None:
+            analyzed_orcids = set()
         
         total_citing = sum(len(v) for v in self.citing_works.values())
         
@@ -4367,7 +4384,8 @@ class JournalAnalyzer:
             [{
                 'name': data['name'],
                 'orcid': data['orcid'],
-                'count': data['count']
+                'count': data['count'],
+                'published_in_journal': bool(data['orcid'] and data['orcid'] in analyzed_orcids)
             } for data in authors_aggregated.values() if data['count'] > 0],
             key=lambda x: x['count'],
             reverse=True
@@ -6634,7 +6652,8 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                     <th class="sortable" onclick="sortTable('citing_auth_table', 0)">{t('rank')}</th>
                                     <th class="sortable" onclick="sortTable('citing_auth_table', 1)">{t('authors')}</th>
                                     <th class="sortable" onclick="sortTable('citing_auth_table', 2)">{t('citing_author_orcid')}</th>
-                                    <th class="sortable" onclick="sortTable('citing_auth_table', 3)">{t('citations_count')}</th>
+                                    <th class="sortable" onclick="sortTable('citing_auth_table', 3)">{t('published_in_journal')}</th>
+                                    <th class="sortable" onclick="sortTable('citing_auth_table', 4)">{t('citations_count')}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -6644,6 +6663,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                         <td>{i+1}</td>
                                         <td>{html.escape(author['name'])}</td>
                                         <td>{f'<a href="https://orcid.org/{author["orcid"]}" target="_blank" class="doi-link orcid-full">{author["orcid"]}</a>' if author.get('orcid') else '-'}</td>
+                                        <td style="text-align: center; font-size: 16px;">{('✅' if author.get('published_in_journal') else '❌') if author.get('orcid') else '<span style="color:#BDC3C7;">—</span>'}</td>
                                         <td>{get_color_scale_html(author['count'], max_citing_auth)}</td>
                                     </tr>
                                     '''
