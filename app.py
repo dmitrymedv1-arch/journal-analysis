@@ -4806,6 +4806,12 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
     max_country_count = max([c for c in geographic.get('authors_per_country', {}).values()]) if geographic.get('authors_per_country') else 1
     max_citation_count = max([r.get('citations_count', 0) for r in citation.get('dynamics', [])]) if citation.get('dynamics') else 1
     max_citing_auth = max([a.get('count', 0) for a in citing.get('top_authors', [])]) if citing.get('top_authors') else 1
+
+    author_analysis_orcids = set()
+    for a in author_analysis.get('top_authors', []):
+        orcid = a.get('orcid')
+        if orcid:
+            author_analysis_orcids.add(str(orcid).strip())
     max_citing_aff = max([a.get('count', 0) for a in citing.get('top_affiliations', [])]) if citing.get('top_affiliations') else 1
     max_citing_country = max([a.get('count', 0) for a in citing.get('top_countries', [])]) if citing.get('top_countries') else 1
     max_citing_journal = max([a.get('count', 0) for a in citing.get('top_journals', [])]) if citing.get('top_journals') else 1
@@ -6635,6 +6641,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                     <th class="sortable" onclick="sortTable('citing_auth_table', 1)">{t('authors')}</th>
                                     <th class="sortable" onclick="sortTable('citing_auth_table', 2)">{t('citing_author_orcid')}</th>
                                     <th class="sortable" onclick="sortTable('citing_auth_table', 3)">{t('citations_count')}</th>
+                                    <th>In Author Analysis</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -6645,6 +6652,9 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                         <td>{html.escape(author['name'])}</td>
                                         <td>{f'<a href="https://orcid.org/{author["orcid"]}" target="_blank" class="doi-link orcid-full">{author["orcid"]}</a>' if author.get('orcid') else '-'}</td>
                                         <td>{get_color_scale_html(author['count'], max_citing_auth)}</td>
+                                        <td style="text-align: center; font-size: 16px;">
+                                            {'✅' if author.get('orcid') and str(author['orcid']).strip() in author_analysis_orcids else '❌'}
+                                        </td>
                                     </tr>
                                     '''
                                     for i, author in enumerate(citing.get('top_authors', [])[:30])
