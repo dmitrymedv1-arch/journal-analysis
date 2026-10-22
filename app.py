@@ -6657,7 +6657,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                         </td>
                                     </tr>
                                     '''
-                                    for i, author in enumerate(citing.get('top_authors', [])[:30])
+                                    for i, author in enumerate(citing.get('top_authors', [])[:100])
                                 ])}
                             </tbody>
                         </table>
@@ -6688,7 +6688,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                         </td>
                                     </tr>
                                     '''
-                                    for i, aff in enumerate(citing.get('top_affiliations', [])[:30])
+                                    for i, aff in enumerate(citing.get('top_affiliations', [])[:100])
                                 ])}
                             </tbody>
                         </table>
@@ -6728,7 +6728,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                             <tbody>
                                 {''.join([
                                     f'<tr><td>{i+1}</td><td>{html.escape(journal["name"])}</td><td>{get_color_scale_html(journal["count"], max_citing_journal)}</td></tr>'
-                                    for i, journal in enumerate(citing.get('top_journals', [])[:30])
+                                    for i, journal in enumerate(citing.get('top_journals', [])[:100])
                                 ])}
                             </tbody>
                         </table>
@@ -6748,7 +6748,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                             <tbody>
                                 {''.join([
                                     f'<tr><td>{i+1}</td><td>{html.escape(pub["name"])}</td><td>{get_color_scale_html(pub["count"], max_citing_pub)}</td></tr>'
-                                    for i, pub in enumerate(citing.get('top_publishers', [])[:30])
+                                    for i, pub in enumerate(citing.get('top_publishers', [])[:50])
                                 ])}
                             </tbody>
                         </table>
