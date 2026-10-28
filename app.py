@@ -2503,7 +2503,7 @@ class JournalAnalyzer:
             return f"publication_year:{period}"
     
     def fetch_journal_publications(self, progress_callback=None):
-        """Stage 1: Fetch all publications from the journal (page-based pagination)"""
+        """Stage 1: Fetch all publications from the journal (cursor-based pagination)"""
         year_filter = self.get_year_filter()
         normalized = self.issn
         
@@ -2511,15 +2511,15 @@ class JournalAnalyzer:
             print(f"🚀 Запуск сбора публикаций для {normalized}")
         
         publications = []
-        page = 1
-        per_page = 100  # OpenAlex: максимум 100 для page-based
+        per_page = 100  # OpenAlex поддерживаемый максимум
+        cursor = "*"    # начальный курсор
         total_fetched = 0
         
         while True:
             data = smart_request({
                 "filter": f"primary_location.source.issn:{normalized},{year_filter}",
                 "per_page": per_page,
-                "page": page,
+                "cursor": cursor,
                 "select": "id,doi,publication_year,cited_by_count,publication_date"
             })
             
@@ -2543,22 +2543,20 @@ class JournalAnalyzer:
                 total_count = data.get("meta", {}).get("count", total_fetched)
                 progress_callback(total_fetched, total_count)
             
-            # Проверяем, есть ли следующая страница
-            results_count = len(data["results"])
+            # Получаем следующий курсор
             meta = data.get("meta", {})
-            total_count = meta.get("count", 0)
+            next_cursor = meta.get("next_cursor")
             
-            # Прекращаем, если получили меньше per_page или достигли общего количества
-            if results_count < per_page or total_fetched >= total_count:
-                break
-            
-            page += 1
-            
-            # Защита: page * per_page не должен превышать 10 000
-            if page * per_page > 10000:
+            # Если next_cursor is None или null — достигнут конец
+            if not next_cursor:
                 if SHOW_DEBUG_LOGS:
-                    print(f"⚠️ Достигнут лимит page-based пагинации (10 000). Собрано {len(publications)} публикаций.")
+                    print(f"✅ Курсорная пагинация завершена. Собрано {len(publications)} публикаций.")
                 break
+            
+            cursor = next_cursor
+            # Минимальная задержка для соблюдения rate limit (с ключом)
+            if OPENALEX_API_KEY:
+                time.sleep(0.03)  # ~33 req/s, в пределах 30 req/s с запасом
         
         self.publications = publications
         
@@ -2614,16 +2612,16 @@ class JournalAnalyzer:
         return citing_map
     
     def _get_citing_dois_batch(self, oa_id: str) -> List[str]:
-        """Get citing DOIs for a single work (page-based pagination)"""
+        """Get citing DOIs for a single work (cursor-based pagination)"""
         citing = []
-        page = 1
-        per_page = 100
+        per_page = 100  # OpenAlex поддерживаемый максимум
+        cursor = "*"    # начальный курсор
         
-        for _ in range(6):
+        while True:
             data = smart_request({
                 "filter": f"cites:{oa_id}",
                 "per_page": per_page,
-                "page": page,
+                "cursor": cursor,
                 "select": "doi,publication_date"
             })
             
@@ -2638,22 +2636,19 @@ class JournalAnalyzer:
                         'publication_date': item.get('publication_date')
                     })
             
-            results_count = len(data["results"])
+            # Получаем следующий курсор
             meta = data.get("meta", {})
-            total_count = meta.get("count", 0)
+            next_cursor = meta.get("next_cursor")
             
-            if results_count < per_page:
+            if not next_cursor:
                 break
             
-            page += 1
-            if page * per_page > 10000:
-                break
-            
-            # Ключевое изменение: с ключом задержка минимальна
+            cursor = next_cursor
+            # С ключом — минимальная задержка; без ключа — более консервативная
             if OPENALEX_API_KEY:
-                time.sleep(0.05)  # было 25 секунд! Теперь 50ms
+                time.sleep(0.03)
             else:
-                time.sleep(2)  # без ключа всё ещё нужно замедлиться, но не настолько радикально
+                time.sleep(1.0)  # без ключа курсор после первой страницы не сработает, но на всякий случай
         
         return citing
     
