@@ -3,11 +3,11 @@
 # ============================================
 
 # Параметры API запросов
-BATCH_SIZE = 50 
+BATCH_SIZE = 100 
 MAX_RETRIES = 3 
 TIMEOUT = 30 
-DELAY_BETWEEN_BATCHES = 0.5 
-MAX_CONCURRENT_REQUESTS = 3
+DELAY_BETWEEN_BATCHES = 0.2 
+MAX_CONCURRENT_REQUESTS = 8
 RETRY_DELAY = 2 
 ORCID_REQUEST_DELAY = 0.2 
 
@@ -2137,20 +2137,25 @@ def smart_request(params, retries=5):
     base_url = "https://api.openalex.org/works"
     lock = Lock()
     
-    # ===== NEW: добавляем API-ключ, если он есть (не мутируем исходный dict)
+    # Добавляем API-ключ, если он есть
     if OPENALEX_API_KEY:
         params = {**params, "api_key": OPENALEX_API_KEY}
     
     for attempt in range(retries):
         try:
             with lock:
-                time.sleep(random.uniform(0.2, 0.45))
+                # Ключевое изменение: с ключом задержка минимальна, без ключа — более консервативна
+                if OPENALEX_API_KEY:
+                    time.sleep(random.uniform(0.02, 0.05))  # ~20-50ms, поддержка ~20-50 req/s
+                else:
+                    time.sleep(random.uniform(0.2, 0.45))  # сохраняем старую безопасную стратегию
             
             resp = requests.get(base_url, params=params, timeout=30)
             
             if resp.status_code == 429:
-                wait = int(resp.headers.get("Retry-After", 3))
-                time.sleep(wait + random.uniform(1, 2))
+                # Если есть ключ, 429 скорее всего означает превышение скорости, можно быстро повторить
+                wait = int(resp.headers.get("Retry-After", 2 if OPENALEX_API_KEY else 3))
+                time.sleep(wait + random.uniform(0.5, 1))
                 continue
                 
             if resp.status_code == 200:
@@ -2612,9 +2617,9 @@ class JournalAnalyzer:
         """Get citing DOIs for a single work (page-based pagination)"""
         citing = []
         page = 1
-        per_page = 100  # OpenAlex: максимум 100 для page-based
+        per_page = 100
         
-        for _ in range(6):  # ограничение на количество страниц
+        for _ in range(6):
             data = smart_request({
                 "filter": f"cites:{oa_id}",
                 "per_page": per_page,
@@ -2633,7 +2638,6 @@ class JournalAnalyzer:
                         'publication_date': item.get('publication_date')
                     })
             
-            # Проверяем, есть ли следующая страница
             results_count = len(data["results"])
             meta = data.get("meta", {})
             total_count = meta.get("count", 0)
@@ -2642,12 +2646,14 @@ class JournalAnalyzer:
                 break
             
             page += 1
-            
-            # Защита: лимит page-based пагинации
             if page * per_page > 10000:
                 break
             
-            time.sleep(25)  # замедление на 2 этапе
+            # Ключевое изменение: с ключом задержка минимальна
+            if OPENALEX_API_KEY:
+                time.sleep(0.05)  # было 25 секунд! Теперь 50ms
+            else:
+                time.sleep(2)  # без ключа всё ещё нужно замедлиться, но не настолько радикально
         
         return citing
     
