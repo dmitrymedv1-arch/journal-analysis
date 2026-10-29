@@ -2172,8 +2172,10 @@ def get_work_metadata_batch(work_ids: List[str]) -> List[Dict]:
         return []
     
     results = []
+
+    batch_size = 90 if OPENALEX_API_KEY else 50
     
-    for batch in chunks(work_ids, 50):
+    for batch in chunks(work_ids, batch_size):
         id_query = '|'.join(batch)
         params = {
             'filter': f'openalex:{id_query}',
@@ -2184,7 +2186,8 @@ def get_work_metadata_batch(work_ids: List[str]) -> List[Dict]:
         if data and data.get('results'):
             results.extend(data['results'])
         
-        time.sleep(random.uniform(0.1, 0.3))
+        if not OPENALEX_API_KEY:
+            time.sleep(random.uniform(0.1, 0.3))
     
     return results
 
@@ -2714,7 +2717,9 @@ class JournalAnalyzer:
         all_metadata = []
         total = len(citing_dois_list)
         
-        for batch in chunks(citing_dois_list, 50):
+        batch_size = 90 if OPENALEX_API_KEY else 50
+        
+        for batch in chunks(citing_dois_list, batch_size):
             doi_query = '|'.join(batch)
             page = 1
             per_page = min(len(batch), 100)
@@ -2740,9 +2745,9 @@ class JournalAnalyzer:
             if progress_callback:
                 progress_callback(len(all_metadata), total)
             
-            time.sleep(random.uniform(0.1, 0.3))
+            if not OPENALEX_API_KEY:
+                time.sleep(random.uniform(0.1, 0.3))
         
-        # Создаем словарь для быстрого доступа
         metadata_dict = {}
         for meta in all_metadata:
             parsed = parse_work_metadata(meta)
