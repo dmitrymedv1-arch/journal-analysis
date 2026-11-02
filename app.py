@@ -4770,6 +4770,7 @@ class JournalAnalyzer:
                 
                 # Calculate citation lag in days
                 citation_lag = None
+                citation_age = None
                 pub_date = self.publications_metadata.get(doi, {}).get('publication_date')
                 if pub_date and cite_date:
                     try:
