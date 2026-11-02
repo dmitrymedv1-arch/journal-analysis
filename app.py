@@ -445,8 +445,22 @@ LANG = {
         'grants_funding': 'Grants & Funding',
         'grant': 'Grant',
         'ror': 'ROR',
+        'cumulative_metrics_title': 'Cumulative Metrics',
+        'if_cumulative': 'Cumulative Impact Factor (3-year)',
+        'if_cumulative_full': 'Cumulative IF ({pub_years} → {cite_year})',
+        'if_cumulative_description': 'Citations in current year ({cite_year}) to articles published in {pub_years} / Number of articles published in {pub_years}',
+        'if_cumulative_not_applicable': 'Cumulative Impact Factor not applicable (period does not cover target years {years})',
+        'citescore_cumulative': 'Cumulative CiteScore (4-year)',
+        'citescore_cumulative_full': 'Cumulative SC ({years})',
+        'citescore_cumulative_description': 'Citations within {years} to articles published in {years} / Number of articles published in {years}',
+        'citescore_cumulative_not_applicable': 'Cumulative CiteScore not applicable (period does not cover target years {years})',
+        'cumulative_ytd_note': 'Year-to-date: value will grow until the end of {year}',
         'analyzed_publications_grants': 'Analyzed Publications — Grants & Funding',
         'citing_publications_grants': 'Citing Publications — Grants & Funding',
+        'potential_reviewers': 'Potential Reviewers',
+        'potential_reviewers_hint': 'Top-100 authors who cited the journal but did not publish in it during the analyzed period',
+        'no_potential_reviewers': 'No potential reviewers found',
+        'citation_age': 'Citation age (days)',
         'no_cited_publications': 'No cited publications',
     },
     'ru': {
@@ -531,6 +545,7 @@ LANG = {
         'last_publication': 'Последняя публикация',
         'papers_per_year': 'Статей в год',
         'trend': 'Тренд',
+        'citation_age': 'Возраст цитирования (дней)',
         'unique_coauthors': 'Уникальных соавторов',
         'avg_authors_per_paper': 'Среднее авторов на статью',
         'thematic_diversity': 'Тематическое разнообразие (Shannon)',
@@ -802,9 +817,22 @@ LANG = {
         'filter_by_publisher': 'Фильтр по издателю',
         'grants_funding': 'Гранты и финансирование',
         'grant': 'Грант',
+        'cumulative_metrics_title': 'Кумулятивные метрики',
+        'if_cumulative': 'Кумулятивный импакт-фактор (3-летний)',
+        'if_cumulative_full': 'Кумулятивный IF ({pub_years} → {cite_year})',
+        'if_cumulative_description': 'Цитирования в текущем году ({cite_year}) статей, опубликованных в {pub_years} / Число статей, опубликованных в {pub_years}',
+        'if_cumulative_not_applicable': 'Кумулятивный импакт-фактор не применим (период не покрывает целевые годы {years})',
+        'citescore_cumulative': 'Кумулятивный CiteScore (4-летний)',
+        'citescore_cumulative_full': 'Кумулятивный SC ({years})',
+        'citescore_cumulative_description': 'Цитирования в {years} статей, опубликованных в {years} / Число статей, опубликованных в {years}',
+        'citescore_cumulative_not_applicable': 'Кумулятивный CiteScore не применим (период не покрывает целевые годы {years})',
+        'cumulative_ytd_note': 'Значение за неполный год: будет расти до конца {year}',
         'ror': 'ROR',
         'analyzed_publications_grants': 'Анализируемые публикации — гранты и финансирование',
         'citing_publications_grants': 'Цитирующие публикации — гранты и финансирование',
+        'potential_reviewers': 'Потенциальные рецензенты',
+        'potential_reviewers_hint': 'Топ-100 авторов, цитировавших журнал, но не публиковавшихся в нём за исследуемый период',
+        'no_potential_reviewers': 'Потенциальные рецензенты не найдены',
         'no_cited_publications': 'Нет цитирующих публикаций',
     }
 }
@@ -2806,8 +2834,14 @@ class JournalAnalyzer:
         
         # 13. Dynamic CiteScore (4-year) — привязан к текущей дате
         results['citescore_dynamic'] = self._calculate_citescore_dynamic()
+
+        # ===== NEW: 14. Cumulative Impact Factor (3-year) — окно уходит в текущий год
+        results['impact_factor_cumulative'] = self._calculate_impact_factor_cumulative()
         
-        # ===== NEW: 14. Grants & Funding analysis
+        # ===== NEW: 15. Cumulative CiteScore (4-year) — окно уходит в текущий год
+        results['citescore_cumulative'] = self._calculate_citescore_cumulative()
+        
+        # ===== NEW: 16. Grants & Funding analysis
         results['grants_analysis'] = self._analyze_grants()
         
         self.analysis_results = results
@@ -3275,6 +3309,155 @@ class JournalAnalyzer:
             'cite_window_end': cite_window_end.strftime('%Y-%m-%d'),
             'period_covers': True,
             'not_applicable_reason': None
+        }
+
+    def _calculate_impact_factor_cumulative(self) -> Optional[Dict]:
+        """
+        Calculate cumulative 3-year Impact Factor (IF_cum) for the CURRENT year
+        (год проведения анализа).
+        
+        Логика аналогична static IF, но окно цитирований уходит в текущий (ещё
+        не завершённый) год, поэтому значение заведомо недосчитано.
+        
+        Для года анализа 2026:
+        - Publications window: 2024–2025  (т.е. [current_year - 2, current_year - 1])
+        - Citations window:    2026       (весь текущий год, все доступные цитирования)
+        
+        IF_cum = citations in current_year to articles published in
+                 [current_year - 2, current_year - 1]
+                 / number of articles published in [current_year - 2, current_year - 1]
+        
+        Returns dict or None if analysis period does not cover required years.
+        """
+        current_year = datetime.now().year
+    
+        pub_years = [current_year - 2, current_year - 1]   # e.g., [2024, 2025]
+        cite_year = current_year                            # e.g., 2026
+    
+        period_years = self._get_period_years_set()
+        required_years = set(pub_years + [cite_year])
+    
+        if not required_years.issubset(period_years):
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ Cumulative IF не применим: период не покрывает "
+                      f"целевые годы {sorted(required_years)}")
+            return None
+    
+        # --- Публикации в окне pub_years (по годам, но с доступной датой) ---
+        pub_dois = []
+        for p in self.publications:
+            if p.get('Year') in pub_years and p.get('DOI'):
+                pub_dois.append(p['DOI'])
+    
+        if not pub_dois:
+            return {
+                'value': 0.0,
+                'citations': 0,
+                'publications': 0,
+                'pub_years': pub_years,
+                'cite_year': cite_year,
+                'years_covered': sorted(required_years),
+                'period_covers': True,
+                'is_cumulative': True,
+                'as_of': datetime.now().strftime('%Y-%m-%d'),
+            }
+    
+        # --- Цитирования текущего года ---
+        # ВАЖНО: год цитирования берём из citations_metadata (publication_year),
+        # который, в свою очередь, получен из publication_date в OpenAlex.
+        # Т.е. фактически фильтр по году, но за ним стоит точная дата.
+        citation_count = 0
+        for doi in pub_dois:
+            for cite in self.citing_works.get(doi, []):
+                cite_doi = cite.get('doi') if isinstance(cite, dict) else cite
+                cite_meta = self.citations_metadata.get(cite_doi, {})
+                if cite_meta.get('publication_year') == cite_year:
+                    citation_count += 1
+    
+        value = citation_count / len(pub_dois)
+    
+        if SHOW_DEBUG_LOGS:
+            print(f"📊 Cumulative IF: {citation_count} / {len(pub_dois)} = {value:.3f} "
+                  f"(pub: {pub_years}, cite: {cite_year})")
+    
+        return {
+            'value': value,
+            'citations': citation_count,
+            'publications': len(pub_dois),
+            'pub_years': pub_years,
+            'cite_year': cite_year,
+            'years_covered': sorted(required_years),
+            'period_covers': True,
+            'is_cumulative': True,
+            'as_of': datetime.now().strftime('%Y-%m-%d'),
+        }
+
+    def _calculate_citescore_cumulative(self) -> Optional[Dict]:
+        """
+        Calculate cumulative 4-year CiteScore (SC_cum) for the CURRENT year.
+        
+        Для года анализа 2026:
+        - Window: 2023–2026  (т.е. [current_year - 3 … current_year])
+        
+        SC_cum = citations in [current_year - 3 … current_year] to articles
+                 published in [current_year - 3 … current_year]
+                 / number of articles published in [current_year - 3 … current_year]
+        
+        Как и Cumulative IF, значение недосчитано, пока текущий год не закрыт.
+        """
+        current_year = datetime.now().year
+    
+        window_years = list(range(current_year - 3, current_year + 1))  # [2023..2026]
+    
+        period_years = self._get_period_years_set()
+        required_years = set(window_years)
+    
+        if not required_years.issubset(period_years):
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ Cumulative SC не применим: период не покрывает "
+                      f"целевые годы {sorted(required_years)}")
+            return None
+    
+        pub_dois = []
+        for p in self.publications:
+            if p.get('Year') in window_years and p.get('DOI'):
+                pub_dois.append(p['DOI'])
+    
+        if not pub_dois:
+            return {
+                'value': 0.0,
+                'citations': 0,
+                'publications': 0,
+                'window_years': window_years,
+                'years_covered': sorted(required_years),
+                'period_covers': True,
+                'is_cumulative': True,
+                'as_of': datetime.now().strftime('%Y-%m-%d'),
+            }
+    
+        citation_count = 0
+        for doi in pub_dois:
+            for cite in self.citing_works.get(doi, []):
+                cite_doi = cite.get('doi') if isinstance(cite, dict) else cite
+                cite_meta = self.citations_metadata.get(cite_doi, {})
+                if cite_meta.get('publication_year') in window_years:
+                    citation_count += 1
+    
+        value = citation_count / len(pub_dois)
+    
+        if SHOW_DEBUG_LOGS:
+            print(f"📊 Cumulative SC: {citation_count} / {len(pub_dois)} = {value:.3f} "
+                  f"(window: {window_years})")
+    
+        return {
+            'value': value,
+            'citations': citation_count,
+            'publications': len(pub_dois),
+            'window_years': window_years,
+            'years_covered': sorted(required_years),
+            'period_covers': True,
+            'is_cumulative': True,
+            'as_of': datetime.now().strftime('%Y-%m-%d'),
         }
     
     def _calculate_citescore_dynamic(self) -> Optional[Dict]:
@@ -4382,14 +4565,69 @@ class JournalAnalyzer:
         top_countries = sorted(countries.items(), key=lambda x: x[1], reverse=True)
         top_journals = sorted(journals.items(), key=lambda x: x[1], reverse=True)
         top_publishers = sorted(publishers.items(), key=lambda x: x[1], reverse=True)
-        
+
+        # ===== NEW: Potential reviewers =====
+        # Множества "своих" авторов (тех, кто публиковался в журнале за период)
+        journal_author_orcids = set()
+        journal_author_normalized = set()
+    
+        for p in self.publications:
+            doi = p.get('DOI')
+            if not doi or doi not in self.publications_metadata:
+                continue
+            meta = self.publications_metadata[doi]
+            for auth in meta.get('authors_with_orcids', []):
+                name = (auth.get('name') or '').strip()
+                orcid = auth.get('orcid')
+                if orcid:
+                    journal_author_orcids.add(str(orcid).strip())
+                if name:
+                    journal_author_normalized.add(
+                        normalize_author_name_for_grouping(name)
+                    )
+    
+        # Отбираем цитирующих авторов, которых НЕТ среди авторов журнала
+        potential_reviewers = []
+        for key, data in authors_aggregated.items():
+            if data['count'] <= 0:
+                continue
+    
+            orcid = data.get('orcid')
+            names_seen = data.get('names_seen', set()) or {data.get('name', '')}
+    
+            # Проверка "свой/чужой"
+            is_journal_author = False
+            if orcid and str(orcid).strip() in journal_author_orcids:
+                is_journal_author = True
+            else:
+                # ORCID нет или не совпал — проверяем по нормализованному имени
+                for nm in names_seen:
+                    if not nm:
+                        continue
+                    if normalize_author_name_for_grouping(nm) in journal_author_normalized:
+                        is_journal_author = True
+                        break
+    
+            if is_journal_author:
+                continue
+    
+            potential_reviewers.append({
+                'name': data['name'],
+                'orcid': orcid,
+                'count': data['count'],
+            })
+    
+        potential_reviewers.sort(key=lambda x: x['count'], reverse=True)
+        potential_reviewers = potential_reviewers[:100]
+    
         return {
             'total_citing_works': total_citing,
             'top_authors': [{'name': item['name'], 'orcid': item['orcid'], 'count': item['count']} for item in top_authors],
             'top_affiliations': top_affiliations,
             'top_countries': [{'name': name, 'count': count} for name, count in top_countries],
             'top_journals': [{'name': name, 'count': count} for name, count in top_journals],
-            'top_publishers': [{'name': name, 'count': count} for name, count in top_publishers]
+            'top_publishers': [{'name': name, 'count': count} for name, count in top_publishers],
+            'potential_reviewers': potential_reviewers
         }
     
     def _analyze_topics(self) -> Dict:
@@ -4540,6 +4778,16 @@ class JournalAnalyzer:
                         citation_lag = (cite_dt - pub_dt).days
                     except:
                         pass
+
+                # ===== NEW: насколько ссылка свежа относительно даты анализа
+                if cite_date:
+                    try:
+                        cite_dt = datetime.fromisoformat(cite_date[:10])
+                        age = (analysis_dt - cite_dt).days
+                        if age >= 0:
+                            citation_age = age
+                    except:
+                        pass
                 
                 citations_list.append({
                     'citing_title': meta.get('title', 'No title'),
@@ -4549,9 +4797,10 @@ class JournalAnalyzer:
                     'citing_publisher': meta.get('publisher', 'Unknown'),
                     'citing_doi': cite_doi,
                     'citation_lag': citation_lag,
+                    'citation_age': citation_age,
                     'citing_authors': meta.get('authors', []),
                     'citing_countries': meta.get('affiliation_countries', []),
-                    'citing_topics': meta.get('topics', [])  # Используем настоящие Topics
+                    'citing_topics': meta.get('topics', [])
                 })
             
             pub_meta = self.publications_metadata.get(doi, {})
@@ -4713,6 +4962,10 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
     # Dynamic Impact Factor and CiteScore (anchored to now())
     impact_factor_dynamic_data = results.get('impact_factor_dynamic', {}) or {}
     citescore_dynamic_data = results.get('citescore_dynamic', {}) or {}
+                                     
+    # ===== NEW: Cumulative metrics (current year, year-to-date) =====
+    impact_factor_cumulative_data = results.get('impact_factor_cumulative', {}) or {}
+    citescore_cumulative_data = results.get('citescore_cumulative', {}) or {}
     
     # ===== NEW: Grants & Funding data
     grants_analysis = results.get('grants_analysis', {}) or {}
@@ -4812,6 +5065,12 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
     max_country_count = max([c for c in geographic.get('authors_per_country', {}).values()]) if geographic.get('authors_per_country') else 1
     max_citation_count = max([r.get('citations_count', 0) for r in citation.get('dynamics', [])]) if citation.get('dynamics') else 1
     max_citing_auth = max([a.get('count', 0) for a in citing.get('top_authors', [])]) if citing.get('top_authors') else 1
+
+    potential_reviewers = citing.get('potential_reviewers', []) or []
+    max_potential_reviewer_count = (
+        max([a.get('count', 0) for a in potential_reviewers])
+        if potential_reviewers else 1
+    )
 
     author_analysis_orcids = set()
     for a in author_analysis.get('top_authors', []):
@@ -4950,7 +5209,82 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                         </div>
                     </div>
                     '''
+
+    # ===== ГОТОВИМ HTML ДЛЯ КУМУЛЯТИВНЫХ IF/SC =====
+    cumulative_now_year = datetime.now().year
+    cumulative_now_str = datetime.now().strftime('%Y-%m-%d')
+    cumulative_ytd_note = t('cumulative_ytd_note', year=cumulative_now_year)
     
+    if impact_factor_cumulative_data.get('period_covers', False) and \
+            impact_factor_cumulative_data.get('value') is not None:
+        if_cum_value = f"{impact_factor_cumulative_data.get('value', 0):.1f}"
+        if_cum_label = t(
+            'if_cumulative_full',
+            pub_years='-'.join(map(str, impact_factor_cumulative_data.get('pub_years', []))),
+            cite_year=impact_factor_cumulative_data.get('cite_year', '')
+        )
+        if_cum_calc_line = t(
+            'dynamic_citations_publications',
+            citations=impact_factor_cumulative_data.get('citations', 0),
+            publications=impact_factor_cumulative_data.get('publications', 0)
+        )
+        if_cum_not_applicable = ''
+    else:
+        if_cum_value = 'N/A'
+        if_cum_label = t('if_cumulative')
+        if_cum_calc_line = ''
+        if_cum_not_applicable = t(
+            'if_cumulative_not_applicable',
+            years=impact_factor_cumulative_data.get('years_covered', '') or ''
+        )
+    
+    if citescore_cumulative_data.get('period_covers', False) and \
+            citescore_cumulative_data.get('value') is not None:
+        sc_cum_value = f"{citescore_cumulative_data.get('value', 0):.1f}"
+        sc_cum_label = t(
+            'citescore_cumulative_full',
+            years='-'.join(map(str, citescore_cumulative_data.get('window_years', [])))
+        )
+        sc_cum_calc_line = t(
+            'dynamic_citations_publications',
+            citations=citescore_cumulative_data.get('citations', 0),
+            publications=citescore_cumulative_data.get('publications', 0)
+        )
+        sc_cum_not_applicable = ''
+    else:
+        sc_cum_value = 'N/A'
+        sc_cum_label = t('citescore_cumulative')
+        sc_cum_calc_line = ''
+        sc_cum_not_applicable = t(
+            'citescore_cumulative_not_applicable',
+            years=citescore_cumulative_data.get('years_covered', '') or ''
+        )
+    
+    cumulative_if_sc_block = f'''
+                <h3 style="margin-top: 20px; color: {primary}; font-size: 16px;">
+                    {t('cumulative_metrics_title')}
+                    <span style="font-weight: 400; font-size: 12px; color: #7F8C8D;">
+                        {t('dynamic_as_of', date=cumulative_now_str)}
+                    </span>
+                </h3>
+                <div class="if-sc-grid">
+                    <div class="if-sc-card">
+                        <div class="if-sc-value">{if_cum_value}</div>
+                        <div class="if-sc-label">{if_cum_label}</div>
+                        <div class="if-sc-detail">{if_cum_calc_line}</div>
+                        {f'<div class="if-sc-detail" style="color: #95A5A6;">{cumulative_ytd_note}</div>' if not if_cum_not_applicable else ''}
+                        {f'<div class="if-sc-detail" style="color: #E74C3C;">{if_cum_not_applicable}</div>' if if_cum_not_applicable else ''}
+                    </div>
+                    <div class="if-sc-card">
+                        <div class="if-sc-value">{sc_cum_value}</div>
+                        <div class="if-sc-label">{sc_cum_label}</div>
+                        <div class="if-sc-detail">{sc_cum_calc_line}</div>
+                        {f'<div class="if-sc-detail" style="color: #95A5A6;">{cumulative_ytd_note}</div>' if not sc_cum_not_applicable else ''}
+                        {f'<div class="if-sc-detail" style="color: #E74C3C;">{sc_cum_not_applicable}</div>' if sc_cum_not_applicable else ''}
+                    </div>
+                </div>
+                '''
+                                    
     # ===== NEW: HTML for Grants section (safe building of rows) =====
     def _funder_ror_link(ror_short: str) -> str:
         if not ror_short:
@@ -6024,6 +6358,9 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                     
                     <!-- Dynamic Impact Factor and CiteScore Cards (anchored to now()) -->
                     {dynamic_if_sc_block}
+
+                    <!-- ===== NEW: Cumulative Impact Factor and CiteScore Cards (YTD) ===== -->
+                    {cumulative_if_sc_block}
                     
                     <!-- Open Access Breakdown with Progress Bars -->
                     <h3 style="margin-top: 20px; color: {primary}; font-size: 16px;">{t('open_access_breakdown')}</h3>
@@ -6668,6 +7005,40 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                             </tbody>
                         </table>
                     </div>
+
+                    <!-- ===== NEW: Potential Reviewers ===== -->
+                    <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">
+                        {t('potential_reviewers')}
+                    </h3>
+                    <p style="font-size: 12px; color: #7F8C8D; margin: -8px 0 8px 0;">
+                        {t('potential_reviewers_hint')}
+                    </p>
+                    <div class="scrollable-table" style="max-height: 400px;">
+                        <table id="reviewers_table">
+                            <thead>
+                                <tr>
+                                    <th class="sortable" onclick="sortTable('reviewers_table', 0)">{t('rank')}</th>
+                                    <th class="sortable" onclick="sortTable('reviewers_table', 1)">{t('authors')}</th>
+                                    <th class="sortable" onclick="sortTable('reviewers_table', 2)">{t('citing_author_orcid')}</th>
+                                    <th class="sortable" onclick="sortTable('reviewers_table', 3)">{t('citations_count')}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {''.join([
+                                    f'''
+                                    <tr>
+                                        <td>{i+1}</td>
+                                        <td>{html.escape(r['name'])}</td>
+                                        <td>{f'<a href="https://orcid.org/{r["orcid"]}" target="_blank" class="doi-link orcid-full">{r["orcid"]}</a>' if r.get('orcid') else '-'}</td>
+                                        <td>{get_color_scale_html(r['count'], max_potential_reviewer_count)}</td>
+                                    </tr>
+                                    '''
+                                    for i, r in enumerate(potential_reviewers)
+                                ]) if potential_reviewers else
+                                f'<tr><td colspan="4" style="text-align:center;color:#999;font-style:italic;">{t("no_potential_reviewers")}</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
                     
                     <!-- Top Citing Affiliations -->
                     <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">{t('top_citing_affiliations')}</h3>
@@ -7071,7 +7442,8 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                                         <strong>{t('citing_journal')}:</strong> {html.escape(cite['citing_journal'] or 'Unknown')} | 
                                         <strong>{t('citing_year')}:</strong> {cite['citing_year'] or 'N/A'} | 
                                         <strong>{t('citing_date')}:</strong> {cite['citing_date'][:10] if cite['citing_date'] else 'N/A'} |
-                                        <strong>{t('citation_lag')}:</strong> {cite['citation_lag'] or 'N/A'} {t('days') if cite['citation_lag'] else ''}
+                                        <strong>{t('citation_lag')}:</strong> {cite['citation_lag'] if cite['citation_lag'] is not None else 'N/A'} {t('days') if cite['citation_lag'] is not None else ''} |
+                                        <strong>{t('citation_age')}:</strong> {cite.get('citation_age') if cite.get('citation_age') is not None else 'N/A'} {t('days') if cite.get('citation_age') is not None else ''}
                                     </div>
                                     <div class="cite-meta">
                                         <strong>{t('authors')}:</strong> {', '.join([html.escape(a) for a in cite['citing_authors'][:5]]) if cite.get('citing_authors') else 'N/A'}{' +' + str(len(cite['citing_authors'])-5) if cite.get('citing_authors') and len(cite['citing_authors']) > 5 else ''} |
