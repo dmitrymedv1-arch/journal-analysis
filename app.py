@@ -4751,6 +4751,7 @@ class JournalAnalyzer:
     def _get_detailed_citations(self) -> Dict:
         """Get detailed citations for each publication"""
         detailed = {}
+        analysis_dt = datetime.now()
         
         for p in self.publications:
             doi = p.get('DOI')
@@ -4787,8 +4788,9 @@ class JournalAnalyzer:
                         age = (analysis_dt - cite_dt).days
                         if age >= 0:
                             citation_age = age
-                    except:
-                        pass
+                    except Exception as e:
+                        if SHOW_DEBUG_LOGS:
+                            print(f"⚠️ citation_age parse error for {cite_doi}: {e}")
                 
                 citations_list.append({
                     'citing_title': meta.get('title', 'No title'),
