@@ -1601,6 +1601,56 @@ def generate_journal_abbreviation(full_name: str) -> str:
     
     return ''.join(abbreviation_parts)
 
+# ============================================
+# SECTION ICONS (01.png ... 09.png)
+# ============================================
+
+SECTION_ICON_FILES = [
+    "01.png",  # overview
+    "02.png",  # analyzed_articles
+    "03.png",  # citation_analysis
+    "04.png",  # citing_publications
+    "05.png",  # citing_works
+    "06.png",  # topics_analysis
+    "07.png",  # grants_funding
+    "08.png",  # detailed_citations
+    "09.png",  # all_publications
+]
+
+SECTION_ICON_KEYS = [
+    "overview",
+    "analyzed_articles",
+    "citation_analysis",
+    "citing_publications",
+    "citing_works",
+    "topics_analysis",
+    "grants_funding",
+    "detailed_citations",
+    "all_publications",
+]
+
+def load_section_icons_base64() -> Dict[str, str]:
+    """Load 01.png..09.png from project root and return {key: base64}."""
+    icons: Dict[str, str] = {}
+    for key, filename in zip(SECTION_ICON_KEYS, SECTION_ICON_FILES):
+        if os.path.exists(filename):
+            try:
+                with open(filename, "rb") as f:
+                    icons[key] = base64.b64encode(f.read()).decode()
+            except Exception as e:
+                if SHOW_DEBUG_LOGS:
+                    print(f"⚠️ Ошибка загрузки иконки {filename}: {e}")
+    if SHOW_DEBUG_LOGS:
+        print(f"✅ Загружено иконок секций: {len(icons)} / {len(SECTION_ICON_FILES)}")
+    return icons
+
+def build_section_icon_html(key: str, icons: Dict[str, str], css_class: str = "section-icon") -> str:
+    """Return <img> tag for section icon by key, or fallback to nothing."""
+    b64 = icons.get(key)
+    if not b64:
+        return ""
+    return f'<img src="data:image/png;base64,{b64}" alt="" class="{css_class}" />'
+
 def get_color_for_value(value: float, max_value: float, min_value: float = 0) -> str:
     """
     Get color from green-yellow-red scale based on value relative to max
@@ -4914,7 +4964,8 @@ class JournalAnalyzer:
 def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optional[str] = None, 
                                  app_logo_base64: Optional[str] = None, 
                                  theme_colors: Optional[Dict] = None, 
-                                 lang: str = 'en') -> str:
+                                 lang: str = 'en',
+                                 section_icons_base64: Optional[Dict[str, str]] = None) -> str:
     """Generate HTML report for journal analysis with rich visual elements"""
     
     results = analyzer.analysis_results
@@ -4946,6 +4997,14 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
     
     def t(key: str, **kwargs) -> str:
         return translate(key, lang, **kwargs)
+
+    # ===== SECTION ICONS =====
+    if section_icons_base64 is None:
+        section_icons_base64 = load_section_icons_base64()
+
+    def sec_icon(key: str, css_class: str = "section-icon") -> str:
+        """Return <img> for section icon (or empty string if missing)."""
+        return build_section_icon_html(key, section_icons_base64, css_class)
     
     # Basic metrics
     basic = results.get('basic_metrics', {})
@@ -5485,9 +5544,18 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                 box-shadow: 0 2px 10px rgba(0,0,0,0.1);
             }}
             .sidebar a .nav-icon {{
-                font-size: 16px;
-                width: 24px;
-                text-align: center;
+                width: 22px;
+                height: 22px;
+                object-fit: contain;
+                flex-shrink: 0;
+                display: inline-block;
+                vertical-align: middle;
+                /* инвертируем в белый: иконки чёрные в исходнике */
+                filter: brightness(0) invert(1);
+                transition: filter 0.2s;
+            }}
+            .sidebar a:hover .nav-icon {{
+                filter: brightness(0) invert(1) drop-shadow(0 0 2px rgba(255,255,255,0.6));
             }}
             
             /* ===== MAIN CONTENT ===== */
@@ -5578,8 +5646,14 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                 color: #2C3E50;
                 transition: color 0.3s;
             }}
-            .section-title .icon {{
-                font-size: 24px;
+            .section-title .section-icon {{
+                width: 28px;
+                height: 28px;
+                object-fit: contain;
+                flex-shrink: 0;
+                display: inline-block;
+                vertical-align: middle;
+                /* чёрные иконки на белом фоне — без фильтра */
             }}
             .section-title .section-badge {{
                 background: linear-gradient(135deg, {primary}, {secondary});
@@ -6203,15 +6277,15 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
             <h3>{journal_abbr}</h3>
             
             <div class="nav-section">
-                <a href="#overview"><span class="nav-icon">📋</span> {t('overview')}</a>
-                <a href="#analyzed_articles"><span class="nav-icon">📄</span> {t('analyzed_articles')}</a>
-                <a href="#citation_analysis"><span class="nav-icon">📈</span> {t('citation_analysis')}</a>
-                <a href="#citing_publications"><span class="nav-icon">📄</span> {t('citing_publications')}</a>
-                <a href="#citing_works"><span class="nav-icon">📚</span> {t('citing_works_analysis')}</a>
-                <a href="#topics_analysis"><span class="nav-icon">🏷️</span> {t('topics_analysis')}</a>
-                <a href="#grants_analysis"><span class="nav-icon">💰</span> {t('grants_and_funding')}</a>
-                <a href="#detailed_citations"><span class="nav-icon">📋</span> {t('detailed_citations')}</a>
-                <a href="#all_publications"><span class="nav-icon">📚</span> {t('all_publications')}</a>
+                <a href="#overview">{sec_icon('overview', 'nav-icon')} {t('overview')}</a>
+                <a href="#analyzed_articles">{sec_icon('analyzed_articles', 'nav-icon')} {t('analyzed_articles')}</a>
+                <a href="#citation_analysis">{sec_icon('citation_analysis', 'nav-icon')} {t('citation_analysis')}</a>
+                <a href="#citing_publications">{sec_icon('citing_publications', 'nav-icon')} {t('citing_publications')}</a>
+                <a href="#citing_works">{sec_icon('citing_works', 'nav-icon')} {t('citing_works_analysis')}</a>
+                <a href="#topics_analysis">{sec_icon('topics_analysis', 'nav-icon')} {t('topics_analysis')}</a>
+                <a href="#grants_analysis">{sec_icon('grants_funding', 'nav-icon')} {t('grants_and_funding')}</a>
+                <a href="#detailed_citations">{sec_icon('detailed_citations', 'nav-icon')} {t('detailed_citations')}</a>
+                <a href="#all_publications">{sec_icon('all_publications', 'nav-icon')} {t('all_publications')}</a>
             </div>
             
             <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.2); font-size: 11px; opacity: 0.8; line-height: 1.6;">
@@ -6243,7 +6317,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
             <div id="overview" class="section">
                 <div class="section-header" onclick="toggleSection('overview_content')">
                     <div class="section-title">
-                        <span class="icon">📋</span> {t('overview')}
+                        {sec_icon('overview', 'section-icon')} {t('overview')}
                         <span class="section-badge">{basic.get('total_publications', 0)} {t('publications')}</span>
                     </div>
                     <span class="toggle-indicator" id="overview_indicator">▼</span>
@@ -6411,7 +6485,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
             <div id="analyzed_articles" class="section">
                 <div class="section-header" onclick="toggleSection('analyzed_content')">
                     <div class="section-title">
-                        <span class="icon">📄</span> {t('analyzed_articles')}
+                        {sec_icon('analyzed_articles', 'section-icon')} {t('analyzed_articles')}
                         <span class="section-badge">{len(publications)} {t('articles')}</span>
                     </div>
                     <span class="toggle-indicator" id="analyzed_indicator">▼</span>
@@ -6760,7 +6834,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
             <div id="citation_analysis" class="section">
                 <div class="section-header" onclick="toggleSection('citation_content')">
                     <div class="section-title">
-                        <span class="icon">📈</span> {t('citation_analysis')}
+                        {sec_icon('citation_analysis', 'section-icon')} {t('citation_analysis')}
                         <span class="section-badge">{basic.get('total_citations', 0):,} {t('citations')}</span>
                     </div>
                     <span class="toggle-indicator" id="citation_indicator">▼</span>
@@ -6879,7 +6953,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
             <div id="citing_publications" class="section">
                 <div class="section-header" onclick="toggleSection('cited_content')">
                     <div class="section-title">
-                        <span class="icon">📄</span> {t('citing_publications')}
+                        {sec_icon('citing_publications', 'section-icon')} {t('citing_publications')}
                         <span class="section-badge">{len(all_citing_works)} {t('citations')}</span>
                     </div>
                     <span class="toggle-indicator" id="cited_indicator">▼</span>
@@ -6961,7 +7035,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
             <div id="citing_works" class="section">
                 <div class="section-header" onclick="toggleSection('citing_content')">
                     <div class="section-title">
-                        <span class="icon">📚</span> {t('citing_works_analysis')}
+                        {sec_icon('citing_works', 'section-icon')} {t('citing_works_analysis')}
                         <span class="section-badge">{citing.get('total_citing_works', 0):,} {t('citations')}</span>
                     </div>
                     <span class="toggle-indicator" id="citing_indicator">▼</span>
@@ -7143,7 +7217,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
             <div id="topics_analysis" class="section">
                 <div class="section-header" onclick="toggleSection('topics_content')">
                     <div class="section-title">
-                        <span class="icon">🏷️</span> {t('topics_analysis')}
+                        {sec_icon('topics_analysis', 'section-icon')} {t('topics_analysis')}
                         <span class="section-badge">{len(topics.get('topics', []))} {t('topics')}</span>
                     </div>
                     <span class="toggle-indicator" id="topics_indicator">▼</span>
@@ -7290,7 +7364,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
             <div id="grants_analysis" class="section">
                 <div class="section-header" onclick="toggleSection('grants_content')">
                     <div class="section-title">
-                        <span class="icon">💰</span> {t('grants_and_funding')}
+                        {sec_icon('grants_funding', 'section-icon')} {t('grants_and_funding')}
                         <span class="section-badge">{grants_analyzed_unique_funders + grants_citing_unique_funders} {t('funder')}</span>
                     </div>
                     <span class="toggle-indicator" id="grants_indicator">▼</span>
@@ -7419,7 +7493,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
             <div id="detailed_citations" class="section">
                 <div class="section-header" onclick="toggleSection('detailed_content')">
                     <div class="section-title">
-                        <span class="icon">📋</span> {t('detailed_citations')}
+                        {sec_icon('detailed_citations', 'section-icon')} {t('detailed_citations')}
                         <span class="section-badge">{len(detailed_citations)} {t('publications')}</span>
                     </div>
                     <span class="toggle-indicator" id="detailed_indicator">▼</span>
@@ -7475,7 +7549,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
             <div id="all_publications" class="section">
                 <div class="section-header" onclick="toggleSection('all_content')">
                     <div class="section-title">
-                        <span class="icon">📚</span> {t('all_publications')}
+                        {sec_icon('all_publications', 'section-icon')} {t('all_publications')}
                         <span class="section-badge">{len(all_publications)} {t('articles')}</span>
                     </div>
                     <span class="toggle-indicator" id="all_indicator">▼</span>
@@ -7901,7 +7975,8 @@ def run_journal_analysis(issn: str, period: str, max_workers: int = 6, journal_l
                 st.session_state.journal_logo_base64,
                 st.session_state.app_logo_base64,
                 theme_colors,
-                current_lang
+                current_lang,
+                section_icons_base64=load_section_icons_base64()
             )
         
         # Кнопка скачивания
@@ -8139,7 +8214,8 @@ def main():
                 st.session_state.journal_logo_base64,
                 st.session_state.app_logo_base64,
                 theme_colors,
-                current_lang
+                current_lang,
+                section_icons_base64=load_section_icons_base64()
             )
         
         filename = f"journal_analysis_{st.session_state.journal_abbreviation or st.session_state.issn}_{datetime.now().strftime('%Y%m%d')}.html"
