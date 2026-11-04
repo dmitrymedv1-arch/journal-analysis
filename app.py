@@ -72,6 +72,7 @@ from threading import Lock
 from tqdm import tqdm
 import random
 from dateutil.relativedelta import relativedelta
+from PIL import Image
 
 # ============================================
 # OPENALEX API KEY (from Streamlit secrets)
@@ -1630,19 +1631,128 @@ SECTION_ICON_KEYS = [
 ]
 
 def load_section_icons_base64() -> Dict[str, str]:
-    """Load 01.png..09.png from project root and return {key: base64}."""
+    """
+    Load 01.png..09.png from project root, compress them,
+    and return {key: base64_png}.
+    """
     icons: Dict[str, str] = {}
+    total_raw = 0
+    total_packed = 0
+
     for key, filename in zip(SECTION_ICON_KEYS, SECTION_ICON_FILES):
-        if os.path.exists(filename):
-            try:
-                with open(filename, "rb") as f:
-                    icons[key] = base64.b64encode(f.read()).decode()
-            except Exception as e:
-                if SHOW_DEBUG_LOGS:
-                    print(f"⚠️ Ошибка загрузки иконки {filename}: {e}")
+        if not os.path.exists(filename):
+            continue
+        try:
+            total_raw += os.path.getsize(filename)
+            b64 = compress_png_to_base64(filename, max_dim=96, is_icon=True)
+            if b64:
+                icons[key] = b64
+                total_packed += int(len(b64) * 3 / 4)  # base64 → bytes approx
+        except Exception as e:
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ Ошибка обработки иконки {filename}: {e}")
+
     if SHOW_DEBUG_LOGS:
-        print(f"✅ Загружено иконок секций: {len(icons)} / {len(SECTION_ICON_FILES)}")
+        saved = total_raw - total_packed
+        print(
+            f"✅ Загружено иконок секций: {len(icons)} / {len(SECTION_ICON_FILES)} | "
+            f"raw≈{total_raw/1024:.1f} KB → packed≈{total_packed/1024:.1f} KB "
+            f"(saved≈{saved/1024:.1f} KB)"
+        )
     return icons
+
+# ============================================
+# IMAGE COMPRESSION HELPERS
+# ============================================
+
+def compress_png_to_base64(
+    file_or_bytes,
+    max_dim: int = 96,
+    is_icon: bool = True,
+) -> Optional[str]:
+    """
+    Compress a PNG image and return base64 string.
+
+    Args:
+        file_or_bytes: file path (str), file object, or raw bytes.
+        max_dim: maximum size (px) of the larger side after resize.
+        is_icon: True for monochrome line-art icons (harder palettization, quantization).
+
+    Returns:
+        base64-encoded PNG string, or None on error.
+    """
+    try:
+        # --- Load source ---
+        if isinstance(file_or_bytes, (str, os.PathLike)):
+            img = Image.open(file_or_bytes)
+        elif isinstance(file_or_bytes, bytes):
+            img = Image.open(BytesIO(file_or_bytes))
+        else:
+            # file-like object (Streamlit UploadedFile)
+            if hasattr(file_or_bytes, "read"):
+                file_or_bytes.seek(0)
+                img = Image.open(BytesIO(file_or_bytes.read()))
+            else:
+                img = Image.open(file_or_bytes)
+
+        # --- Normalize mode ---
+        # Keep RGBA (transparency), convert palette / LA / etc. to RGBA
+        if img.mode not in ("RGBA", "RGB"):
+            img = img.convert("RGBA")
+        elif img.mode == "RGB":
+            # Force RGBA to keep transparency consistency (even if alpha=255)
+            img = img.convert("RGBA")
+
+        # --- Resize if larger than max_dim ---
+        w, h = img.size
+        if max(w, h) > max_dim:
+            scale = max_dim / float(max(w, h))
+            new_size = (max(1, int(round(w * scale))), max(1, int(round(h * scale))))
+            # Use LANCZOS for downscale (best quality)
+            img = img.resize(new_size, Image.LANCZOS)
+
+        # --- Quantization / palettization for size reduction ---
+        buf = BytesIO()
+        if is_icon:
+            # Icons are monochrome line-art: 2-4 colors is plenty.
+            # quantize keeps transparency if method=FASTOCTREE + RGBA source.
+            try:
+                quantized = img.quantize(
+                    colors=16,
+                    method=Image.Quantize.FASTOCTREE,
+                    dither=Image.Dither.NONE,
+                )
+                quantized.save(buf, format="PNG", optimize=True, compress_level=9)
+            except Exception:
+                # Fallback: plain optimized PNG
+                buf = BytesIO()
+                img.save(buf, format="PNG", optimize=True, compress_level=9)
+        else:
+            # For journal logos (color images) — fewer colors, mild palette.
+            try:
+                # Detect if image is essentially monochrome (few unique colors)
+                colors_count = len(img.convert("RGB").getcolors(maxcolors=100000) or [])
+                if colors_count <= 64:
+                    quantized = img.quantize(
+                        colors=min(64, max(16, colors_count)),
+                        method=Image.Quantize.FASTOCTREE,
+                        dither=Image.Dither.NONE,
+                    )
+                    quantized.save(buf, format="PNG", optimize=True, compress_level=9)
+                else:
+                    # Many colors — save as optimized PNG without palette (safer quality)
+                    img.save(buf, format="PNG", optimize=True, compress_level=9)
+            except Exception:
+                buf = BytesIO()
+                img.save(buf, format="PNG", optimize=True, compress_level=9)
+
+        png_bytes = buf.getvalue()
+        return base64.b64encode(png_bytes).decode("ascii")
+
+    except Exception as e:
+        if SHOW_DEBUG_LOGS:
+            print(f"⚠️ Ошибка сжатия изображения: {e}")
+        return None
 
 def build_section_icon_html(key: str, icons: Dict[str, str], css_class: str = "section-icon") -> str:
     """Return <img> tag for section icon by key, or fallback to nothing."""
@@ -7837,8 +7947,9 @@ def run_journal_analysis(issn: str, period: str, max_workers: int = 6, journal_l
         app_logo_base64 = None
         if os.path.exists("logo.png"):
             try:
-                with open("logo.png", "rb") as f:
-                    app_logo_base64 = base64.b64encode(f.read()).decode()
+                app_logo_base64 = compress_png_to_base64(
+                    "logo.png", max_dim=300, is_icon=False
+                )
             except Exception as e:
                 if SHOW_DEBUG_LOGS:
                     print(f"⚠️ Ошибка загрузки логотипа приложения: {e}")
@@ -7850,7 +7961,10 @@ def run_journal_analysis(issn: str, period: str, max_workers: int = 6, journal_l
                     content = file_info['content'] if hasattr(file_info, 'get') else file_info
                     if hasattr(content, 'read'):
                         content = content.read()
-                    journal_logo_base64 = base64.b64encode(content).decode()
+                    # Compress: max 300px is plenty for a header logo in HTML report
+                    journal_logo_base64 = compress_png_to_base64(
+                        content, max_dim=300, is_icon=False
+                    )
                     break
             except Exception as e:
                 st.warning(f"⚠️ Ошибка загрузки логотипа журнала: {e}")
