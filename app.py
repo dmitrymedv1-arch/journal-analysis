@@ -4848,7 +4848,7 @@ class JournalAnalyzer:
             
             a_norm = a_count / total_analyzed if total_analyzed > 0 else 0
             c_norm = c_count / total_citing if total_citing > 0 else 0
-            total_norm = (a_count + c_count) / (total_analyzed + total_citing) if (total_analyzed + total_citing) > 0 else 0
+            total_norm = a_norm + c_norm
             
             years = analyzed_topics[topic]['years'] + citing_topics[topic]['years']
             first_year = min(years) if years else None
