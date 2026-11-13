@@ -463,6 +463,26 @@ LANG = {
         'no_potential_reviewers': 'No potential reviewers found',
         'citation_age': 'Citation age (days)',
         'no_cited_publications': 'No cited publications',
+        'world_context': 'World Context for Topics',
+        'world_context_hint': 'How topics present in this journal are doing in the world: activity/trend and citation quality of the journal\'s own works',
+        'topic_name': 'Topic',
+        'world_total': 'World Total',
+        'analyzed_fwci': 'Analyzed FWCI',
+        'citing_fwci': 'Citing FWCI',
+        'world_share': 'World Share',
+        'topic_activity': 'Activity',
+        'topic_trend': 'Trend',
+        'activity_high': 'High',
+        'activity_moderate': 'Moderate',
+        'activity_low': 'Low',
+        'trend_growing': 'Growing',
+        'trend_stable': 'Stable',
+        'trend_declining': 'Declining',
+        'low_n_warning': 'low N',
+        'fwci_not_available': 'n/a',
+        'fwci_works_covered': '{with_fwci} of {total} works',
+        'world_context_legend': 'Activity/Trend — position of the topic among the journal topics by world publications count; FWCI — field-weighted citation impact of works (1.0 = world average)',
+        'world_context_no_data': 'No world context data available',
     },
     'ru': {
         'app_title': 'Advanced Journal Analysis Tool',
@@ -835,6 +855,26 @@ LANG = {
         'potential_reviewers_hint': 'Топ-100 авторов, цитировавших журнал, но не публиковавшихся в нём за исследуемый период',
         'no_potential_reviewers': 'Потенциальные рецензенты не найдены',
         'no_cited_publications': 'Нет цитирующих публикаций',
+        'world_context': 'Мировой контекст тем',
+        'world_context_hint': 'Как темы, представленные в журнале, выглядят в мире: активность/тренд и качество цитирования собственных работ журнала',
+        'topic_name': 'Тема',
+        'world_total': 'В мире всего',
+        'analyzed_fwci': 'FWCI анализируемых',
+        'citing_fwci': 'FWCI цитирующих',
+        'world_share': 'Доля в мире',
+        'topic_activity': 'Активность',
+        'topic_trend': 'Тренд',
+        'activity_high': 'Высокая',
+        'activity_moderate': 'Средняя',
+        'activity_low': 'Низкая',
+        'trend_growing': 'Растущая',
+        'trend_stable': 'Стабильная',
+        'trend_declining': 'Затухающая',
+        'low_n_warning': 'мало работ',
+        'fwci_not_available': 'н/д',
+        'fwci_works_covered': '{with_fwci} из {total} работ',
+        'world_context_legend': 'Активность/Тренд — положение темы среди тем журнала по числу публикаций в мире; FWCI — поле-взвешенная цитируемость работ (1.0 = среднемировой уровень)',
+        'world_context_no_data': 'Нет данных о мировом контексте',
     }
 }
 
@@ -2313,6 +2353,80 @@ def save_to_cache(identifier: str, data: Dict, cache_type: str = "journal"):
         if SHOW_DEBUG_LOGS:
             print(f"⚠️ Ошибка сохранения кэша: {e}")
 
+def get_world_counts_cache_path(topic_id: str, start_year: int, end_year: int) -> str:
+    """Путь к файлу кэша мировых counts по теме и диапазону лет."""
+    if not os.path.exists('cache_journal'):
+        os.makedirs('cache_journal')
+    return f"cache_journal/world_counts_{topic_id}_{start_year}_{end_year}.json"
+
+
+def get_world_counts_from_cache(topic_id: str, start_year: int, end_year: int) -> Optional[Dict[int, int]]:
+    """
+    Загружает counts по годам из кэша.
+    Возвращает {year: count} или None, если кэша нет или он устарел (TTL 30 дней).
+    """
+    path = get_world_counts_cache_path(topic_id, start_year, end_year)
+    if not os.path.exists(path):
+        return None
+    try:
+        # TTL 30 дней
+        age_seconds = time.time() - os.path.getmtime(path)
+        if age_seconds > 30 * 24 * 3600:
+            return None
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        # JSON хранит ключи как строки — конвертируем обратно в int
+        return {int(k): int(v) for k, v in data.items()}
+    except Exception:
+        return None
+
+
+def save_world_counts_to_cache(topic_id: str, start_year: int, end_year: int, counts_by_year: Dict[int, int]):
+    """Сохраняет counts по годам в кэш."""
+    path = get_world_counts_cache_path(topic_id, start_year, end_year)
+    try:
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump({str(k): int(v) for k, v in counts_by_year.items()}, f)
+    except Exception as e:
+        if SHOW_DEBUG_LOGS:
+            print(f"⚠️ Ошибка сохранения кэша world counts: {e}")
+
+
+def fetch_world_counts_for_topic(topic_id: str, start_year: int, end_year: int) -> Dict[int, int]:
+    """
+    Возвращает {year: world_count} для заданной темы и диапазона лет.
+    Сначала смотрит кэш; при промахе делает один запрос к OpenAlex с group_by=publication_year.
+    """
+    # 1. Кэш
+    cached = get_world_counts_from_cache(topic_id, start_year, end_year)
+    if cached is not None:
+        if SHOW_DEBUG_LOGS:
+            print(f"✅ world_counts из кэша: {topic_id} {start_year}-{end_year}")
+        return cached
+    
+    # 2. Запрос к OpenAlex
+    params = {
+        'filter': f'topics.id:{topic_id},publication_year:{start_year}-{end_year}',
+        'group_by': 'publication_year'
+    }
+    data = smart_request(params)
+    
+    counts_by_year: Dict[int, int] = {}
+    if data and data.get('group_by'):
+        for item in data['group_by']:
+            key = item.get('key')
+            cnt = item.get('count', 0)
+            if key is not None:
+                try:
+                    counts_by_year[int(key)] = int(cnt)
+                except (ValueError, TypeError):
+                    pass
+    
+    # 3. Сохраняем в кэш (даже если пусто — чтобы не дёргать API повторно)
+    save_world_counts_to_cache(topic_id, start_year, end_year, counts_by_year)
+    
+    return counts_by_year
+
 def normalize_issn(issn_str):
     """Normalize ISSN string to standard format"""
     cleaned = re.sub(r'[^0-9Xx]', '', str(issn_str).strip())
@@ -2390,6 +2504,7 @@ def parse_work_metadata(work: Dict) -> Dict:
         parsed['publication_year'] = work.get('publication_year')
         parsed['publication_date'] = work.get('publication_date')
         parsed['cited_by_count'] = work.get('cited_by_count', 0)
+        parsed['fwci'] = work.get('fwci')  # ===== NEW: field-weighted citation impact
         parsed['type'] = work.get('type', 'unknown')
         parsed['raw_type'] = work.get('raw_type', '')
         
@@ -2502,6 +2617,14 @@ def parse_work_metadata(work: Dict) -> Dict:
                 topics_from_field.append(topic_name)
         parsed['topics'] = topics_from_field[:15]
         
+        # ===== NEW: topic IDs (для world-context запросов) =====
+        topic_ids = []
+        for topic in work.get('topics', []):
+            tid = topic.get('id', '')
+            if tid:
+                topic_ids.append(tid.replace('https://openalex.org/', ''))
+        parsed['topic_ids'] = topic_ids
+        
         # Concepts
         concepts = []
         concept_levels = {}
@@ -2598,8 +2721,6 @@ def parse_work_metadata(work: Dict) -> Dict:
             award_id = aw.get('funder_award_id') or ''
             award_name = aw.get('display_name') or ''
             
-            # Приоритет: display_name + award_id, если display_name есть
-            # Иначе: funder_name — award_id
             if award_name and award_id:
                 item_str = f"{award_name} [{award_id}]"
                 if funder_name:
@@ -2976,6 +3097,9 @@ class JournalAnalyzer:
         
         # 7. Topics analysis
         results['topics_analysis'] = self._analyze_topics()
+
+        # 7b. World context for topics
+        results['world_context'] = self._analyze_world_context()
         
         # 8. Detailed citations
         results['detailed_citations'] = self._get_detailed_citations()
@@ -4907,6 +5031,263 @@ class JournalAnalyzer:
             'top_cited_domains': get_top_cited_count('domains'),  # ← ИСПРАВЛЕНО
             'top_cited_concepts': get_top_cited_count('concepts')  # ← ИСПРАВЛЕНО
         }
+
+    def _analyze_world_context(self) -> Dict:
+        """
+        Обогащение Topics Analysis мировым контекстом.
+        
+        Для каждой темы, встречающейся в анализируемых публикациях журнала:
+          - world_total: суммарное число работ в мире по теме за период анализа
+          - analyzed_count / citing_count: как в _analyze_topics
+          - analyzed_fwci / citing_fwci: средний FWCI работ журнала/цитирующих по теме
+          - world_share: (analyzed_count + citing_count) / world_total
+          - activity (при периоде ≤ 2 лет) или trend (при периоде ≥ 3 лет):
+              ранжирование темы среди тем журнала
+          - is_trend: True если посчитан тренд, False если активность
+        
+        Все запросы counts по годам кэшируются (TTL 30 дней, один запрос на тему
+        за весь диапазон лет через group_by=publication_year).
+        """
+        period = self.parse_period()
+        
+        # --- Определяем диапазон лет и число лет периода ---
+        if isinstance(period, int):
+            years = [period]
+            start_year = end_year = period
+        elif isinstance(period, list):
+            years = sorted(period)
+            start_year, end_year = years[0], years[-1]
+        elif isinstance(period, tuple) and len(period) == 2:
+            start_year, end_year = period
+            years = list(range(start_year, end_year + 1))
+        else:
+            # fallback по публикациям
+            pub_years = [p.get('Year') for p in self.publications if p.get('Year')]
+            if not pub_years:
+                return {'topics': [], 'is_trend': False, 'period_years': 0}
+            years = sorted(set(pub_years))
+            start_year, end_year = years[0], years[-1]
+        
+        period_years = len(years)
+        
+        # --- Собираем данные по каждой теме ---
+        # analyzed: {topic_name: {'count': N, 'fwci_list': [...], 'years': [...]}}
+        analyzed = defaultdict(lambda: {'count': 0, 'fwci_list': [], 'years': []})
+        citing = defaultdict(lambda: {'count': 0, 'fwci_list': [], 'years': []})
+        # topic_name -> topic_id (берём первый встретившийся id)
+        topic_name_to_id = {}
+        
+        # Анализируемые публикации
+        for p in self.publications:
+            doi = p.get('DOI')
+            if not doi or doi not in self.publications_metadata:
+                continue
+            meta = self.publications_metadata[doi]
+            year = p.get('Year')
+            fwci = meta.get('fwci')
+            
+            topic_names = meta.get('topics', [])
+            topic_ids = meta.get('topic_ids', [])
+            
+            for idx, tname in enumerate(topic_names):
+                if not tname:
+                    continue
+                analyzed[tname]['count'] += 1
+                if year:
+                    analyzed[tname]['years'].append(year)
+                if fwci is not None:
+                    try:
+                        analyzed[tname]['fwci_list'].append(float(fwci))
+                    except (ValueError, TypeError):
+                        pass
+                
+                # Запоминаем topic_id
+                if tname not in topic_name_to_id and idx < len(topic_ids):
+                    tid = topic_ids[idx]
+                    if tid:
+                        topic_name_to_id[tname] = tid
+        
+        # Цитирующие работы
+        for citing_list in self.citing_works.values():
+            for cite in citing_list:
+                doi = cite.get('doi') if isinstance(cite, dict) else cite
+                if not doi or doi not in self.citations_metadata:
+                    continue
+                meta = self.citations_metadata[doi]
+                year = meta.get('publication_year')
+                fwci = meta.get('fwci')
+                
+                topic_names = meta.get('topics', [])
+                topic_ids = meta.get('topic_ids', [])
+                
+                for idx, tname in enumerate(topic_names):
+                    if not tname:
+                        continue
+                    citing[tname]['count'] += 1
+                    if year:
+                        citing[tname]['years'].append(year)
+                    if fwci is not None:
+                        try:
+                            citing[tname]['fwci_list'].append(float(fwci))
+                        except (ValueError, TypeError):
+                            pass
+                    
+                    if tname not in topic_name_to_id and idx < len(topic_ids):
+                        tid = topic_ids[idx]
+                        if tid:
+                            topic_name_to_id[tname] = tid
+        
+        all_topic_names = set(analyzed.keys()) | set(citing.keys())
+        if not all_topic_names:
+            return {'topics': [], 'is_trend': False, 'period_years': period_years}
+        
+        # --- Запрашиваем мировые counts (с кэшем) ---
+        world_counts: Dict[str, Dict[int, int]] = {}
+        for tname in all_topic_names:
+            tid = topic_name_to_id.get(tname)
+            if not tid:
+                continue
+            try:
+                world_counts[tname] = fetch_world_counts_for_topic(tid, start_year, end_year)
+            except Exception as e:
+                if SHOW_DEBUG_LOGS:
+                    print(f"⚠️ world_counts error для {tname}: {e}")
+                world_counts[tname] = {}
+        
+        # --- Считаем метрики по каждой теме ---
+        rows = []
+        for tname in all_topic_names:
+            a = analyzed.get(tname, {'count': 0, 'fwci_list': [], 'years': []})
+            c = citing.get(tname, {'count': 0, 'fwci_list': [], 'years': []})
+            wc = world_counts.get(tname, {})
+            
+            world_total = sum(wc.get(y, 0) for y in years)
+            
+            analyzed_fwci = (sum(a['fwci_list']) / len(a['fwci_list'])) if a['fwci_list'] else None
+            citing_fwci = (sum(c['fwci_list']) / len(c['fwci_list'])) if c['fwci_list'] else None
+            
+            analyzed_total_n = a['count']
+            citing_total_n = c['count']
+            
+            # World share
+            if world_total > 0:
+                world_share = (analyzed_total_n + citing_total_n) / world_total
+            else:
+                world_share = None
+            
+            # Показатель роста: сравнение первой и последней трети периода
+            # Только для периода >= 3 лет
+            growth_metric = None
+            if period_years >= 3 and wc:
+                sorted_years = sorted(wc.keys())
+                if len(sorted_years) >= 3:
+                    third = max(1, len(sorted_years) // 3)
+                    first_chunk = sorted_years[:third]
+                    last_chunk = sorted_years[-third:]
+                    first_avg = sum(wc[y] for y in first_chunk) / len(first_chunk)
+                    last_avg = sum(wc[y] for y in last_chunk) / len(last_chunk)
+                    if first_avg > 0:
+                        growth_metric = (last_avg - first_avg) / first_avg
+                    elif last_avg > 0:
+                        # тема появилась — считаем очень растущей
+                        growth_metric = float('inf')
+                    else:
+                        growth_metric = 0.0
+            
+            rows.append({
+                'topic': tname,
+                'topic_id': topic_name_to_id.get(tname, ''),
+                'analyzed_count': analyzed_total_n,
+                'citing_count': citing_total_n,
+                'analyzed_fwci': analyzed_fwci,
+                'citing_fwci': citing_fwci,
+                'analyzed_fwci_n': len(a['fwci_list']),
+                'citing_fwci_n': len(c['fwci_list']),
+                'world_total': world_total,
+                'world_share': world_share,
+                'growth_metric': growth_metric,
+                '_wc': wc,  # сохраняем для отладки
+            })
+        
+        # --- Ранжирование: activity (для коротких периодов) или trend ---
+        is_trend = period_years >= 3
+        
+        if is_trend:
+            # Trend: ранжируем по growth_metric
+            valid = [r for r in rows if r['growth_metric'] is not None]
+            valid.sort(key=lambda r: r['growth_metric'], reverse=True)
+            n_valid = len(valid)
+            for i, r in enumerate(valid):
+                # top 25% — growing, bottom 25% — declining
+                if n_valid >= 4:
+                    if i < n_valid * 0.25:
+                        r['trend_label'] = 'growing'
+                    elif i >= n_valid * 0.75:
+                        r['trend_label'] = 'declining'
+                    else:
+                        r['trend_label'] = 'stable'
+                else:
+                    # мало тем — используем знак growth_metric
+                    if r['growth_metric'] > 0.1:
+                        r['trend_label'] = 'growing'
+                    elif r['growth_metric'] < -0.1:
+                        r['trend_label'] = 'declining'
+                    else:
+                        r['trend_label'] = 'stable'
+                r['activity_label'] = None
+            for r in rows:
+                if r['growth_metric'] is None:
+                    r['trend_label'] = None
+                    r['activity_label'] = None
+        else:
+            # Activity: ранжируем по world_total
+            valid = [r for r in rows if r['world_total'] > 0]
+            valid.sort(key=lambda r: r['world_total'], reverse=True)
+            n_valid = len(valid)
+            for i, r in enumerate(valid):
+                if n_valid >= 4:
+                    if i < n_valid * 0.25:
+                        r['activity_label'] = 'high'
+                    elif i >= n_valid * 0.75:
+                        r['activity_label'] = 'low'
+                    else:
+                        r['activity_label'] = 'moderate'
+                else:
+                    # мало тем — эвристика по абсолютному порогу
+                    if r['world_total'] >= 1000:
+                        r['activity_label'] = 'high'
+                    elif r['world_total'] >= 100:
+                        r['activity_label'] = 'moderate'
+                    else:
+                        r['activity_label'] = 'low'
+                r['trend_label'] = None
+            for r in rows:
+                if r['world_total'] <= 0:
+                    r['activity_label'] = None
+                    r['trend_label'] = None
+        
+        # Сортировка: Growing/High сверху, затем по world_total убыванию
+        def sort_key(r):
+            label = r.get('trend_label') or r.get('activity_label')
+            order = {'growing': 0, 'high': 0, 'stable': 1, 'moderate': 1, 'declining': 2, 'low': 2, None: 3}
+            return (order.get(label, 3), -(r['world_total'] or 0), -(r['analyzed_count'] or 0))
+        
+        rows.sort(key=sort_key)
+        
+        if SHOW_DEBUG_LOGS:
+            print(f"📊 World context: {len(rows)} тем, режим={'trend' if is_trend else 'activity'}, период {start_year}-{end_year}")
+        
+        # Удаляем _wc перед возвратом (не нужен в отчёте)
+        for r in rows:
+            r.pop('_wc', None)
+        
+        return {
+            'topics': rows,
+            'is_trend': is_trend,
+            'period_years': period_years,
+            'start_year': start_year,
+            'end_year': end_year,
+        }
     
     def _get_detailed_citations(self) -> Dict:
         """Get detailed citations for each publication"""
@@ -5124,6 +5505,7 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
     citation = results.get('citation_analysis', {})
     citing = results.get('citing_analysis', {})
     topics = results.get('topics_analysis', {})
+    world_context = results.get('world_context', {}) or {}
     detailed_citations = results.get('detailed_citations', {})
     author_distribution = results.get('author_distribution', {})
     
@@ -5571,6 +5953,148 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
         '''
         for i, w in enumerate(all_citing_works)
     ])
+
+    # ===== NEW: WORLD CONTEXT BLOCK =====
+    world_context_topics = world_context.get('topics', []) or []
+    world_context_is_trend = world_context.get('is_trend', False)
+    world_context_period_years = world_context.get('period_years', 0)
+    
+    if world_context_topics:
+        # Максимумы для цветовых шкал
+        max_wc_world_total = max([r.get('world_total', 0) or 0 for r in world_context_topics]) or 1
+        max_wc_analyzed = max([r.get('analyzed_count', 0) or 0 for r in world_context_topics]) or 1
+        max_wc_citing = max([r.get('citing_count', 0) or 0 for r in world_context_topics]) or 1
+        
+        # Заголовок колонки «Activity» или «Trend» в зависимости от периода
+        status_col_header = t('topic_trend') if world_context_is_trend else t('topic_activity')
+        
+        # Строки таблицы
+        wc_rows_html = []
+        for idx, r in enumerate(world_context_topics):
+            topic_name = html.escape(r.get('topic', '') or '')
+            analyzed_n = r.get('analyzed_count', 0) or 0
+            citing_n = r.get('citing_count', 0) or 0
+            world_total = r.get('world_total', 0) or 0
+            analyzed_fwci = r.get('analyzed_fwci')
+            citing_fwci = r.get('citing_fwci')
+            analyzed_fwci_n = r.get('analyzed_fwci_n', 0) or 0
+            citing_fwci_n = r.get('citing_fwci_n', 0) or 0
+            world_share = r.get('world_share')
+            
+            # FWCI ячейки
+            if analyzed_fwci is not None:
+                fwci_color = '#2ECC71' if analyzed_fwci >= 1.2 else ('#E74C3C' if analyzed_fwci < 0.8 else '#7F8C8D')
+                analyzed_fwci_cell = (
+                    f'<span style="color:{fwci_color};font-weight:700;">{analyzed_fwci:.2f}</span>'
+                    f'<div style="font-size:10px;color:#95A5A6;">'
+                    f'{t("fwci_works_covered", with_fwci=analyzed_fwci_n, total=analyzed_n)}</div>'
+                )
+            else:
+                analyzed_fwci_cell = f'<span style="color:#BDC3C7;">{t("fwci_not_available")}</span>'
+            
+            if citing_fwci is not None:
+                fwci_color_c = '#2ECC71' if citing_fwci >= 1.2 else ('#E74C3C' if citing_fwci < 0.8 else '#7F8C8D')
+                citing_fwci_cell = (
+                    f'<span style="color:{fwci_color_c};font-weight:700;">{citing_fwci:.2f}</span>'
+                    f'<div style="font-size:10px;color:#95A5A6;">'
+                    f'{t("fwci_works_covered", with_fwci=citing_fwci_n, total=citing_n)}</div>'
+                )
+            else:
+                citing_fwci_cell = f'<span style="color:#BDC3C7;">{t("fwci_not_available")}</span>'
+            
+            # World share
+            if world_share is not None:
+                ws_pct = world_share * 100
+                world_share_cell = f'<span style="font-family:monospace;">{ws_pct:.3f}%</span>'
+            else:
+                world_share_cell = '<span style="color:#BDC3C7;">—</span>'
+            
+            # Activity / Trend label
+            if world_context_is_trend:
+                label = r.get('trend_label')
+                label_map = {
+                    'growing': (t('trend_growing'), '#2ECC71'),
+                    'stable': (t('trend_stable'), '#95A5A6'),
+                    'declining': (t('trend_declining'), '#E74C3C'),
+                }
+            else:
+                label = r.get('activity_label')
+                label_map = {
+                    'high': (t('activity_high'), '#2ECC71'),
+                    'moderate': (t('activity_moderate'), '#F39C12'),
+                    'low': (t('activity_low'), '#E74C3C'),
+                }
+            
+            if label and label in label_map:
+                label_text, label_color = label_map[label]
+                low_n_marker = ''
+                if analyzed_n + citing_n < 5:
+                    low_n_marker = f' <span style="font-size:10px;color:#95A5A6;">({t("low_n_warning")})</span>'
+                status_cell = (
+                    f'<span style="display:inline-block;padding:3px 10px;border-radius:12px;'
+                    f'background:{label_color}22;color:{label_color};font-weight:700;font-size:12px;">'
+                    f'{label_text}</span>{low_n_marker}'
+                )
+            else:
+                status_cell = '<span style="color:#BDC3C7;">—</span>'
+            
+            wc_rows_html.append(f'''
+                <tr>
+                    <td>{idx+1}</td>
+                    <td class="word-wrap">{topic_name}</td>
+                    <td>{get_color_scale_html(analyzed_n, max_wc_analyzed)}</td>
+                    <td>{get_color_scale_html(citing_n, max_wc_citing)}</td>
+                    <td>{get_color_scale_html(world_total, max_wc_world_total)}</td>
+                    <td style="text-align:center;">{analyzed_fwci_cell}</td>
+                    <td style="text-align:center;">{citing_fwci_cell}</td>
+                    <td style="text-align:center;">{world_share_cell}</td>
+                    <td style="text-align:center;">{status_cell}</td>
+                </tr>
+            ''')
+        
+        wc_rows_html_joined = ''.join(wc_rows_html)
+        
+        world_context_block = f'''
+                    <!-- ============================================================ -->
+                    <!-- WORLD CONTEXT FOR TOPICS -->
+                    <!-- ============================================================ -->
+                    <h3 style="color: {primary}; font-size: 16px; margin-top: 25px;">
+                        🌍 {t('world_context')}
+                    </h3>
+                    <p style="font-size: 12px; color: #7F8C8D; margin: -6px 0 10px 0;">
+                        {t('world_context_hint')}
+                    </p>
+                    <div class="scrollable-table" style="max-height: 500px;">
+                        <table id="world_context_table">
+                            <thead>
+                                <tr>
+                                    <th class="sortable" onclick="sortTable('world_context_table', 0)">{t('rank')}</th>
+                                    <th class="sortable" onclick="sortTable('world_context_table', 1)">{t('topic_name')}</th>
+                                    <th class="sortable" onclick="sortTable('world_context_table', 2)">{t('analyzed_count')}</th>
+                                    <th class="sortable" onclick="sortTable('world_context_table', 3)">{t('citing_count')}</th>
+                                    <th class="sortable" onclick="sortTable('world_context_table', 4)">{t('world_total')}</th>
+                                    <th class="sortable" onclick="sortTable('world_context_table', 5)">{t('analyzed_fwci')}</th>
+                                    <th class="sortable" onclick="sortTable('world_context_table', 6)">{t('citing_fwci')}</th>
+                                    <th class="sortable" onclick="sortTable('world_context_table', 7)">{t('world_share')}</th>
+                                    <th class="sortable" onclick="sortTable('world_context_table', 8)">{status_col_header}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {wc_rows_html_joined}
+                            </tbody>
+                        </table>
+                    </div>
+                    <p style="font-size: 11px; color: #95A5A6; margin-top: 8px; font-style: italic;">
+                        {t('world_context_legend')}
+                    </p>
+        '''
+    else:
+        world_context_block = f'''
+                    <h3 style="color: {primary}; font-size: 16px; margin-top: 25px;">
+                        🌍 {t('world_context')}
+                    </h3>
+                    <p style="color: #7F8C8D; font-style: italic;">{t('world_context_no_data')}</p>
+        '''
     
     # HTML generation
     html_content = f"""
@@ -7369,7 +7893,12 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                             </tbody>
                         </table>
                     </div>
-                    
+
+                    <!-- ============================================================ -->
+                    <!-- NEW: WORLD CONTEXT FOR TOPICS -->
+                    <!-- ============================================================ -->
+                    {world_context_block}
+
                     <!-- Top Cited Topics with Progress Bars -->
                     <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">{t('top_cited_topics')}</h3>
                     {''.join([
