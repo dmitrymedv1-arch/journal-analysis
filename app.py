@@ -29,11 +29,6 @@ ANALYSIS_MODE = "orcid_openalex"  # "orcid_only" | "orcid_openalex"
 # Параметры для обнаружения временных разрывов
 MIN_GAP_YEARS_FOR_WARNING = 10  # Минимальный разрыв в годах для предупреждения
 
-WORLD_METRICS_TOPICS_LIMIT = 50      # максимум тем для запроса мировых метрик
-WORLD_METRICS_TREND_YEARS = 8        # сколько лет назад смотреть для тренда
-WORLD_METRICS_MIN_WORKS_FOR_TREND = 3  # минимум работ журнала по теме для показа тренда
-WORLD_METRICS_MIN_WORKS_FOR_FWCI = 3   # минимум работ с FWCI для показа FWCI-ratio
-WORLD_METRICS_TREND_MIN_YEARS = 3    # минимум лет периода для расчёта тренда
 # ============================================
 # ИМПОРТЫ
 # ============================================
@@ -468,25 +463,22 @@ LANG = {
         'no_potential_reviewers': 'No potential reviewers found',
         'citation_age': 'Citation age (days)',
         'no_cited_publications': 'No cited publications',
-        'world_topic_metrics_title': 'World Topic Metrics',
-        'world_topic_metrics_hint': 'Global trends and citation impact by Topic. FWCI ratio = mean FWCI of journal works / mean FWCI of all world works in the same Topic (last complete year).',
+        'topic_world_context': 'World Context: Topic Momentum & Quality',
+        'topic_world_context_hint': 'How each topic is performing globally, and whether the journal\'s works in this topic are cited above or below the world average.',
         'world_trend': 'World Trend',
-        'world_activity': 'World Activity',
-        'world_volume_last_year': 'World Volume (last year)',
-        'world_fwci': 'World Mean FWCI',
-        'journal_fwci': 'Journal Mean FWCI',
-        'fwci_ratio': 'FWCI Ratio (Journal / World)',
+        'world_trend_growing': '🟢 Growing',
+        'world_trend_stable': '🟡 Stable',
+        'world_trend_declining': '🔴 Declining',
+        'world_trend_insufficient': '— (needs ≥3 years)',
+        'world_volume': 'World Volume (last year)',
+        'world_fwci': 'World mean FWCI (last year)',
+        'journal_fwci': 'Journal mean FWCI',
+        'fwci_ratio': 'FWCI Ratio',
+        'fwci_ratio_tooltip': 'Journal mean FWCI / World mean FWCI. >1.2 = above world average; <0.8 = below.',
         'journal_works': 'Journal Works',
-        'subfield': 'Subfield',
-        'trend_growing': 'Growing',
-        'trend_stable': 'Stable',
-        'trend_declining': 'Declining',
-        'activity_high': 'High',
-        'activity_moderate': 'Moderate',
-        'activity_low': 'Low',
-        'trend_requires_longer_period': 'Trend requires an analysis period of at least 3 years. Activity and FWCI are available for any period.',
-        'no_world_metrics': 'No world metrics available for topics in this period',
-        'works_with_fwci_short': 'with FWCI',
+        'reliability_low': '⚠️ Low N',
+        'reliability_low_tooltip': 'Fewer than 5 journal works in this topic; FWCI ratio may be unreliable.',
+        'world_data_unavailable': 'World data unavailable',
     },
     'ru': {
         'app_title': 'Advanced Journal Analysis Tool',
@@ -859,25 +851,22 @@ LANG = {
         'potential_reviewers_hint': 'Топ-100 авторов, цитировавших журнал, но не публиковавшихся в нём за исследуемый период',
         'no_potential_reviewers': 'Потенциальные рецензенты не найдены',
         'no_cited_publications': 'Нет цитирующих публикаций',
-        'world_topic_metrics_title': 'Мировые метрики по темам',
-        'world_topic_metrics_hint': 'Глобальные тренды и цитируемость по темам. FWCI-ratio = средний FWCI работ журнала / средний FWCI всех работ мира по той же теме (последний полный год).',
+        'topic_world_context': 'Мировой контекст: динамика и качество тем',
+        'topic_world_context_hint': 'Как каждая тема выглядит в мире, и цитируются ли работы журнала по этой теме выше или ниже среднемирового уровня.',
         'world_trend': 'Мировой тренд',
-        'world_activity': 'Мировая активность',
-        'world_volume_last_year': 'Объём в мире (последний год)',
-        'world_fwci': 'Средний FWCI мира',
+        'world_trend_growing': '🟢 Растущая',
+        'world_trend_stable': '🟡 Стабильная',
+        'world_trend_declining': '🔴 Затухающая',
+        'world_trend_insufficient': '— (нужно ≥3 лет)',
+        'world_volume': 'Мировой объём (последний год)',
+        'world_fwci': 'Средний FWCI мира (последний год)',
         'journal_fwci': 'Средний FWCI журнала',
-        'fwci_ratio': 'FWCI-ratio (журнал / мир)',
+        'fwci_ratio': 'Отношение FWCI',
+        'fwci_ratio_tooltip': 'Средний FWCI журнала / Средний FWCI мира. >1.2 = выше среднемирового; <0.8 = ниже.',
         'journal_works': 'Работ журнала',
-        'subfield': 'Subfield',
-        'trend_growing': 'Растущая',
-        'trend_stable': 'Стабильная',
-        'trend_declining': 'Затухающая',
-        'activity_high': 'Высокая',
-        'activity_moderate': 'Средняя',
-        'activity_low': 'Низкая',
-        'trend_requires_longer_period': 'Тренд рассчитывается при периоде анализа не менее 3 лет. Активность и FWCI доступны для любого периода.',
-        'no_world_metrics': 'Мировые метрики по темам за этот период недоступны',
-        'works_with_fwci_short': 'с FWCI',
+        'reliability_low': '⚠️ Мало работ',
+        'reliability_low_tooltip': 'Менее 5 работ журнала по теме; отношение FWCI может быть ненадёжным.',
+        'world_data_unavailable': 'Мировые данные недоступны',
     }
 }
 
@@ -2356,6 +2345,23 @@ def save_to_cache(identifier: str, data: Dict, cache_type: str = "journal"):
         if SHOW_DEBUG_LOGS:
             print(f"⚠️ Ошибка сохранения кэша: {e}")
 
+def load_topic_cache(topic_id: str, ttl_days: int = 7) -> Optional[Dict]:
+    path = f"cache_journal/topics_world_{topic_id}.json"
+    if not os.path.exists(path):
+        return None
+    if time.time() - os.path.getmtime(path) > ttl_days * 86400:
+        return None
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except:
+        return None
+
+def save_topic_cache(topic_id: str, data: Dict):
+    path = f"cache_journal/topics_world_{topic_id}.json"
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False)
+
 def normalize_issn(issn_str):
     """Normalize ISSN string to standard format"""
     cleaned = re.sub(r'[^0-9Xx]', '', str(issn_str).strip())
@@ -2538,29 +2544,14 @@ def parse_work_metadata(work: Dict) -> Dict:
         else:
             parsed['country'] = 'Unknown'
         
+        # Topics
         topics_from_field = []
-        # ===== NEW: сохраняем raw-информацию о топиках (id, subfield, field) =====
-        topics_raw = []
         for topic in work.get('topics', []):
             topic_name = topic.get('display_name', '')
             if topic_name:
                 topics_from_field.append(topic_name)
-                subfield = topic.get('subfield') or {}
-                field = topic.get('field') or {}
-                domain = topic.get('domain') or {}
-                topics_raw.append({
-                    'id': topic.get('id', '').replace('https://openalex.org/', ''),
-                    'display_name': topic_name,
-                    'score': topic.get('score'),
-                    'subfield_id': subfield.get('id', '').replace('https://openalex.org/', '') if subfield else None,
-                    'subfield_name': subfield.get('display_name') if subfield else None,
-                    'field_id': field.get('id', '').replace('https://openalex.org/', '') if field else None,
-                    'field_name': field.get('display_name') if field else None,
-                    'domain_id': domain.get('id', '').replace('https://openalex.org/', '') if domain else None,
-                    'domain_name': domain.get('display_name') if domain else None,
-                })
+                topic_ids_map[topic_name] = topic.get('id', '').replace('https://openalex.org/', '')
         parsed['topics'] = topics_from_field[:15]
-        parsed['topics_raw'] = topics_raw[:15]
         
         # Concepts
         concepts = []
@@ -2704,7 +2695,6 @@ class JournalAnalyzer:
         self.lock = Lock()
         self.journal_name = None
         self.journal_abbreviation = None
-        self._world_topic_metrics_cache: Dict[str, Dict] = {}
         
     def parse_period(self):
         """Parse period string to years list or range"""
@@ -2816,6 +2806,405 @@ class JournalAnalyzer:
             print(f"✅ Загружено публикаций: {len(self.publications)}")
                    
         return publications
+
+    def _fetch_topic_world_context(self, topic_ids: List[str], analysis_years: Set[int]) -> Dict[str, Dict]:
+        """
+        Fetch world context for each topic: counts by year, mean FWCI last year,
+        subfield counts by year. Uses disk cache with 7-day TTL.
+        
+        Args:
+            topic_ids: list of OpenAlex topic IDs (e.g. ['T11636', 'T10123'])
+            analysis_years: set of years from user's analysis period
+        
+        Returns:
+            {topic_id: {
+                'topic_id': str,
+                'subfield_id': str or None,
+                'world_counts_by_year': {year: count, ...},   # only years we requested
+                'world_volume_last_year': int or None,
+                'world_mean_fwci_last_year': float or None,
+                'subfield_counts_by_year': {year: count, ...},
+                'last_full_year': int or None,
+                'fetch_status': 'ok' | 'partial' | 'failed',
+            }}
+        """
+        if not topic_ids:
+            return {}
+        
+        # Deduplicate while preserving order
+        topic_ids = list(dict.fromkeys([t for t in topic_ids if t]))
+        if not topic_ids:
+            return {}
+        
+        current_year = datetime.now().year
+        # "Last full year" = previous calendar year (current year is not yet complete)
+        last_full_year = current_year - 1
+        
+        # Year range for world queries: from min(analysis_years) to last_full_year
+        if analysis_years:
+            min_year = min(analysis_years)
+            max_year = min(max(analysis_years), last_full_year)
+        else:
+            min_year = last_full_year - 5
+            max_year = last_full_year
+        
+        if max_year < min_year:
+            # Edge case: user asked only for current year — no full year yet
+            max_year = min_year
+        
+        year_filter = f"{min_year}-{max_year}"
+        
+        result: Dict[str, Dict] = {}
+        subfield_cache: Dict[str, Dict] = {}  # in-memory dedup for subfields within this run
+        
+        for topic_id in topic_ids:
+            # ---- 1. Try disk cache ----
+            cached = load_topic_cache(topic_id, ttl_days=7)
+            if cached and cached.get('fetch_status') in ('ok', 'partial'):
+                result[topic_id] = cached
+                continue
+            
+            # ---- 2. Fetch fresh from OpenAlex ----
+            entry = {
+                'topic_id': topic_id,
+                'subfield_id': None,
+                'world_counts_by_year': {},
+                'world_volume_last_year': None,
+                'world_mean_fwci_last_year': None,
+                'subfield_counts_by_year': {},
+                'last_full_year': last_full_year,
+                'fetch_status': 'failed',
+            }
+            
+            try:
+                # 2a. Counts by year for the topic
+                # group_by=publication_year + filter=topics.id:T... covers all years in one request
+                url = "https://api.openalex.org/works"
+                params = {
+                    'filter': f'topics.id:{topic_id},publication_year:{year_filter}',
+                    'group_by': 'publication_year',
+                    'per_page': 200,
+                }
+                if OPENALEX_API_KEY:
+                    params['api_key'] = OPENALEX_API_KEY
+                
+                resp = requests.get(url, params=params, timeout=30)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    for bucket in data.get('group_by', []):
+                        try:
+                            year = int(bucket.get('key', 0))
+                            count = int(bucket.get('count', 0))
+                            entry['world_counts_by_year'][year] = count
+                        except (ValueError, TypeError):
+                            continue
+                    entry['fetch_status'] = 'ok'
+                
+                # 2b. Mean FWCI for the topic in the last full year
+                # Use OQL via API — returns count + mean FWCI in one request
+                if OPENALEX_API_KEY:
+                    oql_query = (
+                        f"get the count and mean FWCI of works "
+                        f"in topics {topic_id} "
+                        f"from publication_year {last_full_year} to {last_full_year}"
+                    )
+                    oql_params = {'oql': oql_query, 'api_key': OPENALEX_API_KEY}
+                    try:
+                        oql_resp = requests.get(
+                            "https://api.openalex.org/",
+                            params=oql_params,
+                            timeout=30,
+                        )
+                        if oql_resp.status_code == 200:
+                            oql_data = oql_resp.json()
+                            # Response shape: {"results": [{"count": N, "mean_fwci": X}, ...]}
+                            rows = oql_data.get('results', []) or []
+                            if rows:
+                                row = rows[0]
+                                vol = row.get('count')
+                                fwci = row.get('mean_fwci')
+                                if vol is not None:
+                                    entry['world_volume_last_year'] = int(vol)
+                                if fwci is not None:
+                                    entry['world_mean_fwci_last_year'] = float(fwci)
+                    except Exception as e:
+                        if SHOW_DEBUG_LOGS:
+                            print(f"⚠️ OQL mean FWCI failed for {topic_id}: {e}")
+                
+                # 2c. Fallback for world_volume_last_year (if OQL didn't work):
+                if entry['world_volume_last_year'] is None and last_full_year in entry['world_counts_by_year']:
+                    entry['world_volume_last_year'] = entry['world_counts_by_year'][last_full_year]
+                
+                # 2d. Subfield ID for this topic (to normalize trend)
+                # One request per topic — cheap, and we cache the result
+                try:
+                    topic_resp = requests.get(
+                        f"https://api.openalex.org/topics/{topic_id}",
+                        params={'api_key': OPENALEX_API_KEY} if OPENALEX_API_KEY else {},
+                        timeout=30,
+                    )
+                    if topic_resp.status_code == 200:
+                        topic_data = topic_resp.json()
+                        subfield = (topic_data.get('subfield') or {})
+                        sf_id_full = subfield.get('id', '') or ''
+                        if sf_id_full:
+                            entry['subfield_id'] = sf_id_full.replace('https://openalex.org/', '')
+                except Exception as e:
+                    if SHOW_DEBUG_LOGS:
+                        print(f"⚠️ Subfield fetch failed for {topic_id}: {e}")
+                
+                # 2e. Subfield counts by year (for share-based trend)
+                sf_id = entry['subfield_id']
+                if sf_id:
+                    if sf_id in subfield_cache:
+                        entry['subfield_counts_by_year'] = subfield_cache[sf_id]
+                    else:
+                        sf_cached = load_topic_cache(f"subfield_{sf_id}", ttl_days=7)
+                        if sf_cached:
+                            entry['subfield_counts_by_year'] = sf_cached.get('counts_by_year', {})
+                            subfield_cache[sf_id] = entry['subfield_counts_by_year']
+                        else:
+                            sf_params = {
+                                'filter': f'primary_topic.subfield.id:{sf_id},publication_year:{year_filter}',
+                                'group_by': 'publication_year',
+                                'per_page': 200,
+                            }
+                            if OPENALEX_API_KEY:
+                                sf_params['api_key'] = OPENALEX_API_KEY
+                            try:
+                                sf_resp = requests.get(url, params=sf_params, timeout=30)
+                                if sf_resp.status_code == 200:
+                                    sf_data = sf_resp.json()
+                                    sf_counts = {}
+                                    for bucket in sf_data.get('group_by', []):
+                                        try:
+                                            y = int(bucket.get('key', 0))
+                                            c = int(bucket.get('count', 0))
+                                            sf_counts[y] = c
+                                        except (ValueError, TypeError):
+                                            continue
+                                    entry['subfield_counts_by_year'] = sf_counts
+                                    subfield_cache[sf_id] = sf_counts
+                                    save_topic_cache(f"subfield_{sf_id}", {'counts_by_year': sf_counts})
+                            except Exception as e:
+                                if SHOW_DEBUG_LOGS:
+                                    print(f"⚠️ Subfield counts failed for {sf_id}: {e}")
+                
+                # ---- 3. Save to cache ----
+                save_topic_cache(topic_id, entry)
+                
+            except Exception as e:
+                if SHOW_DEBUG_LOGS:
+                    print(f"⚠️ World context fetch failed for {topic_id}: {e}")
+                entry['fetch_status'] = 'failed'
+            
+            result[topic_id] = entry
+        
+        return result
+
+    def _build_topic_world_table(self) -> List[Dict]:
+        """
+        Build rows for the "World Context" table.
+        Adapts to analysis period length:
+            - If period >= 3 years AND topic has >= 3 years of world data → compute trend.
+            - Otherwise → trend = 'insufficient_data', but still show volume and FWCI.
+        
+        Returns list of dicts:
+            {
+                'topic': str,
+                'topic_id': str,
+                'world_trend_label': 'growing'|'stable'|'declining'|'insufficient_data',
+                'world_volume_last_year': int or None,
+                'world_mean_fwci_last_year': float or None,
+                'journal_mean_fwci': float or None,
+                'fwci_ratio': float or None,
+                'journal_works_count': int,
+                'journal_works_with_fwci': int,
+                'reliability_low': bool,
+                'analysis_mode': 'trend'|'activity_only',
+                'subfield_id': str or None,
+            }
+        """
+        topics_data = self.analysis_results.get('topics_analysis', {}).get('topics', [])
+        if not topics_data:
+            return []
+        
+        # ---- 1. Collect topic_ids (need to be present in topics_data) ----
+        topic_id_by_name = {}
+        for t in topics_data:
+            tid = t.get('topic_id')
+            if tid:
+                topic_id_by_name[t['topic']] = tid
+        
+        if not topic_id_by_name:
+            # No topic_ids parsed — cannot build world context
+            return []
+        
+        # ---- 2. Determine analysis years ----
+        analysis_years = self._get_period_years_set()
+        period_len = len(analysis_years)
+        
+        # Trend is meaningful only if the user asked for >= 3 years
+        # (otherwise there's no time to observe a shift in share)
+        trend_possible_by_period = period_len >= 3
+        
+        # ---- 3. Fetch world context (cached) ----
+        world_ctx = self._fetch_topic_world_context(
+            topic_ids=list(topic_id_by_name.values()),
+            analysis_years=analysis_years,
+        )
+        
+        # ---- 4. Precompute journal FWCI by topic ----
+        # For each topic_id: collect fwci values of journal's works with this topic
+        journal_fwci_by_topic: Dict[str, List[float]] = defaultdict(list)
+        for doi, meta in self.publications_metadata.items():
+            if not meta:
+                continue
+            fwci = meta.get('fwci')
+            if fwci is None:
+                continue
+            # meta['topic_ids'] is a dict {name: id} — use .values()
+            topic_ids_for_work = set((meta.get('topic_ids') or {}).values())
+            for tid in topic_ids_for_work:
+                if tid:
+                    journal_fwci_by_topic[tid].append(float(fwci))
+        
+        # ---- 5. Determine thresholds for volume (median across topics of this subfield) ----
+        # Group topics by subfield, collect volumes
+        volumes_by_subfield: Dict[str, List[int]] = defaultdict(list)
+        for topic_name, tid in topic_id_by_name.items():
+            ctx = world_ctx.get(tid) or {}
+            vol = ctx.get('world_volume_last_year')
+            sf = ctx.get('subfield_id')
+            if vol is not None and sf:
+                volumes_by_subfield[sf].append(int(vol))
+        
+        subfield_median_volume: Dict[str, float] = {}
+        for sf, vols in volumes_by_subfield.items():
+            if vols:
+                subfield_median_volume[sf] = float(np.median(vols))
+        
+        # ---- 6. Build rows ----
+        rows: List[Dict] = []
+        
+        for t in topics_data:
+            topic_name = t.get('topic', '')
+            tid = t.get('topic_id')
+            if not tid:
+                continue
+            
+            ctx = world_ctx.get(tid) or {}
+            world_counts = ctx.get('world_counts_by_year') or {}
+            subfield_counts = ctx.get('subfield_counts_by_year') or {}
+            last_full_year = ctx.get('last_full_year')
+            subfield_id = ctx.get('subfield_id')
+            
+            # ---- 6a. Determine trend label (with length check) ----
+            trend_label = 'insufficient_data'
+            analysis_mode = 'activity_only'
+            
+            if trend_possible_by_period:
+                # Need >= 3 common years between world_counts and analysis_years
+                common_years = sorted(
+                    set(world_counts.keys()) & set(analysis_years)
+                )
+                # Also require subfield counts for share normalization
+                common_years_with_sf = [
+                    y for y in common_years
+                    if y in subfield_counts and subfield_counts[y] > 0
+                ]
+                
+                if len(common_years_with_sf) >= 3:
+                    # Share-based trend:
+                    # share(y) = world_count(y) / subfield_count(y)
+                    shares = {}
+                    for y in common_years_with_sf:
+                        shares[y] = world_counts[y] / subfield_counts[y]
+                    
+                    first_year = common_years_with_sf[0]
+                    last_year = common_years_with_sf[-1]
+                    first_share = shares[first_year]
+                    last_share = shares[last_year]
+                    
+                    if first_share > 0:
+                        rel_change = (last_share - first_share) / first_share
+                        # Thresholds: +15% => growing, -15% => declining
+                        if rel_change >= 0.15:
+                            trend_label = 'growing'
+                        elif rel_change <= -0.15:
+                            trend_label = 'declining'
+                        else:
+                            trend_label = 'stable'
+                        analysis_mode = 'trend'
+                    # if first_share == 0 → cannot compute relative change → leave as insufficient
+            
+            # ---- 6b. Volume last year ----
+            world_volume = ctx.get('world_volume_last_year')
+            if world_volume is None and last_full_year is not None:
+                world_volume = world_counts.get(last_full_year)
+            
+            # ---- 6c. World mean FWCI ----
+            world_fwci = ctx.get('world_mean_fwci_last_year')
+            
+            # ---- 6d. Journal FWCI ----
+            journal_fwci_values = journal_fwci_by_topic.get(tid, [])
+            journal_works_with_fwci = len(journal_fwci_values)
+            journal_mean_fwci = (
+                float(np.mean(journal_fwci_values))
+                if journal_fwci_values else None
+            )
+            
+            # ---- 6e. FWCI ratio ----
+            fwci_ratio = None
+            if (
+                journal_mean_fwci is not None
+                and world_fwci is not None
+                and world_fwci > 0
+            ):
+                fwci_ratio = journal_mean_fwci / world_fwci
+            
+            # ---- 6f. Reliability flag ----
+            journal_works_count = t.get('analyzed_count', 0)
+            reliability_low = journal_works_count < 5
+            
+            # ---- 6g. Activity label (optional, always available if volume known) ----
+            activity_label = None
+            if world_volume is not None and subfield_id:
+                median_vol = subfield_median_volume.get(subfield_id)
+                if median_vol is not None and median_vol > 0:
+                    if world_volume >= median_vol * 1.5:
+                        activity_label = 'high'
+                    elif world_volume <= median_vol * 0.5:
+                        activity_label = 'low'
+                    else:
+                        activity_label = 'moderate'
+            
+            rows.append({
+                'topic': topic_name,
+                'topic_id': tid,
+                'world_trend_label': trend_label,
+                'world_volume_last_year': world_volume,
+                'world_mean_fwci_last_year': world_fwci,
+                'journal_mean_fwci': journal_mean_fwci,
+                'fwci_ratio': fwci_ratio,
+                'journal_works_count': journal_works_count,
+                'journal_works_with_fwci': journal_works_with_fwci,
+                'reliability_low': reliability_low,
+                'analysis_mode': analysis_mode,
+                'subfield_id': subfield_id,
+                'activity_label': activity_label,
+            })
+        
+        # ---- 7. Sort by journal_works_count desc, then fwci_ratio desc ----
+        rows.sort(
+            key=lambda r: (
+                r['journal_works_count'],
+                r['fwci_ratio'] if r['fwci_ratio'] is not None else 0,
+            ),
+            reverse=True,
+        )
+        
+        return rows
     
     def fetch_citing_works(self, progress_callback=None):
         """Stage 2: Fetch citing works for all publications in parallel"""
@@ -3037,16 +3426,14 @@ class JournalAnalyzer:
         
         # 7. Topics analysis
         results['topics_analysis'] = self._analyze_topics()
-
-        # 7b. World topic metrics (тренды и FWCI)
-        import time as _t
-        _start = _t.time()
-        if SHOW_DEBUG_LOGS:
-            print(f"🌍 [WORLD] START at {datetime.now().strftime('%H:%M:%S')}")
-        results['world_topic_metrics'] = self._fetch_world_topic_metrics()
-        if SHOW_DEBUG_LOGS:
-            print(f"🌍 [WORLD] END in {_t.time()-_start:.1f}s")
-            
+        # NEW: build world context table (uses cached data)
+        try:
+            results['topic_world_context'] = self._build_topic_world_table()
+        except Exception as e:
+            if SHOW_DEBUG_LOGS:
+                print(f"⚠️ Topic world context build failed: {e}")
+            results['topic_world_context'] = []
+        
         # 8. Detailed citations
         results['detailed_citations'] = self._get_detailed_citations()
         
@@ -4859,402 +5246,6 @@ class JournalAnalyzer:
             'top_publishers': [{'name': name, 'count': count} for name, count in top_publishers],
             'potential_reviewers': potential_reviewers
         }
-
-    def _fetch_world_topic_metrics(self, progress_callback=None) -> Dict[str, Dict]:
-        """
-        Fetch world-level metrics for each Topic present in journal publications.
-        
-        Для каждой уникальной темы (Topic), встречающейся в публикациях журнала,
-        собираются мировые метрики:
-        
-        1. world_counts_by_year — число работ в мире по теме по годам
-           (за диапазон последних WORLD_METRICS_TREND_YEARS лет).
-        2. world_count_last_year — объём темы за последний полный год.
-        3. activity_label — 'high' | 'moderate' | 'low'
-           на основе объёма за последний полный год.
-        4. trend_label — 'growing' | 'stable' | 'declining' | None
-           на основе сравнения роста темы с ростом её subfield.
-           None, если доступно меньше WORLD_METRICS_TREND_MIN_YEARS лет.
-        5. world_mean_fwci — средний FWCI всех работ мира по теме
-           за последний полный год (может быть None).
-        6. journal_mean_fwci — средний FWCI работ журнала по теме.
-        7. fwci_ratio — journal_mean_fwci / world_mean_fwci,
-           если оба известны и работ журнала с FWCI >= WORLD_METRICS_MIN_WORKS_FOR_FWCI.
-        
-        Плюс метаданные: topic_id, subfield_id/name, field_name,
-        n_journal_works, n_journal_works_with_fwci.
-        
-        Возвращает Dict[topic_name, Dict].
-        Пустой dict, если тем нет или данные недоступны.
-        
-        Оптимизации:
-        - 1 запрос на subfield (total counts by year) — для расчёта роста subfield.
-        - 1 запрос на тему (объект /topics/Txxxx) — для counts_by_year.
-        - 1 запрос на тему (/works ... per_page=1) — для mean FWCI мира.
-        - Параллельно, не более 4 потоков.
-        - Результат кэшируется на диск (cache_journal/{issn}_{period}_world_metrics.json).
-        """
-        
-        # ================================================================
-        # 0. Проверка входных данных и кэша
-        # ================================================================
-        if not self.publications_metadata:
-            if SHOW_DEBUG_LOGS:
-                print("🌍 [WORLD] Нет метаданных публикаций — пропуск")
-            return {}
-        
-        cache_key = f"world_metrics_{self.issn}_{self.period}"
-        
-        try:
-            cached = load_from_cache(cache_key, "world_metrics")
-            if cached:
-                if SHOW_DEBUG_LOGS:
-                    print(f"✅ [WORLD] Загружено из кэша: {len(cached)} тем")
-                return cached
-        except Exception as e:
-            if SHOW_DEBUG_LOGS:
-                print(f"⚠️ [WORLD] cache load failed: {e}")
-        
-        # ================================================================
-        # 1. Собираем статистику журнала по темам
-        # ================================================================
-        topic_journal_stats: Dict[str, Dict] = defaultdict(lambda: {
-            'n_works': 0,
-            'fwci_values': [],
-            'subfield_id': None,
-            'subfield_name': None,
-            'field_id': None,
-            'field_name': None,
-            'domain_id': None,
-            'domain_name': None,
-            'topic_id': None,
-        })
-        
-        for doi, meta in self.publications_metadata.items():
-            if not meta:
-                continue
-            fwci = meta.get('fwci')
-            for topic_info in (meta.get('topics_raw') or []):
-                topic_name = topic_info.get('display_name')
-                if not topic_name:
-                    continue
-                st = topic_journal_stats[topic_name]
-                st['n_works'] += 1
-                if fwci is not None:
-                    try:
-                        st['fwci_values'].append(float(fwci))
-                    except (TypeError, ValueError):
-                        pass
-                # Заполняем метаданные (последняя запись побеждает — они одинаковы
-                # для одного и того же topic_id во всех работах)
-                if topic_info.get('id'):
-                    st['topic_id'] = topic_info['id']
-                if topic_info.get('subfield_id'):
-                    st['subfield_id'] = topic_info['subfield_id']
-                if topic_info.get('subfield_name'):
-                    st['subfield_name'] = topic_info['subfield_name']
-                if topic_info.get('field_id'):
-                    st['field_id'] = topic_info['field_id']
-                if topic_info.get('field_name'):
-                    st['field_name'] = topic_info['field_name']
-                if topic_info.get('domain_id'):
-                    st['domain_id'] = topic_info['domain_id']
-                if topic_info.get('domain_name'):
-                    st['domain_name'] = topic_info['domain_name']
-        
-        if not topic_journal_stats:
-            if SHOW_DEBUG_LOGS:
-                print("🌍 [WORLD] Нет тем с заполненным topics_raw — пропуск. "
-                      "Проверьте, что parse_work_metadata() сохраняет topics_raw.")
-            return {}
-        
-        # Ограничиваем число тем для запросов
-        topics_sorted = sorted(
-            topic_journal_stats.items(),
-            key=lambda kv: kv[1]['n_works'],
-            reverse=True
-        )[:WORLD_METRICS_TOPICS_LIMIT]
-        
-        # ================================================================
-        # 2. Определяем временной диапазон
-        # ================================================================
-        current_year = datetime.now().year
-        last_complete_year = current_year - 1
-        trend_start_year = last_complete_year - (WORLD_METRICS_TREND_YEARS - 1)
-        year_range_str = f"{trend_start_year}-{last_complete_year}"
-        
-        if SHOW_DEBUG_LOGS:
-            print(
-                f"🌍 [WORLD] START: {len(topics_sorted)} тем "
-                f"(из {len(topic_journal_stats)} уникальных), "
-                f"годы {year_range_str}, "
-                f"API key: {'YES' if OPENALEX_API_KEY else 'NO'}"
-            )
-        
-        # ================================================================
-        # 3. Один запрос на каждый subfield: total counts by year
-        #    Нужно, чтобы сравнить рост темы с ростом её subfield.
-        # ================================================================
-        subfield_ids: List[str] = sorted({
-            st['subfield_id']
-            for _, st in topics_sorted
-            if st.get('subfield_id')
-        })
-        
-        subfield_totals: Dict[str, Dict[int, int]] = {}
-        
-        for sid in subfield_ids:
-            params = {
-                'filter': f'primary_topic.subfield.id:{sid},publication_year:{year_range_str}',
-                'group_by': 'publication_year',
-            }
-            data = smart_request(params)
-            subfield_totals[sid] = {}
-            if data and data.get('group_by'):
-                for grp in data['group_by']:
-                    k = grp.get('key')
-                    if isinstance(k, str) and k.isdigit():
-                        k = int(k)
-                    if isinstance(k, int):
-                        try:
-                            subfield_totals[sid][k] = int(grp.get('count', 0))
-                        except (TypeError, ValueError):
-                            subfield_totals[sid][k] = 0
-            if SHOW_DEBUG_LOGS:
-                total_sf = sum(subfield_totals[sid].values())
-                print(f"🌍 [WORLD] subfield {sid}: {len(subfield_totals[sid])} лет, "
-                      f"суммарно {total_sf} работ")
-        
-        if SHOW_DEBUG_LOGS:
-            print(f"🌍 [WORLD] subfield totals готовы: {len(subfield_totals)} subfields")
-        
-        # ================================================================
-        # 4. Внутренняя функция: собрать метрики для одной темы
-        # ================================================================
-        def _fetch_one_topic(item) -> Tuple[str, Optional[Dict]]:
-            """
-            Собирает мировые метрики для одной темы.
-            Возвращает (topic_name, metrics_dict | None).
-            """
-            topic_name, st = item
-            topic_id = st.get('topic_id')
-            subfield_id = st.get('subfield_id')
-            
-            if not topic_id:
-                return topic_name, None
-            
-            # ---------- 4a. counts_by_year через объект topic ----------
-            topic_counts_by_year: Dict[int, int] = {}
-            topic_obj_url = f"https://api.openalex.org/topics/{topic_id}"
-            try:
-                headers = {}
-                if OPENALEX_API_KEY:
-                    headers["Authorization"] = f"Bearer {OPENALEX_API_KEY}"
-                r = requests.get(topic_obj_url, headers=headers, timeout=15)
-                if r.status_code == 200:
-                    tobj = r.json()
-                    for entry in (tobj.get('counts_by_year') or []):
-                        y = entry.get('year')
-                        c = entry.get('works_count', 0)
-                        if isinstance(y, int) and trend_start_year <= y <= last_complete_year:
-                            try:
-                                topic_counts_by_year[y] = int(c)
-                            except (TypeError, ValueError):
-                                pass
-                elif SHOW_DEBUG_LOGS:
-                    print(f"⚠️ [WORLD] /topics/{topic_id}: HTTP {r.status_code}")
-            except Exception as e:
-                if SHOW_DEBUG_LOGS:
-                    print(f"⚠️ [WORLD] /topics/{topic_id} exception: {str(e)[:100]}")
-            
-            # Fallback: если counts_by_year пустой (объект topic не отдал данные),
-            # используем works-запрос с group_by=publication_year.
-            if not topic_counts_by_year:
-                params_fb = {
-                    'filter': f'topics.id:{topic_id},publication_year:{year_range_str}',
-                    'group_by': 'publication_year',
-                }
-                data_fb = smart_request(params_fb)
-                if data_fb and data_fb.get('group_by'):
-                    for grp in data_fb['group_by']:
-                        k = grp.get('key')
-                        if isinstance(k, str) and k.isdigit():
-                            k = int(k)
-                        if isinstance(k, int):
-                            try:
-                                topic_counts_by_year[k] = int(grp.get('count', 0))
-                            except (TypeError, ValueError):
-                                pass
-            
-            # ---------- 4b. mean FWCI мира по теме за последний полный год ----------
-            world_mean_fwci = None
-            params_fwci = {
-                'filter': f'topics.id:{topic_id},publication_year:{last_complete_year},has_fwci:true',
-                'per_page': 1,
-                'select': 'id,fwci',
-            }
-            data_fwci = smart_request(params_fwci)
-            if data_fwci and data_fwci.get('meta'):
-                summary = data_fwci['meta'].get('summary_stats') or {}
-                raw_fwci = summary.get('mean_fwci')
-                if raw_fwci is not None:
-                    try:
-                        world_mean_fwci = float(raw_fwci)
-                    except (TypeError, ValueError):
-                        world_mean_fwci = None
-            
-            # ---------- 4c. FWCI журнала по теме ----------
-            journal_fwci_values = st['fwci_values']
-            journal_mean_fwci = None
-            if journal_fwci_values:
-                try:
-                    journal_mean_fwci = sum(journal_fwci_values) / len(journal_fwci_values)
-                except Exception:
-                    journal_mean_fwci = None
-            
-            # ---------- 4d. FWCI-ratio ----------
-            fwci_ratio = None
-            if (
-                journal_mean_fwci is not None
-                and world_mean_fwci is not None
-                and world_mean_fwci > 0
-                and len(journal_fwci_values) >= WORLD_METRICS_MIN_WORKS_FOR_FWCI
-            ):
-                try:
-                    fwci_ratio = journal_mean_fwci / world_mean_fwci
-                except Exception:
-                    fwci_ratio = None
-            
-            # ---------- 4e. Тренд: рост темы минус рост subfield ----------
-            trend_label = None
-            trend_delta = None
-            available_years = sorted(topic_counts_by_year.keys())
-            
-            if len(available_years) >= WORLD_METRICS_TREND_MIN_YEARS:
-                first_years = available_years[:2]
-                last_years = available_years[-2:]
-                
-                topic_first = sum(topic_counts_by_year[y] for y in first_years) / len(first_years)
-                topic_last = sum(topic_counts_by_year[y] for y in last_years) / len(last_years)
-                
-                # Относительный рост темы
-                topic_growth = (topic_last - topic_first) / max(topic_first, 1.0)
-                
-                # Относительный рост subfield
-                subfield_growth = 0.0
-                if subfield_id and subfield_totals.get(subfield_id):
-                    sf = subfield_totals[subfield_id]
-                    sf_years = sorted(sf.keys())
-                    if len(sf_years) >= 4:
-                        sf_first = sum(sf[y] for y in sf_years[:2]) / 2.0
-                        sf_last = sum(sf[y] for y in sf_years[-2:]) / 2.0
-                        subfield_growth = (sf_last - sf_first) / max(sf_first, 1.0)
-                
-                trend_delta = topic_growth - subfield_growth
-                
-                if trend_delta > 0.10:
-                    trend_label = 'growing'
-                elif trend_delta < -0.10:
-                    trend_label = 'declining'
-                else:
-                    trend_label = 'stable'
-            
-            # ---------- 4f. Активность: объём за последний полный год ----------
-            world_count_last_year = topic_counts_by_year.get(last_complete_year, 0)
-            activity_label = None
-            if world_count_last_year >= 1000:
-                activity_label = 'high'
-            elif world_count_last_year <= 100:
-                activity_label = 'low'
-            else:
-                activity_label = 'moderate'
-            
-            # ---------- 4g. Собираем результат ----------
-            metrics = {
-                'topic_id': topic_id,
-                'subfield_id': subfield_id,
-                'subfield_name': st.get('subfield_name'),
-                'field_id': st.get('field_id'),
-                'field_name': st.get('field_name'),
-                'domain_name': st.get('domain_name'),
-                'n_journal_works': st['n_works'],
-                'n_journal_works_with_fwci': len(journal_fwci_values),
-                'journal_mean_fwci': journal_mean_fwci,
-                'world_mean_fwci': world_mean_fwci,
-                'fwci_ratio': fwci_ratio,
-                'world_count_last_year': world_count_last_year,
-                'world_counts_by_year': topic_counts_by_year,
-                'trend_label': trend_label,
-                'trend_delta': trend_delta,
-                'activity_label': activity_label,
-            }
-            return topic_name, metrics
-        
-        # ================================================================
-        # 5. Параллельный обход тем (не более 4 потоков)
-        # ================================================================
-        world_metrics: Dict[str, Dict] = {}
-        total = len(topics_sorted)
-        
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            futures = {
-                executor.submit(_fetch_one_topic, item): item
-                for item in topics_sorted
-            }
-            done = 0
-            for fut in as_completed(futures):
-                done += 1
-                try:
-                    topic_name, metrics = fut.result()
-                    if metrics:
-                        world_metrics[topic_name] = metrics
-                except Exception as e:
-                    if SHOW_DEBUG_LOGS:
-                        print(f"⚠️ [WORLD] error in worker: {str(e)[:150]}")
-                
-                if progress_callback:
-                    try:
-                        progress_callback(done, total)
-                    except Exception:
-                        pass
-                
-                if SHOW_DEBUG_LOGS and done % 10 == 0:
-                    print(f"🌍 [WORLD] {done}/{total}")
-        
-        # ================================================================
-        # 6. Сохраняем в кэш
-        # ================================================================
-        try:
-            save_to_cache(cache_key, world_metrics, "world_metrics")
-            if SHOW_DEBUG_LOGS:
-                print(f"💾 [WORLD] Сохранено в кэш: {cache_key}")
-        except Exception as e:
-            if SHOW_DEBUG_LOGS:
-                print(f"⚠️ [WORLD] cache save failed: {e}")
-        
-        # ================================================================
-        # 7. Итоговая сводка
-        # ================================================================
-        if SHOW_DEBUG_LOGS:
-            n_with_trend = sum(
-                1 for m in world_metrics.values() if m.get('trend_label')
-            )
-            n_with_fwci_ratio = sum(
-                1 for m in world_metrics.values() if m.get('fwci_ratio') is not None
-            )
-            n_with_world_fwci = sum(
-                1 for m in world_metrics.values() if m.get('world_mean_fwci') is not None
-            )
-            print(
-                f"✅ [WORLD] DONE: {len(world_metrics)} тем | "
-                f"trend={n_with_trend} | "
-                f"world_mean_fwci={n_with_world_fwci} | "
-                f"fwci_ratio={n_with_fwci_ratio}"
-            )
-        
-        return world_metrics
     
     def _analyze_topics(self) -> Dict:
         """Analyze topics using real Topics from OpenAlex topics field"""
@@ -5327,6 +5318,7 @@ class JournalAnalyzer:
             
             topic_results.append({
                 'topic': topic,
+                'topic_id': topic_id_map.get(topic),
                 'analyzed_count': a_count,
                 'citing_count': c_count,
                 'analyzed_norm_count': a_norm,
@@ -5691,124 +5683,6 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
     max_citing_norm = max([t['citing_norm_count'] for t in topics_data]) if topics_data else 1
     max_total_norm = max([t['total_norm_count'] for t in topics_data]) if topics_data else 1
 
-    # ===== NEW: WORLD TOPIC METRICS BLOCK =====
-    world_topic_metrics = results.get('world_topic_metrics', {}) or {}
-    topics_analysis_for_world = topics.get('topics', []) or []
-    
-    # Соединяем мировые метрики с темами из topics_analysis (там есть counts и norm)
-    # и сортируем по total_norm_count (как в основной таблице Topics)
-    world_rows = []
-    for topic_row in topics_analysis_for_world:
-        topic_name = topic_row.get('topic')
-        wm = world_topic_metrics.get(topic_name)
-        if not wm:
-            continue
-        world_rows.append({
-            'topic': topic_name,
-            'analyzed_count': topic_row.get('analyzed_count', 0),
-            'citing_count': topic_row.get('citing_count', 0),
-            'total_norm_count': topic_row.get('total_norm_count', 0),
-            'n_journal_works': wm.get('n_journal_works', 0),
-            'n_journal_works_with_fwci': wm.get('n_journal_works_with_fwci', 0),
-            'journal_mean_fwci': wm.get('journal_mean_fwci'),
-            'world_mean_fwci': wm.get('world_mean_fwci'),
-            'fwci_ratio': wm.get('fwci_ratio'),
-            'world_count_last_year': wm.get('world_count_last_year', 0),
-            'trend_label': wm.get('trend_label'),
-            'activity_label': wm.get('activity_label'),
-            'subfield_name': wm.get('subfield_name'),
-        })
-    
-    # Определяем, показываем ли колонку Trend:
-    # только если период анализа >= WORLD_METRICS_TREND_MIN_YEARS лет
-    period_years_set = analyzer._get_period_years_set()
-    show_trend_column = len(period_years_set) >= WORLD_METRICS_TREND_MIN_YEARS
-    
-    # Вспомогательные функции для ярлыков
-    def _trend_badge(label):
-        if label == 'growing':
-            return f'<span class="badge" style="background:#2ECC71;color:white;">↑ {t("trend_growing")}</span>'
-        if label == 'declining':
-            return f'<span class="badge" style="background:#E74C3C;color:white;">↓ {t("trend_declining")}</span>'
-        if label == 'stable':
-            return f'<span class="badge" style="background:#95A5A6;color:white;">→ {t("trend_stable")}</span>'
-        return '<span style="color:#BDC3C7;">—</span>'
-    
-    def _activity_badge(label):
-        if label == 'high':
-            return f'<span class="badge" style="background:#2ECC71;color:white;">{t("activity_high")}</span>'
-        if label == 'moderate':
-            return f'<span class="badge" style="background:#F39C12;color:white;">{t("activity_moderate")}</span>'
-        if label == 'low':
-            return f'<span class="badge" style="background:#95A5A6;color:white;">{t("activity_low")}</span>'
-        return '<span style="color:#BDC3C7;">—</span>'
-    
-    def _fwci_ratio_cell(ratio, n_with_fwci):
-        if ratio is None:
-            return f'<span style="color:#BDC3C7;">—</span><div style="font-size:10px;color:#999;">{n_with_fwci} {t("works_with_fwci_short")}</div>'
-        if ratio >= 1.2:
-            color = '#2ECC71'
-        elif ratio >= 0.8:
-            color = '#F39C12'
-        else:
-            color = '#E74C3C'
-        return (
-            f'<span class="color-scale-value" style="background:{color}30;color:#1a1a1a;font-weight:700;">'
-            f'{ratio:.2f}'
-            f'</span>'
-            f'<div style="font-size:10px;color:#999;">{n_with_fwci} {t("works_with_fwci_short")}</div>'
-        )
-    
-    # Строим строки таблицы
-    world_rows_html = ''.join([
-        f'''
-        <tr>
-            <td>{i+1}</td>
-            <td class="word-wrap">{html.escape(r["topic"][:60])}{'...' if len(r["topic"]) > 60 else ''}</td>
-            <td>{html.escape(r.get("subfield_name") or "—")}</td>
-            <td>{get_color_scale_html(r["n_journal_works"], max([x["n_journal_works"] for x in world_rows]) if world_rows else 1)}</td>
-            <td>{_activity_badge(r["activity_label"])}</td>
-            <td>{r["world_count_last_year"]:,}</td>
-            <td>{_trend_badge(r["trend_label"]) if show_trend_column else '<span style="color:#BDC3C7;">—</span>'}</td>
-            <td>{r["world_mean_fwci"]:.2f if r["world_mean_fwci"] is not None else "—"}</td>
-            <td>{r["journal_mean_fwci"]:.2f if r["journal_mean_fwci"] is not None else "—"}</td>
-            <td>{_fwci_ratio_cell(r["fwci_ratio"], r["n_journal_works_with_fwci"])}</td>
-        </tr>
-        '''
-        for i, r in enumerate(world_rows)
-    ])
-    
-    # Заголовок таблицы (колонка Trend — только если период достаточный)
-    trend_header = f'<th class="sortable" onclick="sortTable(\'world_topic_table\', 6)">{t("world_trend")}</th>' if show_trend_column else f'<th style="opacity:0.4;">{t("world_trend")} *</th>'
-    trend_note = '' if show_trend_column else f'<p style="font-size:11px;color:#7F8C8D;margin:4px 0 0 0;">* {t("trend_requires_longer_period")}</p>'
-    
-    world_metrics_block = f'''
-    <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">{t('world_topic_metrics_title')}</h3>
-    <p style="font-size:12px;color:#7F8C8D;margin:-4px 0 8px 0;">{t('world_topic_metrics_hint')}</p>
-    {trend_note}
-    <div class="scrollable-table" style="max-height: 500px;">
-        <table id="world_topic_table">
-            <thead>
-                <tr>
-                    <th class="sortable" onclick="sortTable('world_topic_table', 0)">{t('rank')}</th>
-                    <th class="sortable" onclick="sortTable('world_topic_table', 1)">Topic</th>
-                    <th class="sortable" onclick="sortTable('world_topic_table', 2)">{t('subfield')}</th>
-                    <th class="sortable" onclick="sortTable('world_topic_table', 3)">{t('journal_works')}</th>
-                    <th class="sortable" onclick="sortTable('world_topic_table', 4)">{t('world_activity')}</th>
-                    <th class="sortable" onclick="sortTable('world_topic_table', 5)">{t('world_volume_last_year')}</th>
-                    {trend_header}
-                    <th class="sortable" onclick="sortTable('world_topic_table', 7)">{t('world_fwci')}</th>
-                    <th class="sortable" onclick="sortTable('world_topic_table', 8)">{t('journal_fwci')}</th>
-                    <th class="sortable" onclick="sortTable('world_topic_table', 9)">{t('fwci_ratio')}</th>
-                </tr>
-            </thead>
-            <tbody>
-                {world_rows_html if world_rows_html else f'<tr><td colspan="10" style="text-align:center;color:#999;font-style:italic;">{t("no_world_metrics")}</td></tr>'}
-            </tbody>
-        </table>
-    </div>
-    '''
-    
     # ===== ВЫЧИСЛЯЕМ МАКСИМУМЫ ДЛЯ СТРАН =====
     country_stats = geographic.get('country_stats', [])
     max_unique_works = max([c['unique_works'] for c in country_stats]) if country_stats else 1
@@ -7953,11 +7827,32 @@ def generate_journal_html_report(analyzer: JournalAnalyzer, logo_base64: Optiona
                             </tbody>
                         </table>
                     </div>
-                    
-                    <!-- ============================================================ -->
-                    <!-- NEW: WORLD TOPIC METRICS -->
-                    <!-- ============================================================ -->
-                    {world_metrics_block}
+
+                    <!-- WORLD CONTEXT TABLE -->
+                    <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">
+                        {t('topic_world_context')}
+                    </h3>
+                    <p style="font-size: 12px; color: #7F8C8D; margin: -8px 0 10px 0;">
+                        {t('topic_world_context_hint')}
+                    </p>
+                    <div class="scrollable-table" style="max-height: 400px;">
+                        <table id="world_context_table">
+                            <thead>
+                                <tr>
+                                    <th class="sortable" onclick="sortTable('world_context_table', 0)">Topic</th>
+                                    <th class="sortable" onclick="sortTable('world_context_table', 1)">{t('world_trend')}</th>
+                                    <th class="sortable" onclick="sortTable('world_context_table', 2)">{t('world_volume')}</th>
+                                    <th class="sortable" onclick="sortTable('world_context_table', 3)">{t('world_fwci')}</th>
+                                    <th class="sortable" onclick="sortTable('world_context_table', 4)">{t('journal_fwci')}</th>
+                                    <th class="sortable" onclick="sortTable('world_context_table', 5)">{t('fwci_ratio')}</th>
+                                    <th>{t('journal_works')}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- rows built in Python -->
+                            </tbody>
+                        </table>
+                    </div>
                     
                     <!-- Top Cited Topics with Progress Bars -->
                     <h3 style="color: {primary}; font-size: 16px; margin-top: 20px;">{t('top_cited_topics')}</h3>
